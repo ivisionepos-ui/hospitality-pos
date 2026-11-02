@@ -3,17 +3,19 @@
 | Module | Phase | Status | Tests | Notes |
 | --- | --- | --- | --- | --- |
 | Project setup: solution, build rules, CI, docs | 0 | Done 2026-11-02 | Build with warnings as errors | CI runs on GitHub on every push |
-| Money and rounding | 2 | Done 2026-11-02 | 22 passing | |
+| Money, rounding, proportional sharing | 2 | Done 2026-11-02 | 25 passing | |
 | UK VAT rules and VAT summary | 2 | Done 2026-11-02 | 17 passing | Accountant to confirm VAT categories for the menu |
 | Weekly time windows | 2 | Done 2026-11-02 | 5 passing | Reused later for time-based menus |
 | Scheduled offers | 2 | Done 2026-11-02 | 17 passing | Uses branch local time incl. British Summer Time |
 | Meal deal price sharing | 2 | Done 2026-11-02 | 5 passing (incl. 2,000 random deals) | |
-| Order pricing | 2 | Done 2026-11-02 | 8 passing | Order-level discounts, service charge and delivery fee come next |
+| Order pricing (items, offers, deals, VAT) | 2 | Done 2026-11-02 | 8 passing | |
+| Order discounts with staff limits and manager approval | 2 | Done 2026-11-02 | in 17 order-charge tests | Reason always required |
+| Delivery charges by distance (bands or per mile) | 2 | Done 2026-11-02 | 15 passing + order-charge tests | Override needs a reason; screen must block "too far" / "below minimum" |
+| Service charge (optional or compulsory) | 2 | Done 2026-11-02 | in 17 order-charge tests | Recorded for the Tipping Act |
 
-Total: 74 automated tests passing.
+Total: 109 automated tests passing, including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
-- Order-level discounts (amount or %), with manager approval, and how they spread across VAT rates
-- Delivery charge by distance bands (section 7.4)
-- Discretionary service charge and tips (outside the scope of VAT; recorded for the Tipping Act)
+- Card tips taken at payment, and tip allocation records (Tipping Act) — with the payments module
 - Menu data model (products, sizes, modifier groups, meal deal slots) and validation of choices
+- Orders: statuses, order numbers, duplicate prevention (idempotency), audit history

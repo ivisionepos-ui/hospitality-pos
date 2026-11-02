@@ -10,11 +10,12 @@ The full architecture and requirements are in the "Hospitality POS Platform – 
 ```
 src/
   Pos.Domain/            Business rules shared by the cloud and the Store Hub (no database, no UI)
-    Common/              Money (pence), rounding, weekly time windows
+    Common/              Money (pence), rounding, proportional sharing, weekly time windows
     Tax/                 UK VAT rules and VAT summaries
     Promotions/          Scheduled offers (e.g. Tuesday & Wednesday prices)
     MealDeals/           Sharing a deal price across its items
-    Pricing/             Order pricing: offers + extras + deals + VAT
+    Delivery/            Delivery charges by distance
+    Pricing/             Order pricing: offers, extras, deals, discounts, delivery fee, service charge, VAT
 tests/
   Pos.Domain.Tests/      Automated tests for Pos.Domain
 docs/

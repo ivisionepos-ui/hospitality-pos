@@ -18,8 +18,12 @@ public static class Endpoints
         ArgumentNullException.ThrowIfNull(app);
         var api = app.MapGroup("/api");
 
-        api.MapGet("/health", (HubSettings s, TimeProvider clock) =>
-            Results.Ok(new { status = "ok", branch = s.BranchCode, time = clock.GetUtcNow() }));
+        api.MapGet("/health", (HubSettings s, TimeProvider clock, HubCertificates certificates) =>
+            Results.Ok(new { status = "ok", branch = s.BranchCode, time = clock.GetUtcNow(), caCheckCode = certificates.CaCheckCode }));
+
+        // The shop CA's public certificate, for installing on tills (not secret). Compare its check code with the hub screen.
+        app.MapGet("/ca.crt", (HubCertificates certificates) =>
+            Results.File(System.Text.Encoding.ASCII.GetBytes(certificates.CaPem), "application/x-pem-file", "pos-hub-ca.crt"));
 
         MapSetupAndAccess(api);
         MapMenu(api);

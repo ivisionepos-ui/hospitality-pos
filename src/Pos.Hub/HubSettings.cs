@@ -21,6 +21,12 @@ public sealed class HubSettings
     /// <summary>When the trading day starts, e.g. "05:00".</summary>
     public string TradingDayStartsAt { get; set; } = "05:00";
 
+    /// <summary>Port for plain HTTP, open to this PC only (set-up, local tools).</summary>
+    public int LocalHttpPort { get; set; } = 5080;
+
+    /// <summary>Port for encrypted HTTPS on the shop network (tills and screens). 0 = shop network off.</summary>
+    public int NetworkHttpsPort { get; set; } = 5443;
+
     /// <summary>Path of the SQLite database file.</summary>
     public string DatabasePath { get; set; } = "data/hub.db";
 

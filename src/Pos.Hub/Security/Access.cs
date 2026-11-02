@@ -483,7 +483,8 @@ public sealed class AccessService
 
     private static string Iso(DateTimeOffset value) => value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
 
-    private static byte[] LoadOrCreateKey(string path)
+    /// <summary>Reads the 32-byte hub key, creating it the first time.</summary>
+    internal static byte[] LoadOrCreateKey(string path)
     {
         if (File.Exists(path))
         {

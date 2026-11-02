@@ -52,3 +52,9 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-046 | 2026-11-02 | Manager approval by typing the manager's PIN on the same till (X-Manager-Pin), recorded as the approver | Matches how shops work; no need to switch user |
 | C-047 | 2026-11-02 | First-time set-up only from the hub PC and only once; new devices join with a single-use 6-digit code valid 10 minutes | Nobody on the network can take over the hub |
 | C-048 | 2026-11-02 | Staff logins last 12 hours; changing a PIN, removing a staff member or removing a device ends their logins at once | Lost or shared logins do not linger |
+| C-049 | 2026-11-02 | Each hub has its own certificate authority (ECDSA P-256, 10 years, can only sign hub certificates); tills install it once | Browsers on tills trust the hub without warnings; no internet or paid certificates needed |
+| C-050 | 2026-11-02 | Hub HTTPS certificate valid 397 days, renewed automatically 30 days before the end or when the PC's names/addresses change; checked hourly | Meets browser and Apple limits; survives address changes |
+| C-051 | 2026-11-02 | Plain HTTP only on localhost (5080); the shop network gets HTTPS only (5443) | PINs and logins never cross the network unencrypted |
+| C-052 | 2026-11-02 | Certificate files are password-protected with a password derived from hub.key | A copied certificate file alone is useless |
+| C-053 | 2026-11-02 | Tills check the shop CA with a 16-character check code shown on the hub | Catches a wrong or swapped certificate during set-up |
+| C-054 | 2026-11-02 | Hub PC gets a fixed address in the router | Tills always find the hub; the certificate still renews itself if the address changes |

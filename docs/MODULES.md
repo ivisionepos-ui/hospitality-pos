@@ -22,12 +22,13 @@
 | Store Hub: SQLite database (WAL, full sync, schema upgrades), order and menu storage, order-number counter | 2 | Done 2026-11-02 | in 16 hub tests | Survives restarts; numbering carries on |
 | Store Hub web API: orders (create, list, status, add items, send to kitchen, void) and menu (import, price, sold out, rename, undo, change log) | 2 | Done 2026-11-02 | 18 end-to-end tests | |
 | Roles and permissions (Owner, Manager, Cashier, Waiter, Kitchen) | 4 | Done 2026-11-02 | 18 passing | |
-| Hub access control: first-time set-up, till pairing codes, device keys, staff PIN login with lockout, 12-hour sessions, manager-PIN approvals, staff and device management | 4 | Done 2026-11-02 | 22 end-to-end tests | Localhost only until HTTPS for the shop network |
+| Hub access control: first-time set-up, till pairing codes, device keys, staff PIN login with lockout, 12-hour sessions, manager-PIN approvals, staff and device management | 4 | Done 2026-11-02 | 22 end-to-end tests | |
+| HTTPS on the shop network: shop CA, hub certificate with automatic renewal, CA download, HTTP for this PC only | 4 | Done 2026-11-02 | 11 passing, incl. real encrypted connections | Each till installs the shop CA once |
 
-Total: 248 automated tests passing (208 business-rule tests + 40 end-to-end hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
+Total: 259 automated tests passing (208 business-rule tests + 51 hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
-- HTTPS on the shop network (hub certificate trusted by tills), then open the hub to the network
+- Windows Device Agent installer that installs the shop CA automatically
 - Live updates to tills and kitchen screens (SignalR)
 - Scheduled offers, delivery charge table and discount limits stored on the hub (offers currently not loaded)
 - Remaining Edit-menu operations over the API (add, move, edit panel save, extras, categories)

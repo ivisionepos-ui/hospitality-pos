@@ -52,7 +52,7 @@ Every change must build with zero warnings and pass all tests before it is merge
 dotnet run --project src/Pos.Hub
 ```
 
-It listens on http://localhost:5080 and keeps its database in `data/hub.db`. Settings are in
+It listens on http://localhost:5080 (this PC) and https on port 5443 (shop network), and keeps its database in `data/hub.db`. Settings are in
 `src/Pos.Hub/appsettings.json` under `Hub` (branch code, time zone, trading-day start, staff discount limits).
 
 ### First-time set-up
@@ -70,8 +70,29 @@ kitchen, cancelling), the manager types their PIN on the same till and it is sen
 
 Five wrong PINs on a device lock PIN entry on that device for 5 minutes. Ten wrong pairing codes block pairing for 10 minutes.
 
-**Still local only:** the hub listens on this PC (localhost) until encrypted connections (HTTPS) for the shop network
-are in place; then tills on the network can connect.
+### Connections
+
+| Port | What | Who can reach it |
+| --- | --- | --- |
+| 5080 (HTTP) | Set-up and local tools | This PC only |
+| 5443 (HTTPS) | Tills, kitchen screens, customer displays | The shop network, encrypted |
+
+The hub creates its own small certificate authority (the "shop CA") the first time it starts, and issues itself an
+HTTPS certificate for this PC's name and network addresses. It renews that certificate automatically a month before it
+ends, or when the PC's address changes; tills do not need anything new when that happens.
+
+**Setting up a till to trust the hub (once per till):**
+
+1. On the hub PC, open http://localhost:5080/api/health and note the `caCheckCode` (e.g. `A5F1-0592-6B9D-AB91`).
+2. Copy http://localhost:5080/ca.crt to the till (USB stick or shared folder) and install it as a trusted root certificate:
+   - Windows: double-click it → Install Certificate → Local Machine → "Trusted Root Certification Authorities".
+   - Android / Sunmi: Settings → Security → Encryption & credentials → Install a certificate → CA certificate.
+   - iPad: open the file, install the profile in Settings, then turn it on in Settings → General → About → Certificate Trust Settings.
+3. On the till, check that the certificate's SHA-256 fingerprint starts with the same check code.
+4. Give the hub PC a fixed address in the router (DHCP reservation), then point the till at https://<hub address>:5443.
+
+Files next to the database: `hub.db` (data), `hub.key` (protects PINs and certificate files), `hub-ca.pfx` and
+`hub-tls.pfx` (certificates). Back up all of them together, and keep backups safe: they hold the shop CA's private key.
 
 ### Roles
 
@@ -87,7 +108,8 @@ are in place; then tills on the network can connect.
 
 | Method | Route | Who | What it does |
 | --- | --- | --- | --- |
-| GET | /api/health | anyone | Is the hub running |
+| GET | /api/health | anyone | Is the hub running, and the shop CA check code |
+| GET | /ca.crt | anyone | The shop CA's public certificate, to install on tills |
 | GET/POST | /api/setup | hub PC, once | First-time set-up |
 | POST | /api/devices/pairing-code | owner | Code to register a new till or screen |
 | POST | /api/devices/pair | new device | Register with a pairing code |

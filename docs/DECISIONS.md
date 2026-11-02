@@ -36,3 +36,11 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-030 | 2026-11-02 | Voiding an item already sent to the kitchen, or cancelling once food has gone to the kitchen, needs a manager | Prevents waste and theft |
 | C-031 | 2026-11-02 | Delivery-app orders use the app's prices; our offers are not applied | Apps run their own promotions and pay us their price |
 | C-032 | 2026-11-02 | Offers on an order use the time it was created, even for items added later to an open table | One consistent price basis per order |
+| C-033 | 2026-11-02 | One JSON format (PosJson) for database, API and sync: camelCase, enums as words, money as pence + currency | No translation layers; what is stored is what is sent |
+| C-034 | 2026-11-02 | Hub stores menus and orders as full JSON state plus indexed columns (status, date, key, reference) | Simple, exact, and easy to sync; searchable where it matters |
+| C-035 | 2026-11-02 | Hub uses one SQLite connection with writes one at a time, WAL and synchronous=FULL | A shop's load is small; strict ordering and power-cut safety matter more |
+| C-036 | 2026-11-02 | Schema changes are numbered migrations applied at start-up in a transaction | Upgrades happen automatically and never half-apply |
+| C-037 | 2026-11-02 | Tills send what was picked, never prices; the hub prices from its menu | A till cannot charge a wrong or tampered price |
+| C-038 | 2026-11-02 | Refused changes are rolled back: nothing is saved and no order number is used | Database always matches the rules |
+| C-039 | 2026-11-02 | Hub listens on localhost only until device registration and staff login exist | No unauthenticated access from the shop network |
+| C-040 | 2026-11-02 | The menu change log text is kept after restarts, but undo only covers changes since the hub started | Full undo history across restarts is not needed for the MVP |

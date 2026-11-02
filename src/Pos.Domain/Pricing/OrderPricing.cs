@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Pos.Domain.Common;
 using Pos.Domain.Delivery;
 using Pos.Domain.MealDeals;
@@ -12,6 +13,9 @@ namespace Pos.Domain.Pricing;
 public sealed record ModifierInput(Guid OptionId, Money UnitPrice);
 
 /// <summary>A line to be priced: either a normal item or a meal deal.</summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(ItemLineInput), "item")]
+[JsonDerivedType(typeof(MealDealLineInput), "deal")]
 public abstract record OrderLineInput
 {
     /// <summary>Quantity, at least 1.</summary>

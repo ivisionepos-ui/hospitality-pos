@@ -18,10 +18,17 @@
 | Order statuses, daily order numbers, business day, device-made ids | 2 | Done 2026-11-02 | 27 passing | Business day start time is a branch setting (e.g. 05:00) |
 | Orders: lines with name/price snapshots, notes, send to kitchen, voids, cancel/reject, discounts and charges, full history | 2 | Done 2026-11-02 | in 18 order tests | Manager approval for kitchen voids and cancels |
 | Duplicate-proof order intake (same order sent twice is stored once) | 2 | Done 2026-11-02 | in 18 order tests | Reused key with different content is refused |
+| Saving menus and orders as JSON and loading them back exactly | 2 | Done 2026-11-02 | 6 passing | One JSON format for database, API and sync |
+| Store Hub: SQLite database (WAL, full sync, schema upgrades), order and menu storage, order-number counter | 2 | Done 2026-11-02 | in 16 hub tests | Survives restarts; numbering carries on |
+| Store Hub web API: orders (create, list, status, add items, send to kitchen, void) and menu (import, price, sold out, rename, undo, change log) | 2 | Done 2026-11-02 | 16 end-to-end tests | Localhost only until device/staff login exists |
 
-Total: 184 automated tests passing, including 1,000 random orders checking that totals and VAT always reconcile.
+Total: 206 automated tests passing (190 business-rule tests + 16 end-to-end hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
-- Store Hub service with its SQLite database: saving menus, orders, order numbers and history; local API for tills
+- Device registration, staff PIN login and permissions on the hub (before it is opened to the shop network)
+- Live updates to tills and kitchen screens (SignalR)
+- Scheduled offers, delivery charge table and discount limits stored on the hub (offers currently not loaded)
+- Remaining Edit-menu operations over the API (add, move, edit panel save, extras, categories)
+- Automatic hourly local backups of the hub database
 - Syncing menu and order changes between tills, hub and cloud
 - Card tips taken at payment, and tip allocation records (Tipping Act) — with the payments module

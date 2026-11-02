@@ -131,6 +131,19 @@ public sealed class DeliveryChargeTable
         return new DeliveryChargeTable([], ratePerMile, minimumFee, maximumFee, maximumMiles, minimumOrder, freeOver);
     }
 
+    /// <summary>The table as plain data, for saving.</summary>
+    public DeliveryChargeTableState ToState() =>
+        new(_bands, RatePerMile, MinimumFee, MaximumFee, MaximumMiles, MinimumOrder, FreeOver);
+
+    /// <summary>Rebuilds a table saved with <see cref="ToState"/> (checked again on the way in).</summary>
+    public static DeliveryChargeTable FromState(DeliveryChargeTableState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return state.RatePerMile is { } rate
+            ? PerMile(rate, state.MinimumFee ?? Money.Zero(rate.Currency), state.MaximumMiles, state.MaximumFee, state.MinimumOrder, state.FreeOver)
+            : Banded(state.Bands, state.MaximumMiles, state.MinimumOrder, state.FreeOver);
+    }
+
     /// <summary>Quotes a delivery for a distance and the food and drink total (after discounts).</summary>
     public DeliveryQuote Quote(decimal distanceMiles, Money goodsTotal)
     {
@@ -197,3 +210,20 @@ public sealed record DeliveryFeeOverride(Money Fee, string Reason, Guid ByUserId
 /// <param name="Table">The branch's delivery charges.</param>
 /// <param name="Override">Staff override, or null.</param>
 public sealed record DeliveryInput(decimal DistanceMiles, DeliveryChargeTable Table, DeliveryFeeOverride? Override = null);
+
+/// <summary>A delivery charge table as plain data.</summary>
+/// <param name="Bands">Distance bands (empty for per-mile).</param>
+/// <param name="RatePerMile">Per-mile rate, or null for bands.</param>
+/// <param name="MinimumFee">Lowest per-mile fee.</param>
+/// <param name="MaximumFee">Highest per-mile fee.</param>
+/// <param name="MaximumMiles">Furthest distance.</param>
+/// <param name="MinimumOrder">Default minimum order.</param>
+/// <param name="FreeOver">Default free-delivery threshold.</param>
+public sealed record DeliveryChargeTableState(
+    IReadOnlyList<DeliveryBand> Bands,
+    Money? RatePerMile,
+    Money? MinimumFee,
+    Money? MaximumFee,
+    decimal MaximumMiles,
+    Money? MinimumOrder,
+    Money? FreeOver);

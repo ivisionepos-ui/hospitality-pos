@@ -98,6 +98,79 @@ public sealed class Menu
     /// <summary>All modifier groups.</summary>
     public IReadOnlyCollection<ModifierGroup> ModifierGroups => _modifierGroups.Values;
 
+    /// <summary>Every item on the menu, by category and position.</summary>
+    public IReadOnlyList<Product> AllProducts =>
+        [.. _products.Values.OrderBy(p => _categories.TryGetValue(p.CategoryId, out var c) ? c.SortOrder : int.MaxValue).ThenBy(p => p.SortOrder)];
+
+    /// <summary>The whole menu as plain data, for saving and for sending to tills.</summary>
+    public MenuState ToState() => new(Currency, Version, CourseGroups, Categories, [.. ModifierGroups], AllProducts);
+
+    /// <summary>
+    /// Loads a menu saved with <see cref="ToState"/>. The change log starts empty; the version carries on from the saved one.
+    /// </summary>
+    public static Menu FromState(MenuState state, TimeProvider? clock = null)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        var menu = new Menu(state.Currency, clock) { Version = state.Version };
+        foreach (var g in state.CourseGroups)
+        {
+            menu._courseGroups[g.Id] = g;
+        }
+
+        foreach (var c in state.Categories)
+        {
+            menu._categories[c.Id] = c;
+        }
+
+        foreach (var g in state.ModifierGroups)
+        {
+            menu._modifierGroups[g.Id] = g;
+        }
+
+        foreach (var p in state.Products)
+        {
+            menu._products[p.Id] = p;
+        }
+
+        return menu;
+    }
+
+    /// <summary>
+    /// Builds a new menu from plain data, checking everything as if each part were added by hand
+    /// (used to import a menu). Positions follow the order of the lists.
+    /// </summary>
+    /// <param name="state">The menu to import.</param>
+    /// <param name="userId">Who is importing it.</param>
+    /// <param name="clock">Clock for the change log.</param>
+    /// <param name="continueFromVersion">Version to count on from, so tills see the import as newer than what they have.</param>
+    public static Menu Import(MenuState state, Guid userId, TimeProvider? clock = null, long continueFromVersion = 0)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        var menu = new Menu(state.Currency, clock) { Version = continueFromVersion };
+        foreach (var g in state.CourseGroups)
+        {
+            menu.AddCourseGroup(g, userId);
+        }
+
+        foreach (var c in state.Categories.OrderBy(c => c.SortOrder))
+        {
+            menu.AddCategory(c, userId);
+        }
+
+        foreach (var g in state.ModifierGroups)
+        {
+            menu.SaveModifierGroup(g, userId);
+        }
+
+        // Normal items first, so meal deals can point at them.
+        foreach (var p in state.Products.OrderBy(p => p.Type == ProductType.MealDeal).ThenBy(p => p.SortOrder))
+        {
+            menu.AddProduct(p, userId);
+        }
+
+        return menu;
+    }
+
     /// <summary>Buttons in a category, in screen order.</summary>
     public IReadOnlyList<Product> ProductsIn(Guid categoryId) =>
         [.. _products.Values.Where(p => p.CategoryId == categoryId).OrderBy(p => p.SortOrder)];
@@ -612,3 +685,18 @@ public sealed class Menu
         return string.Create(CultureInfo.InvariantCulture, $"{symbol}{money.MinorUnits / 100}.{Math.Abs(money.MinorUnits % 100):00}");
     }
 }
+
+/// <summary>A whole menu as plain data: what is saved in the database and sent to tills.</summary>
+/// <param name="Currency">Currency of all prices.</param>
+/// <param name="Version">Menu version.</param>
+/// <param name="CourseGroups">Food-type groups.</param>
+/// <param name="Categories">Category tabs.</param>
+/// <param name="ModifierGroups">Groups of extras.</param>
+/// <param name="Products">Items and meal deals.</param>
+public sealed record MenuState(
+    string Currency,
+    long Version,
+    IReadOnlyList<CourseGroup> CourseGroups,
+    IReadOnlyList<Category> Categories,
+    IReadOnlyList<ModifierGroup> ModifierGroups,
+    IReadOnlyList<Product> Products);

@@ -158,6 +158,63 @@ public sealed class Order
         Record(createdBy, OrderEventKind.Created, $"Order {number.Display} created ({source}, {type})", toStatus: status);
     }
 
+    private Order(OrderState state, OrderPricingSetup pricing, TimeProvider clock)
+    {
+        Id = state.Id;
+        IdempotencyKey = state.IdempotencyKey;
+        Fingerprint = state.Fingerprint;
+        BranchId = state.BranchId;
+        Number = state.Number;
+        Source = state.Source;
+        Type = state.Type;
+        Status = state.Status;
+        CreatedAt = state.CreatedAt;
+        CustomerId = state.CustomerId;
+        TableId = state.TableId;
+        _pricing = pricing;
+        _clock = clock;
+        _lines.AddRange(state.Lines);
+        _history.AddRange(state.History);
+        Discount = state.Discount;
+        Delivery = state.Delivery is { } d
+            ? new DeliveryInput(d.DistanceMiles, DeliveryChargeTable.FromState(d.Table), d.Override)
+            : null;
+        ServiceCharge = state.ServiceCharge;
+        Totals = Recalculate(_lines, Discount, Delivery, ServiceCharge);
+    }
+
+    /// <summary>
+    /// Loads an order saved with <see cref="ToState"/>. Totals are worked out again from the saved lines,
+    /// which keep their original prices, so they come out the same.
+    /// </summary>
+    public static Order Restore(OrderState state, OrderPricingSetup pricing, TimeProvider? clock = null)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(pricing);
+        return new Order(state, pricing, clock ?? TimeProvider.System);
+    }
+
+    /// <summary>The order as plain data, for saving.</summary>
+    public OrderState ToState() => new()
+    {
+        Id = Id,
+        IdempotencyKey = IdempotencyKey,
+        Fingerprint = Fingerprint,
+        BranchId = BranchId,
+        Number = Number,
+        Source = Source,
+        Type = Type,
+        Status = Status,
+        CreatedAt = CreatedAt,
+        CustomerId = CustomerId,
+        TableId = TableId,
+        Lines = [.. _lines],
+        History = [.. _history],
+        Discount = Discount,
+        Delivery = Delivery is { } d ? new DeliveryState(d.DistanceMiles, d.Table.ToState(), d.Override) : null,
+        ServiceCharge = ServiceCharge,
+    };
+
     /// <summary>Order id (made on the device that created it).</summary>
     public Guid Id { get; }
 
@@ -458,4 +515,62 @@ public sealed class Order
         ArgumentNullException.ThrowIfNull(actor);
         _history.Add(new OrderEvent(_clock.GetUtcNow(), actor.UserId, actor.DeviceId, kind, description, fromStatus, toStatus, lineId, reason, approvedBy));
     }
+}
+
+/// <summary>Delivery details as plain data.</summary>
+/// <param name="DistanceMiles">Distance used.</param>
+/// <param name="Table">Charge table in force when the order was taken.</param>
+/// <param name="Override">Staff override, if any.</param>
+public sealed record DeliveryState(decimal DistanceMiles, DeliveryChargeTableState Table, DeliveryFeeOverride? Override);
+
+/// <summary>An order as plain data: what is saved in the database and synced to the cloud.</summary>
+public sealed record OrderState
+{
+    /// <summary>Order id.</summary>
+    public required Guid Id { get; init; }
+
+    /// <summary>Sending device's key.</summary>
+    public required string IdempotencyKey { get; init; }
+
+    /// <summary>Content summary at submission.</summary>
+    public required string Fingerprint { get; init; }
+
+    /// <summary>Branch.</summary>
+    public required Guid BranchId { get; init; }
+
+    /// <summary>Order number.</summary>
+    public required OrderNumber Number { get; init; }
+
+    /// <summary>Where it came from.</summary>
+    public required OrderSource Source { get; init; }
+
+    /// <summary>Eat-in, takeaway or delivery.</summary>
+    public required OrderType Type { get; init; }
+
+    /// <summary>Current status.</summary>
+    public required OrderStatus Status { get; init; }
+
+    /// <summary>When it was created.</summary>
+    public required DateTimeOffset CreatedAt { get; init; }
+
+    /// <summary>Customer.</summary>
+    public Guid? CustomerId { get; init; }
+
+    /// <summary>Table.</summary>
+    public Guid? TableId { get; init; }
+
+    /// <summary>All lines, including removed ones.</summary>
+    public required IReadOnlyList<OrderLine> Lines { get; init; }
+
+    /// <summary>Full history.</summary>
+    public required IReadOnlyList<OrderEvent> History { get; init; }
+
+    /// <summary>Order discount.</summary>
+    public OrderDiscountInput? Discount { get; init; }
+
+    /// <summary>Delivery details.</summary>
+    public DeliveryState? Delivery { get; init; }
+
+    /// <summary>Service charge.</summary>
+    public ServiceChargeInput? ServiceCharge { get; init; }
 }

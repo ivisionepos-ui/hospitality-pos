@@ -143,7 +143,7 @@ public sealed record Product
     public IReadOnlyList<MealDealSlot> DealSlots { get; init; } = [];
 
     /// <summary>Allergens from the UK's 14 (e.g. "gluten", "milk").</summary>
-    public IReadOnlySet<string> Allergens { get; init; } = new HashSet<string>();
+    public IReadOnlyList<string> Allergens { get; init; } = [];
 
     /// <summary>Name shown on the till button.</summary>
     public LocalizedText DisplayName => ButtonName ?? Name;

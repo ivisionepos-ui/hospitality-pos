@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Pos.Domain/Pos.Domain.csproj" />
+    <Project Path="src/Pos.Hub/Pos.Hub.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Pos.Domain.Tests/Pos.Domain.Tests.csproj" />
+    <Project Path="tests/Pos.Hub.Tests/Pos.Hub.Tests.csproj" />
   </Folder>
 </Solution>

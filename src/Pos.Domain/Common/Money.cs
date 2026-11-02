@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json.Serialization;
 
 namespace Pos.Domain.Common;
 
@@ -9,6 +10,7 @@ namespace Pos.Domain.Common;
 public readonly record struct Money : IComparable<Money>
 {
     /// <summary>Creates an amount from minor units, e.g. 1250 = £12.50.</summary>
+    [JsonConstructor]
     public Money(long minorUnits, string currency)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(currency);
@@ -34,6 +36,7 @@ public readonly record struct Money : IComparable<Money>
     public static Money Zero(string currency) => new(0, currency);
 
     /// <summary>True when the amount is below zero.</summary>
+    [JsonIgnore]
     public bool IsNegative => MinorUnits < 0;
 
     /// <summary>Adds two amounts of the same currency.</summary>

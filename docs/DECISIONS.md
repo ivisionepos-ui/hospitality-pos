@@ -21,3 +21,9 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-015 | 2026-11-02 | Delivery fee VAT follows the food it delivers (apportioned) | HMRC treats delivery as part of the supply; accountant to confirm |
 | C-016 | 2026-11-02 | Optional service charge is outside the scope of VAT; compulsory service charge carries VAT. Service charge is worked out after the discount | UK VAT treatment; matches what the customer actually pays |
 | C-017 | 2026-11-02 | The pricer reports "too far" and "below minimum order" but does not refuse; the till screen blocks or warns | The business rule (refuse or warn) is a setting for the screen |
+| C-018 | 2026-11-02 | Menu records are immutable; every edit replaces the record and is logged with before/after state, user, time and a menu version number | Gives undo, a full audit log and a simple way for tills to catch up |
+| C-019 | 2026-11-02 | The edit panel saves the whole item; position and category change only through Move (drag and drop) | Matches the Edit menu screen; keeps positions consistent |
+| C-020 | 2026-11-02 | Undo steps back one change at a time and refuses if the item was changed again elsewhere | Never silently overwrites another till's change |
+| C-021 | 2026-11-02 | Every item has at least one size; size ids are unique across the menu | Offers and deals can point at a size unambiguously |
+| C-022 | 2026-11-02 | Meal-deal options can point at a size, a product or a category; the most specific match sets the upcharge | "12-inch only", "any kebab", "any drink, +50p for a bottle" all expressible |
+| C-023 | 2026-11-02 | Arabic names are optional; English is used when Arabic is missing | Menus can be built in English first |

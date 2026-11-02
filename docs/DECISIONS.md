@@ -27,3 +27,12 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-021 | 2026-11-02 | Every item has at least one size; size ids are unique across the menu | Offers and deals can point at a size unambiguously |
 | C-022 | 2026-11-02 | Meal-deal options can point at a size, a product or a category; the most specific match sets the upcharge | "12-inch only", "any kebab", "any drink, +50p for a bottle" all expressible |
 | C-023 | 2026-11-02 | Arabic names are optional; English is used when Arabic is missing | Menus can be built in English first |
+| C-024 | 2026-11-02 | Order statuses: Pending → Received → Accepted → Preparing → Ready → Completed, plus Cancelled and Rejected; only listed moves allowed | Matches the SRS; Pending exists only in the cloud until the shop acknowledges |
+| C-025 | 2026-11-02 | Orders taken by staff start Accepted; website and delivery-app orders start Received and must be accepted before the kitchen sees them | Staff orders are accepted by definition; online orders need a human check |
+| C-026 | 2026-11-02 | Order numbers restart each business day per branch ("045"); a full reference adds branch and date ("LDN1-261103-0045") | Easy to call out; still unique |
+| C-027 | 2026-11-02 | Business day starts at a set time (e.g. 05:00) in branch local time | Late-night orders count towards the evening's trading |
+| C-028 | 2026-11-02 | Duplicate prevention: each submission carries a key; a repeat with the same content returns the stored order, a reused key with different content is refused | Safe retries after dropped connections, without hiding mistakes |
+| C-029 | 2026-11-02 | Order lines keep the price and names from when they were added; removed lines stay on the order, marked void with a reason | Menu changes never alter orders; full audit trail |
+| C-030 | 2026-11-02 | Voiding an item already sent to the kitchen, or cancelling once food has gone to the kitchen, needs a manager | Prevents waste and theft |
+| C-031 | 2026-11-02 | Delivery-app orders use the app's prices; our offers are not applied | Apps run their own promotions and pay us their price |
+| C-032 | 2026-11-02 | Offers on an order use the time it was created, even for items added later to an open table | One consistent price basis per order |

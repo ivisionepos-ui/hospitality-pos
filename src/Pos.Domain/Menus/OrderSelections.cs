@@ -186,6 +186,48 @@ public sealed class MenuOrderBuilder
         return new MealDealLineInput { Deal = ToPricingItem(deal, selection.VariantId), Quantity = selection.Quantity, Components = components };
     }
 
+    /// <summary>Print position for items with no food-type group: after all groups.</summary>
+    public const int UngroupedSortOrder = 999;
+
+    /// <summary>Names and print details for an item selection, copied from the menu now.</summary>
+    public Orders.LineDisplay DisplayFor(ItemSelection selection)
+    {
+        ThrowIfInvalid(Check(selection));
+        return Display(_menu.GetProduct(selection.ProductId), selection.VariantId, selection.ModifierOptionIds, []);
+    }
+
+    /// <summary>Names and print details for a meal deal, with what was chosen in it (in slot order).</summary>
+    public Orders.LineDisplay DisplayFor(DealSelection selection)
+    {
+        ThrowIfInvalid(Check(selection));
+        var deal = _menu.GetProduct(selection.ProductId);
+        var items = deal.DealSlots
+            .SelectMany(slot => selection.Choices.Where(c => c.SlotId == slot.Id))
+            .Select(c => Display(_menu.GetProduct(c.ProductId), c.VariantId, c.ModifierOptionIds, []))
+            .ToList();
+
+        var display = Display(deal, selection.VariantId, [], items);
+        if (_menu.CourseGroupFor(deal) is null && items.Count > 0)
+        {
+            // A deal with no group of its own prints with its earliest item (e.g. with the mains).
+            display = display with { CourseSortOrder = items.Min(i => i.CourseSortOrder) };
+        }
+
+        return display;
+    }
+
+    private Orders.LineDisplay Display(Product product, Guid variantId, IReadOnlyList<Guid> optionIds, IReadOnlyList<Orders.LineDisplay> dealItems)
+    {
+        var options = product.ModifierGroupIds.Select(_menu.GetModifierGroup).SelectMany(g => g.Options).ToDictionary(o => o.Id);
+        return new Orders.LineDisplay(
+            product.Name,
+            product.Variants.Count > 1 ? product.Variants.Single(v => v.Id == variantId).Name : null,
+            [.. optionIds.Select(id => options[id].Name)],
+            _menu.CourseGroupFor(product)?.SortOrder ?? UngroupedSortOrder,
+            product.KitchenStationId,
+            dealItems);
+    }
+
     /// <summary>
     /// Finds the deal option that allows this item. The most specific wins:
     /// a listed size first, then the product, then its category.

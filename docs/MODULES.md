@@ -15,10 +15,13 @@
 | Menu model: categories, items, sizes, extras, meal-deal choices, English/Arabic names | 2 | Done 2026-11-02 | in 20 menu-editing tests | |
 | Menu editing (Edit menu mode rules): rename, prices, sold out, add, drag-and-drop order, change log, undo | 2 | Done 2026-11-02 | 20 passing | Screens come with the POS front end |
 | Order choices checked against the menu and turned into priced lines | 2 | Done 2026-11-02 | 10 passing | Sizes, extras limits, sold out, meal-deal rules |
+| Order statuses, daily order numbers, business day, device-made ids | 2 | Done 2026-11-02 | 27 passing | Business day start time is a branch setting (e.g. 05:00) |
+| Orders: lines with name/price snapshots, notes, send to kitchen, voids, cancel/reject, discounts and charges, full history | 2 | Done 2026-11-02 | in 18 order tests | Manager approval for kitchen voids and cancels |
+| Duplicate-proof order intake (same order sent twice is stored once) | 2 | Done 2026-11-02 | in 18 order tests | Reused key with different content is refused |
 
-Total: 139 automated tests passing, including 1,000 random orders checking that totals and VAT always reconcile.
+Total: 184 automated tests passing, including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
-- Saving the menu and its change log in the database (with the Store Hub), and syncing changes to other tills
+- Store Hub service with its SQLite database: saving menus, orders, order numbers and history; local API for tills
+- Syncing menu and order changes between tills, hub and cloud
 - Card tips taken at payment, and tip allocation records (Tipping Act) — with the payments module
-- Orders: statuses, order numbers, duplicate prevention (idempotency), audit history

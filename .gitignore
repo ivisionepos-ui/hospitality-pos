@@ -1,0 +1,16 @@
+bin/
+obj/
+.vs/
+.vscode/*
+!.vscode/extensions.json
+*.user
+TestResults/
+coverage*/
+node_modules/
+*.db
+*.db-wal
+*.db-shm
+.env
+appsettings.*.local.json
+*.pfx
+*.key

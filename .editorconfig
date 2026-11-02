@@ -1,0 +1,26 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.{json,yml,yaml,props,csproj,slnx}]
+indent_size = 2
+
+[*.cs]
+csharp_style_namespace_declarations = file_scoped:warning
+dotnet_style_qualification_for_field = false:warning
+csharp_style_var_for_built_in_types = true:suggestion
+dotnet_sort_system_directives_first = true
+# Private fields: _camelCase
+dotnet_naming_rule.private_fields.symbols = private_fields_sym
+dotnet_naming_rule.private_fields.style = underscore_camel
+dotnet_naming_rule.private_fields.severity = warning
+dotnet_naming_symbols.private_fields_sym.applicable_kinds = field
+dotnet_naming_symbols.private_fields_sym.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case

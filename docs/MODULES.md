@@ -2,7 +2,7 @@
 
 | Module | Phase | Status | Tests | Notes |
 | --- | --- | --- | --- | --- |
-| Project setup: solution, build rules, CI, docs | 0 | Done 2026-11-02 | Build with warnings as errors | CI workflow ready; runs once the code is on GitHub |
+| Project setup: solution, build rules, CI, docs | 0 | Done 2026-11-02 | Build with warnings as errors | CI runs on GitHub on every push |
 | Money and rounding | 2 | Done 2026-11-02 | 22 passing | |
 | UK VAT rules and VAT summary | 2 | Done 2026-11-02 | 17 passing | Accountant to confirm VAT categories for the menu |
 | Weekly time windows | 2 | Done 2026-11-02 | 5 passing | Reused later for time-based menus |

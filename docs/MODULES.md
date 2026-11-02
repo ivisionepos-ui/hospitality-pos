@@ -20,12 +20,14 @@
 | Duplicate-proof order intake (same order sent twice is stored once) | 2 | Done 2026-11-02 | in 18 order tests | Reused key with different content is refused |
 | Saving menus and orders as JSON and loading them back exactly | 2 | Done 2026-11-02 | 6 passing | One JSON format for database, API and sync |
 | Store Hub: SQLite database (WAL, full sync, schema upgrades), order and menu storage, order-number counter | 2 | Done 2026-11-02 | in 16 hub tests | Survives restarts; numbering carries on |
-| Store Hub web API: orders (create, list, status, add items, send to kitchen, void) and menu (import, price, sold out, rename, undo, change log) | 2 | Done 2026-11-02 | 16 end-to-end tests | Localhost only until device/staff login exists |
+| Store Hub web API: orders (create, list, status, add items, send to kitchen, void) and menu (import, price, sold out, rename, undo, change log) | 2 | Done 2026-11-02 | 18 end-to-end tests | |
+| Roles and permissions (Owner, Manager, Cashier, Waiter, Kitchen) | 4 | Done 2026-11-02 | 18 passing | |
+| Hub access control: first-time set-up, till pairing codes, device keys, staff PIN login with lockout, 12-hour sessions, manager-PIN approvals, staff and device management | 4 | Done 2026-11-02 | 22 end-to-end tests | Localhost only until HTTPS for the shop network |
 
-Total: 206 automated tests passing (190 business-rule tests + 16 end-to-end hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
+Total: 248 automated tests passing (208 business-rule tests + 40 end-to-end hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
-- Device registration, staff PIN login and permissions on the hub (before it is opened to the shop network)
+- HTTPS on the shop network (hub certificate trusted by tills), then open the hub to the network
 - Live updates to tills and kitchen screens (SignalR)
 - Scheduled offers, delivery charge table and discount limits stored on the hub (offers currently not loaded)
 - Remaining Edit-menu operations over the API (add, move, edit panel save, extras, categories)

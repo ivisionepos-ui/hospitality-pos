@@ -48,6 +48,42 @@ public sealed class HubDatabase : IDisposable
                 PRIMARY KEY (branch_id, business_date)
             );
             """),
+        (2, """
+            CREATE TABLE staff (
+                id          TEXT    PRIMARY KEY,
+                name        TEXT    NOT NULL,
+                role        TEXT    NOT NULL,
+                pin_lookup  TEXT    NOT NULL UNIQUE,
+                is_active   INTEGER NOT NULL,
+                created_at  TEXT    NOT NULL
+            );
+            CREATE TABLE devices (
+                id            TEXT    PRIMARY KEY,
+                name          TEXT    NOT NULL,
+                type          TEXT    NOT NULL,
+                key_hash      TEXT    NOT NULL,
+                is_active     INTEGER NOT NULL,
+                created_at    TEXT    NOT NULL,
+                last_seen_at  TEXT
+            );
+            CREATE TABLE pairing_codes (
+                code_hash   TEXT    PRIMARY KEY,
+                expires_at  TEXT    NOT NULL,
+                created_by  TEXT    NOT NULL
+            );
+            CREATE TABLE sessions (
+                token_hash  TEXT    PRIMARY KEY,
+                staff_id    TEXT    NOT NULL REFERENCES staff (id),
+                device_id   TEXT    NOT NULL REFERENCES devices (id),
+                expires_at  TEXT    NOT NULL,
+                revoked     INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE pin_failures (
+                device_id  TEXT NOT NULL,
+                at         TEXT NOT NULL
+            );
+            CREATE INDEX ix_pin_failures ON pin_failures (device_id, at);
+            """),
     ];
 
     private readonly SqliteConnection _connection;

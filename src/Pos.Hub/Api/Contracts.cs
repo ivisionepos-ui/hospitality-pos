@@ -10,8 +10,6 @@ namespace Pos.Hub.Api;
 /// <param name="IdempotencyKey">Key the till reuses on every retry of this order.</param>
 /// <param name="Source">Counter, Table, Phone…</param>
 /// <param name="Type">EatIn, Takeaway or Delivery.</param>
-/// <param name="UserId">Staff member.</param>
-/// <param name="DeviceId">Till.</param>
 /// <param name="CustomerId">Customer, if known.</param>
 /// <param name="TableId">Table, for table service.</param>
 /// <param name="Lines">Items and meal deals.</param>
@@ -20,8 +18,6 @@ public sealed record CreateOrderRequest(
     string IdempotencyKey,
     OrderSource Source,
     OrderType Type,
-    Guid UserId,
-    Guid? DeviceId,
     Guid? CustomerId,
     Guid? TableId,
     IReadOnlyList<OrderLineRequest>? Lines);
@@ -48,53 +44,69 @@ public sealed record OrderLineRequest(
 /// <param name="Extras">Extras on it.</param>
 public sealed record DealChoiceRequest(Guid SlotId, Guid ProductId, Guid VariantId, IReadOnlyList<Guid>? Extras = null);
 
-/// <summary>Who is acting.</summary>
-/// <param name="UserId">Staff member.</param>
-/// <param name="DeviceId">Till or screen.</param>
-public sealed record ActorRequest(Guid UserId, Guid? DeviceId = null);
-
 /// <summary>Items to add to an open order.</summary>
-/// <param name="UserId">Staff member.</param>
-/// <param name="DeviceId">Till.</param>
 /// <param name="Lines">Items and deals.</param>
-public sealed record AddLinesRequest(Guid UserId, Guid? DeviceId, IReadOnlyList<OrderLineRequest> Lines);
+public sealed record AddLinesRequest(IReadOnlyList<OrderLineRequest> Lines);
 
-/// <summary>Move an order to a new status.</summary>
+/// <summary>Move an order to a new status. A manager's PIN for approval goes in the X-Manager-Pin header.</summary>
 /// <param name="Status">New status.</param>
-/// <param name="UserId">Staff member.</param>
-/// <param name="DeviceId">Till or screen.</param>
 /// <param name="Reason">Required for Cancelled and Rejected.</param>
-/// <param name="ApprovedByUserId">Manager, when approval is needed.</param>
-public sealed record StatusRequest(OrderStatus Status, Guid UserId, Guid? DeviceId = null, string? Reason = null, Guid? ApprovedByUserId = null);
+public sealed record StatusRequest(OrderStatus Status, string? Reason = null);
 
-/// <summary>Remove a line.</summary>
-/// <param name="UserId">Staff member.</param>
+/// <summary>Remove a line. A manager's PIN for approval goes in the X-Manager-Pin header.</summary>
 /// <param name="Reason">Why.</param>
-/// <param name="DeviceId">Till.</param>
-/// <param name="ApprovedByUserId">Manager, if the item went to the kitchen.</param>
-public sealed record VoidRequest(Guid UserId, string Reason, Guid? DeviceId = null, Guid? ApprovedByUserId = null);
+public sealed record VoidRequest(string Reason);
 
 /// <summary>Change a price.</summary>
 /// <param name="VariantId">Size.</param>
 /// <param name="PricePence">New price in pence.</param>
-/// <param name="UserId">Who.</param>
-public sealed record PriceRequest(Guid VariantId, long PricePence, Guid UserId);
+public sealed record PriceRequest(Guid VariantId, long PricePence);
 
 /// <summary>Sold out or back in stock.</summary>
 /// <param name="SoldOut">True = sold out.</param>
-/// <param name="UserId">Who.</param>
-public sealed record SoldOutRequest(bool SoldOut, Guid UserId);
+public sealed record SoldOutRequest(bool SoldOut);
 
 /// <summary>Rename an item.</summary>
 /// <param name="Name">New name.</param>
-/// <param name="UserId">Who.</param>
 /// <param name="ButtonName">Short button name, or null to use the name.</param>
-public sealed record RenameRequest(LocalizedText Name, Guid UserId, LocalizedText? ButtonName = null);
+public sealed record RenameRequest(LocalizedText Name, LocalizedText? ButtonName = null);
 
-/// <summary>Import a whole menu.</summary>
-/// <param name="UserId">Who.</param>
-/// <param name="Menu">The menu.</param>
-public sealed record ImportMenuRequest(Guid UserId, MenuState Menu);
+/// <summary>First-time set-up from the hub PC itself.</summary>
+/// <param name="OwnerName">Owner's name.</param>
+/// <param name="Pin">Owner's PIN (4–8 digits).</param>
+/// <param name="DeviceName">Name for this PC, e.g. "Office PC".</param>
+public sealed record SetupRequest(string OwnerName, string Pin, string DeviceName);
+
+/// <summary>Result of first-time set-up. The device key is shown only once.</summary>
+/// <param name="Owner">The owner.</param>
+/// <param name="Device">This PC's credentials.</param>
+/// <param name="Session">The owner's login on this PC.</param>
+public sealed record SetupResult(Security.StaffMember Owner, Security.PairedDevice Device, Security.LoginResult Session);
+
+/// <summary>Register a till or screen with a pairing code.</summary>
+/// <param name="Code">6-digit code from the owner.</param>
+/// <param name="Name">Name, e.g. "Till 2".</param>
+/// <param name="Type">Kind of device.</param>
+public sealed record PairRequest(string Code, string Name, Security.DeviceType Type);
+
+/// <summary>A new pairing code.</summary>
+/// <param name="Code">The code to type on the new device.</param>
+/// <param name="ExpiresAt">When it stops working.</param>
+public sealed record PairingCodeView(string Code, DateTimeOffset ExpiresAt);
+
+/// <summary>Staff PIN login on a registered device.</summary>
+/// <param name="Pin">The PIN.</param>
+public sealed record LoginRequest(string Pin);
+
+/// <summary>Add a staff member.</summary>
+/// <param name="Name">Name.</param>
+/// <param name="Role">Role.</param>
+/// <param name="Pin">PIN (4–8 digits, unique).</param>
+public sealed record AddStaffRequest(string Name, Pos.Domain.Staff.StaffRole Role, string Pin);
+
+/// <summary>Change a PIN.</summary>
+/// <param name="Pin">New PIN.</param>
+public sealed record ChangePinRequest(string Pin);
 
 /// <summary>A menu change as returned to the till.</summary>
 /// <param name="Version">New menu version.</param>

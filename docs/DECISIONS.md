@@ -44,3 +44,11 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-038 | 2026-11-02 | Refused changes are rolled back: nothing is saved and no order number is used | Database always matches the rules |
 | C-039 | 2026-11-02 | Hub listens on localhost only until device registration and staff login exist | No unauthenticated access from the shop network |
 | C-040 | 2026-11-02 | The menu change log text is kept after restarts, but undo only covers changes since the hub started | Full undo history across restarts is not needed for the MVP |
+| C-041 | 2026-11-02 | Trading day starts at 05:00 | Confirmed by the owner |
+| C-042 | 2026-11-02 | Every call identifies a registered device (id + secret key); changes also need a staff PIN login on that device; who acted comes from the login, never from the request | Orders and audit logs cannot be faked by a till |
+| C-043 | 2026-11-02 | Fixed roles (Owner, Manager, Cashier, Waiter, Kitchen) with fixed permissions; managers manage only staff below manager; only the owner registers devices | Simple to explain; editable roles can come later |
+| C-044 | 2026-11-02 | PINs (4–8 digits, unique, no 1111/1234) stored as a keyed hash with the key in a separate file; protection by lockout (5 wrong in 5 min per device) | Short PINs cannot be protected by hashing alone; lockout stops guessing |
+| C-045 | 2026-11-02 | Device keys and session tokens are 256-bit random secrets; only their hashes are stored | A copied database does not give access |
+| C-046 | 2026-11-02 | Manager approval by typing the manager's PIN on the same till (X-Manager-Pin), recorded as the approver | Matches how shops work; no need to switch user |
+| C-047 | 2026-11-02 | First-time set-up only from the hub PC and only once; new devices join with a single-use 6-digit code valid 10 minutes | Nobody on the network can take over the hub |
+| C-048 | 2026-11-02 | Staff logins last 12 hours; changing a PIN, removing a staff member or removing a device ends their logins at once | Lost or shared logins do not linger |

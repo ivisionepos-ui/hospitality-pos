@@ -84,7 +84,7 @@ public sealed class OrderService
     }
 
     /// <summary>Creates an order from what was picked on the till. Safe to send again: a repeat returns the same order.</summary>
-    public SubmitResult Submit(CreateOrderRequest request)
+    public SubmitResult Submit(CreateOrderRequest request, OrderActor actor)
     {
         ArgumentNullException.ThrowIfNull(request);
         return _db.RunInTransaction(() =>
@@ -98,7 +98,7 @@ public sealed class OrderService
                 BranchCode = _settings.BranchCode,
                 Source = request.Source,
                 Type = request.Type,
-                CreatedBy = new OrderActor(request.UserId, request.DeviceId),
+                CreatedBy = actor,
                 CustomerId = request.CustomerId,
                 TableId = request.TableId,
                 Lines = lines,

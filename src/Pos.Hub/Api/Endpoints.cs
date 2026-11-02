@@ -3,6 +3,9 @@ using Pos.Domain.Common;
 using Pos.Domain.Menus;
 using Pos.Domain.Orders;
 using Pos.Domain.Pricing;
+using Pos.Domain.Staff;
+using Pos.Hub.Security;
+using static Pos.Hub.Security.AccessFilter;
 
 namespace Pos.Hub.Api;
 
@@ -18,81 +21,201 @@ public static class Endpoints
         api.MapGet("/health", (HubSettings s, TimeProvider clock) =>
             Results.Ok(new { status = "ok", branch = s.BranchCode, time = clock.GetUtcNow() }));
 
-        // ----- Menu -----
-        api.MapGet("/menu", (MenuService menu) => Handle(() => Results.Ok(menu.Read(m => m.ToState()))));
+        MapSetupAndAccess(api);
+        MapMenu(api);
+        MapOrders(api);
+    }
 
-        api.MapGet("/menu/changes", (MenuService menu, long? since) =>
-            Handle(() => Results.Ok(menu.ChangesSince(since ?? 0))));
+    private static void MapSetupAndAccess(RouteGroupBuilder api)
+    {
+        // First-time set-up: only from the hub PC itself, and only before any staff exist.
+        api.MapGet("/setup", (AccessService access) => Results.Ok(new { isSetUp = access.HasStaff }));
 
-        api.MapPut("/menu", (MenuService menu, ImportMenuRequest request) =>
-            Handle(() => Results.Ok(menu.Import(request.Menu, request.UserId))));
-
-        api.MapPost("/menu/products/{productId:guid}/price", (MenuService menu, Guid productId, PriceRequest request) =>
-            Handle(() => Change(menu.Edit(m => m.SetPrice(productId, request.VariantId, new Money(request.PricePence, m.Currency), request.UserId)))));
-
-        api.MapPost("/menu/products/{productId:guid}/sold-out", (MenuService menu, Guid productId, SoldOutRequest request) =>
-            Handle(() => Change(menu.Edit(m => m.SetSoldOut(productId, request.SoldOut, request.UserId)))));
-
-        api.MapPost("/menu/products/{productId:guid}/rename", (MenuService menu, Guid productId, RenameRequest request) =>
-            Handle(() => Change(menu.Edit(m => m.RenameProduct(productId, request.Name, request.UserId, request.ButtonName)))));
-
-        api.MapPost("/menu/undo", (MenuService menu, ActorRequest request) =>
-            Handle(() => Change(menu.Edit(m => m.UndoLast(request.UserId)))));
-
-        // ----- Orders -----
-        api.MapPost("/orders", (OrderService orders, CreateOrderRequest request) => Handle(() =>
+        api.MapPost("/setup", (HttpContext http, AccessService access, SetupRequest request) => Handle(() =>
         {
-            var result = orders.Submit(request);
-            var view = OrderView.From(result.Order, result.WasDuplicate);
-            return result.WasDuplicate ? Results.Ok(view) : Results.Created($"/api/orders/{result.Order.Id}", view);
+            if (!IsLocal(http))
+            {
+                throw new AccessDeniedException("LocalOnly", "Set-up must be done on the hub PC itself.", 403);
+            }
+
+            var (owner, device, session) = access.FirstTimeSetup(request.OwnerName, request.Pin, request.DeviceName);
+            return Results.Ok(new SetupResult(owner, device, session));
         }));
 
+        // Devices
+        api.MapPost("/devices/pairing-code", (HttpContext http, AccessService access, TimeProvider clock) => Handle(() =>
+            Results.Ok(new PairingCodeView(access.CreatePairingCode(Caller(http).Staff!), clock.GetUtcNow() + AccessService.PairingCodeLife))))
+            .ForStaff(Permission.ManageDevices);
+
+        api.MapPost("/devices/pair", (AccessService access, PairRequest request) => Handle(() =>
+            Results.Ok(access.Pair(request.Code, request.Name, request.Type))));
+
+        api.MapGet("/devices", (AccessService access) => Handle(() => Results.Ok(access.ListDevices())))
+            .ForStaff(Permission.ManageDevices);
+
+        api.MapDelete("/devices/{deviceId:guid}", (HttpContext http, AccessService access, Guid deviceId) => Handle(() =>
+        {
+            access.RemoveDevice(Caller(http).Staff!, deviceId);
+            return Results.NoContent();
+        })).ForStaff(Permission.ManageDevices);
+
+        // Staff logins
+        api.MapPost("/auth/login", (HttpContext http, AccessService access, LoginRequest request) => Handle(() =>
+            Results.Ok(access.Login(Caller(http).Device.Id, request.Pin))))
+            .ForDevices();
+
+        api.MapPost("/auth/logout", (HttpContext http, AccessService access) => Handle(() =>
+        {
+            access.Logout(http.Request.Headers.Authorization.ToString()["Bearer ".Length..].Trim());
+            return Results.NoContent();
+        })).ForStaff();
+
+        api.MapGet("/auth/me", (HttpContext http) => Handle(() =>
+        {
+            var caller = Caller(http);
+            return Results.Ok(new { caller.Staff, caller.Device, Permissions = RolePermissions.For(caller.Staff!.Role) });
+        })).ForStaff();
+
+        // Staff management
+        api.MapGet("/staff", (AccessService access) => Handle(() => Results.Ok(access.ListStaff())))
+            .ForStaff(Permission.ManageStaff);
+
+        api.MapPost("/staff", (HttpContext http, AccessService access, AddStaffRequest request) => Handle(() =>
+            Results.Ok(access.AddStaff(Caller(http).Staff!, request.Name, request.Role, request.Pin))))
+            .ForStaff(Permission.ManageStaff);
+
+        api.MapPost("/staff/{staffId:guid}/pin", (HttpContext http, AccessService access, Guid staffId, ChangePinRequest request) => Handle(() =>
+        {
+            access.ChangePin(Caller(http).Staff!, staffId, request.Pin);
+            return Results.NoContent();
+        })).ForStaff();
+
+        api.MapDelete("/staff/{staffId:guid}", (HttpContext http, AccessService access, Guid staffId) => Handle(() =>
+        {
+            access.Deactivate(Caller(http).Staff!, staffId);
+            return Results.NoContent();
+        })).ForStaff(Permission.ManageStaff);
+    }
+
+    private static void MapMenu(RouteGroupBuilder api)
+    {
+        api.MapGet("/menu", (MenuService menu) => Handle(() => Results.Ok(menu.Read(m => m.ToState()))))
+            .ForDevices();
+
+        api.MapGet("/menu/changes", (MenuService menu, long? since) => Handle(() => Results.Ok(menu.ChangesSince(since ?? 0))))
+            .ForDevices();
+
+        api.MapPut("/menu", (HttpContext http, MenuService menu, MenuState state) => Handle(() =>
+            Results.Ok(menu.Import(state, Caller(http).Staff!.Id))))
+            .ForStaff(Permission.EditMenu);
+
+        api.MapPost("/menu/products/{productId:guid}/price", (HttpContext http, MenuService menu, Guid productId, PriceRequest request) => Handle(() =>
+            Change(menu.Edit(m => m.SetPrice(productId, request.VariantId, new Money(request.PricePence, m.Currency), Caller(http).Staff!.Id)))))
+            .ForStaff(Permission.EditMenu);
+
+        // Sold out can be set by anyone taking orders, so the counter can react straight away.
+        api.MapPost("/menu/products/{productId:guid}/sold-out", (HttpContext http, MenuService menu, Guid productId, SoldOutRequest request) => Handle(() =>
+            Change(menu.Edit(m => m.SetSoldOut(productId, request.SoldOut, RequireAny(http, Permission.EditMenu, Permission.TakeOrders, Permission.KitchenDisplay).Id)))))
+            .ForStaff();
+
+        api.MapPost("/menu/products/{productId:guid}/rename", (HttpContext http, MenuService menu, Guid productId, RenameRequest request) => Handle(() =>
+            Change(menu.Edit(m => m.RenameProduct(productId, request.Name, Caller(http).Staff!.Id, request.ButtonName)))))
+            .ForStaff(Permission.EditMenu);
+
+        api.MapPost("/menu/undo", (HttpContext http, MenuService menu) => Handle(() =>
+            Change(menu.Edit(m => m.UndoLast(Caller(http).Staff!.Id)))))
+            .ForStaff(Permission.EditMenu);
+    }
+
+    private static void MapOrders(RouteGroupBuilder api)
+    {
+        api.MapPost("/orders", (HttpContext http, OrderService orders, CreateOrderRequest request) => Handle(() =>
+        {
+            var result = orders.Submit(request, Actor(http));
+            var view = OrderView.From(result.Order, result.WasDuplicate);
+            return result.WasDuplicate ? Results.Ok(view) : Results.Created($"/api/orders/{result.Order.Id}", view);
+        })).ForStaff(Permission.TakeOrders);
+
         api.MapGet("/orders", (OrderService orders, DateOnly? date, OrderStatus? status) =>
-            Handle(() => Results.Ok(orders.ForDay(date, status).Select(o => OrderView.From(o)))));
+            Handle(() => Results.Ok(orders.ForDay(date, status).Select(o => OrderView.From(o)))))
+            .ForDevices();
 
         api.MapGet("/orders/{orderId:guid}", (OrderService orders, Guid orderId) =>
-            Handle(() => Results.Ok(OrderView.From(orders.Get(orderId)))));
+            Handle(() => Results.Ok(OrderView.From(orders.Get(orderId)))))
+            .ForDevices();
 
         api.MapGet("/orders/{orderId:guid}/history", (OrderService orders, Guid orderId) =>
-            Handle(() => Results.Ok(orders.Get(orderId).History)));
+            Handle(() => Results.Ok(orders.Get(orderId).History)))
+            .ForStaff(Permission.ViewReports);
 
-        api.MapPost("/orders/{orderId:guid}/lines", (OrderService orders, Guid orderId, AddLinesRequest request) =>
-            Handle(() => Results.Ok(OrderView.From(orders.AddLines(orderId, request.Lines, new OrderActor(request.UserId, request.DeviceId))))));
+        api.MapPost("/orders/{orderId:guid}/lines", (HttpContext http, OrderService orders, Guid orderId, AddLinesRequest request) =>
+            Handle(() => Results.Ok(OrderView.From(orders.AddLines(orderId, request.Lines, Actor(http))))))
+            .ForStaff(Permission.TakeOrders);
 
-        api.MapPost("/orders/{orderId:guid}/status", (OrderService orders, Guid orderId, StatusRequest request) => Handle(() =>
+        api.MapPost("/orders/{orderId:guid}/status", (HttpContext http, OrderService orders, Guid orderId, StatusRequest request) => Handle(() =>
         {
-            var actor = new OrderActor(request.UserId, request.DeviceId);
+            var actor = Actor(http);
+            Guid? approver = null;
+            switch (request.Status)
+            {
+                case OrderStatus.Accepted or OrderStatus.Rejected:
+                    Require(http, Permission.AcceptOnlineOrders);
+                    break;
+                case OrderStatus.Preparing or OrderStatus.Ready:
+                    RequireAny(http, Permission.TakeOrders, Permission.KitchenDisplay);
+                    break;
+                case OrderStatus.Cancelled:
+                    approver = Approver(http, Permission.CancelOrders)
+                        ?? throw new AccessDeniedException("ApprovalRequired", "Cancelling needs a manager. Ask a manager to enter their PIN.", 403);
+                    break;
+                default:
+                    Require(http, Permission.TakeOrders);
+                    break;
+            }
+
             var order = orders.Change(orderId, o =>
             {
                 if (request.Status == OrderStatus.Cancelled)
                 {
-                    o.Cancel(request.Reason ?? string.Empty, actor, request.ApprovedByUserId);
+                    o.Cancel(request.Reason ?? string.Empty, actor, approver);
                 }
                 else
                 {
-                    o.MoveTo(request.Status, actor, request.Reason, request.ApprovedByUserId);
+                    o.MoveTo(request.Status, actor, request.Reason);
                 }
 
                 return o;
             });
             return Results.Ok(OrderView.From(order));
-        }));
+        })).ForStaff();
 
-        api.MapPost("/orders/{orderId:guid}/send-to-kitchen", (OrderService orders, Guid orderId, ActorRequest request) => Handle(() =>
+        api.MapPost("/orders/{orderId:guid}/send-to-kitchen", (HttpContext http, OrderService orders, Guid orderId) => Handle(() =>
         {
-            var sent = orders.Change(orderId, o => o.SendToKitchen(new OrderActor(request.UserId, request.DeviceId)));
+            var sent = orders.Change(orderId, o => o.SendToKitchen(Actor(http)));
             return Results.Ok(sent.Select(l => new { l.Id, l.Display, l.Pricing.Quantity, l.Note }));
-        }));
+        })).ForStaff(Permission.TakeOrders);
 
-        api.MapPost("/orders/{orderId:guid}/lines/{lineId:guid}/void", (OrderService orders, Guid orderId, Guid lineId, VoidRequest request) => Handle(() =>
+        api.MapPost("/orders/{orderId:guid}/lines/{lineId:guid}/void", (HttpContext http, OrderService orders, Guid orderId, Guid lineId, VoidRequest request) => Handle(() =>
         {
+            var line = orders.Get(orderId).Lines.FirstOrDefault(l => l.Id == lineId) ?? throw new KeyNotFoundException("Line not found on this order.");
+            Guid? approver = null;
+            if (line.SentToKitchen)
+            {
+                approver = Approver(http, Permission.VoidAfterKitchen)
+                    ?? throw new AccessDeniedException("ApprovalRequired", "This item has gone to the kitchen. Ask a manager to enter their PIN.", 403);
+            }
+            else
+            {
+                Require(http, Permission.VoidBeforeKitchen);
+            }
+
             var order = orders.Change(orderId, o =>
             {
-                o.VoidLine(lineId, request.Reason, new OrderActor(request.UserId, request.DeviceId), request.ApprovedByUserId);
+                o.VoidLine(lineId, request.Reason, Actor(http), approver);
                 return o;
             });
             return Results.Ok(OrderView.From(order));
-        }));
+        })).ForStaff();
     }
 
     private static IResult Change(MenuChange change) => Results.Ok(new MenuChangeView(change.Version, change.Summary));
@@ -103,6 +226,10 @@ public static class Endpoints
         try
         {
             return action();
+        }
+        catch (AccessDeniedException ex)
+        {
+            return Error(ex.Code, ex.Message, ex.StatusCode);
         }
         catch (InvalidSelectionException ex)
         {

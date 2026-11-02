@@ -24,6 +24,17 @@ public sealed class HubSettings
     /// <summary>Path of the SQLite database file.</summary>
     public string DatabasePath { get; set; } = "data/hub.db";
 
+    /// <summary>
+    /// Path of the key file used to protect staff PINs. Empty = "hub.key" next to the database.
+    /// Keep it with the database in backups; without it, staff must be given new PINs.
+    /// </summary>
+    public string KeyPath { get; set; } = string.Empty;
+
+    /// <summary>The key file path actually used.</summary>
+    public string KeyFilePath => string.IsNullOrWhiteSpace(KeyPath)
+        ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(DatabasePath)) ?? ".", "hub.key")
+        : KeyPath;
+
     /// <summary>Largest % discount staff may give without a manager, in basis points (1000 = 10%).</summary>
     public int StaffDiscountMaxPercent { get; set; }
 

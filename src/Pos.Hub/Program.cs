@@ -17,12 +17,14 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(sp => new HubDatabase(sp.GetRequiredService<HubSettings>().DatabasePath));
 builder.Services.AddSingleton<MenuService>();
 builder.Services.AddSingleton<OrderService>();
+builder.Services.AddSingleton<Pos.Hub.Security.AccessService>();
 builder.Services.ConfigureHttpJsonOptions(o => PosJson.Configure(o.SerializerOptions));
 
 var app = builder.Build();
 
 // Check the settings and open the database (upgrading it if needed) before taking any requests.
 _ = app.Services.GetRequiredService<OrderService>();
+_ = app.Services.GetRequiredService<Pos.Hub.Security.AccessService>();
 
 app.MapHubApi();
 app.Run();

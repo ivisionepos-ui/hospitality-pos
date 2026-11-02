@@ -55,29 +55,60 @@ dotnet run --project src/Pos.Hub
 It listens on http://localhost:5080 and keeps its database in `data/hub.db`. Settings are in
 `src/Pos.Hub/appsettings.json` under `Hub` (branch code, time zone, trading-day start, staff discount limits).
 
-**Not for use in a shop yet:** there is no login for tills or staff, so the hub only listens on this PC (localhost).
-Device registration, staff PINs and licence activation come before it is opened to the shop network.
+### First-time set-up
+
+1. On the hub PC, start the hub, then send `POST /api/setup` with the owner's name, a PIN and a name for this PC.
+   This only works on the hub PC itself, and only once. It returns this PC's device key (shown once) and logs the owner in.
+2. To add a till or screen: the owner creates a 6-digit pairing code (`POST /api/devices/pairing-code`, valid 10 minutes),
+   and the new device sends it with `POST /api/devices/pair`. The device receives its own key, shown once.
+3. The owner or a manager adds staff with a role and a PIN (`POST /api/staff`).
+4. Staff log in on a registered till with their PIN (`POST /api/auth/login`). Logins last 12 hours.
+
+Every request (except health and set-up) must carry `X-Device-Id` and `X-Device-Key`. Anything that changes data also
+needs a staff login: `Authorization: Bearer <token>`. Where a manager must approve (removing an item already in the
+kitchen, cancelling), the manager types their PIN on the same till and it is sent as `X-Manager-Pin`.
+
+Five wrong PINs on a device lock PIN entry on that device for 5 minutes. Ten wrong pairing codes block pairing for 10 minutes.
+
+**Still local only:** the hub listens on this PC (localhost) until encrypted connections (HTTPS) for the shop network
+are in place; then tills on the network can connect.
+
+### Roles
+
+| Role | Can do |
+| --- | --- |
+| Kitchen | Kitchen screen: mark orders preparing and ready; mark items sold out |
+| Waiter | Take orders, remove items not yet in the kitchen |
+| Cashier | Waiter + accept/reject online orders |
+| Manager | Everything in the shop: approvals, cancels, menu, staff below manager, reports |
+| Owner | Everything, including devices and managers |
 
 ### API (version 1)
 
-| Method | Route | What it does |
-| --- | --- | --- |
-| GET | /api/health | Is the hub running |
-| GET | /api/menu | The whole menu |
-| PUT | /api/menu | Import a whole menu (checked) |
-| GET | /api/menu/changes?since=N | Menu change log after version N |
-| POST | /api/menu/products/{id}/price | Change a size's price |
-| POST | /api/menu/products/{id}/sold-out | Sold out / back in stock |
-| POST | /api/menu/products/{id}/rename | Rename (English/Arabic, button name) |
-| POST | /api/menu/undo | Undo the last menu change |
-| POST | /api/orders | New order from what was picked; safe to resend (same key = same order) |
-| GET | /api/orders?date=&status= | Orders for a trading day (default today) |
-| GET | /api/orders/{id} | One order |
-| GET | /api/orders/{id}/history | Everything that happened to it |
-| POST | /api/orders/{id}/lines | Add items to an open order |
-| POST | /api/orders/{id}/status | Move status (reason for cancel/reject) |
-| POST | /api/orders/{id}/send-to-kitchen | Send new items to the kitchen |
-| POST | /api/orders/{id}/lines/{lineId}/void | Remove an item (manager if already in the kitchen) |
+| Method | Route | Who | What it does |
+| --- | --- | --- | --- |
+| GET | /api/health | anyone | Is the hub running |
+| GET/POST | /api/setup | hub PC, once | First-time set-up |
+| POST | /api/devices/pairing-code | owner | Code to register a new till or screen |
+| POST | /api/devices/pair | new device | Register with a pairing code |
+| GET / DELETE | /api/devices[/{id}] | owner | List or remove devices |
+| POST | /api/auth/login, /api/auth/logout | device / staff | PIN login, logout |
+| GET | /api/auth/me | staff | Who is logged in and what they may do |
+| GET / POST / DELETE | /api/staff[/{id}] | manager, owner | List, add, remove staff |
+| POST | /api/staff/{id}/pin | self, manager | Change a PIN |
+| GET | /api/menu, /api/menu/changes?since=N | any device | Menu and change log |
+| PUT | /api/menu | manager | Import a whole menu (checked) |
+| POST | /api/menu/products/{id}/price, /rename | manager | Change price or name |
+| POST | /api/menu/products/{id}/sold-out | cashier, kitchen, manager | Sold out / back in stock |
+| POST | /api/menu/undo | manager | Undo the last menu change |
+| POST | /api/orders | cashier, waiter | New order from what was picked; safe to resend |
+| GET | /api/orders?date=&status=, /api/orders/{id} | any device | Orders for a trading day, one order |
+| GET | /api/orders/{id}/history | manager | Everything that happened to it |
+| POST | /api/orders/{id}/lines | cashier, waiter | Add items to an open order |
+| POST | /api/orders/{id}/status | depends on status | Accept/reject (cashier), preparing/ready (kitchen), complete, cancel (manager) |
+| POST | /api/orders/{id}/send-to-kitchen | cashier, waiter | Send new items to the kitchen |
+| POST | /api/orders/{id}/lines/{lineId}/void | cashier; manager if in the kitchen | Remove an item |
 
-Refusals come back as `{ "code": "...", "message": "..." }` with 400 (invalid), 403 (needs approval),
+Refusals come back as `{ "code": "...", "message": "..." }` with 400 (invalid), 401 (not registered or not logged in),
+403 (role not allowed, or needs approval), 429 (locked out),
 404 (not found), 409 (not allowed now / duplicate key) or 422 (choices not valid, with a list of problems).

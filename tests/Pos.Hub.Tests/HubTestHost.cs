@@ -126,3 +126,76 @@ internal static class HttpHelpers
     public static async Task<T> GetJson<T>(this HttpClient client, string url) =>
         (await client.GetFromJsonAsync<T>(url, PosJson.Options))!;
 }
+
+/// <summary>Who a test client is: a device, and optionally a staff login on it.</summary>
+internal sealed record Credentials(Guid DeviceId, string DeviceKey, string? Token);
+
+/// <summary>A set-up shop: owner on the office PC, a till, and logged-in cashier, manager and kitchen staff.</summary>
+internal sealed class TestShop
+{
+    public const string OwnerPin = "4826";
+    public const string CashierPin = "5931";
+    public const string ManagerPin = "7402";
+    public const string KitchenPin = "3185";
+
+    public required Credentials Owner { get; init; }
+    public required Credentials Till { get; init; }
+    public required Credentials Cashier { get; init; }
+    public required Credentials Manager { get; init; }
+    public required Credentials Kitchen { get; init; }
+    public required Guid CashierId { get; init; }
+    public required Guid ManagerId { get; init; }
+
+    /// <summary>Does the first-time set-up and registers a till, the way a new shop would.</summary>
+    public static async Task<TestShop> SetUp(HubTestHost host)
+    {
+        using var anonymous = host.CreateClient();
+        var setup = await (await anonymous.Post("/api/setup", new Api.SetupRequest("Olivia Owner", OwnerPin, "Office PC"))).Read<Api.SetupResult>();
+        var owner = new Credentials(setup.Device.DeviceId, setup.Device.DeviceKey, setup.Session.Token);
+
+        using var ownerClient = host.Client(owner);
+        var code = await (await ownerClient.Post("/api/devices/pairing-code", new { })).Read<Api.PairingCodeView>();
+        var till = await (await anonymous.Post("/api/devices/pair", new Api.PairRequest(code.Code, "Till 1", Security.DeviceType.Till))).Read<Security.PairedDevice>();
+
+        var cashier = await (await ownerClient.Post("/api/staff", new Api.AddStaffRequest("Sam Cashier", Domain.Staff.StaffRole.Cashier, CashierPin))).Read<Security.StaffMember>();
+        var manager = await (await ownerClient.Post("/api/staff", new Api.AddStaffRequest("Mia Manager", Domain.Staff.StaffRole.Manager, ManagerPin))).Read<Security.StaffMember>();
+        await ownerClient.Post("/api/staff", new Api.AddStaffRequest("Kim Kitchen", Domain.Staff.StaffRole.Kitchen, KitchenPin));
+
+        return new TestShop
+        {
+            Owner = owner,
+            Till = new Credentials(till.DeviceId, till.DeviceKey, null),
+            Cashier = await host.Login(till, CashierPin),
+            Manager = await host.Login(till, ManagerPin),
+            Kitchen = await host.Login(till, KitchenPin),
+            CashierId = cashier.Id,
+            ManagerId = manager.Id,
+        };
+    }
+}
+
+/// <summary>Clients that send the device and login headers.</summary>
+internal static class HostExtensions
+{
+    public static HttpClient Client(this HubTestHost host, Credentials who)
+    {
+        var client = host.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Device-Id", who.DeviceId.ToString());
+        client.DefaultRequestHeaders.Add("X-Device-Key", who.DeviceKey);
+        if (who.Token is not null)
+        {
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", who.Token);
+        }
+
+        return client;
+    }
+
+    public static async Task<Credentials> Login(this HubTestHost host, Security.PairedDevice device, string pin)
+    {
+        using var client = host.Client(new Credentials(device.DeviceId, device.DeviceKey, null));
+        var response = await client.Post("/api/auth/login", new Api.LoginRequest(pin));
+        response.EnsureSuccessStatusCode();
+        var login = await response.Read<Security.LoginResult>();
+        return new Credentials(device.DeviceId, device.DeviceKey, login.Token);
+    }
+}

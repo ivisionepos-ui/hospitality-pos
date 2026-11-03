@@ -2,6 +2,7 @@ using Pos.Domain.Common;
 using Pos.Hub;
 using Pos.Hub.Api;
 using Pos.Hub.Data;
+using Pos.Hub.Live;
 using Pos.Hub.Security;
 
 // The Store Hub: runs on one PC in the shop, keeps the shop trading without internet,
@@ -34,6 +35,8 @@ builder.Services.AddSingleton<Pos.Hub.Security.AccessService>();
 builder.Services.AddSingleton(sp => new HubCertificates(sp.GetRequiredService<HubSettings>(), sp.GetRequiredService<TimeProvider>()));
 builder.Services.AddHostedService<CertificateRenewal>();
 builder.Services.ConfigureHttpJsonOptions(o => PosJson.Configure(o.SerializerOptions));
+builder.Services.AddSingleton<LiveUpdates>();
+builder.Services.AddSignalR().AddJsonProtocol(o => PosJson.Configure(o.PayloadSerializerOptions));
 
 var app = builder.Build();
 
@@ -44,6 +47,29 @@ var certificates = app.Services.GetRequiredService<HubCertificates>();
 HubLog.CertificatesLoaded(app.Logger, certificates);
 
 app.MapHubApi();
+
+// Live connection: the ticket from POST /api/live/ticket must be valid and the device still registered.
+app.UseWhen(http => http.Request.Path.StartsWithSegments("/live"), live => live.Use(async (http, next) =>
+{
+    // Browsers send the ticket as ?access_token= on the WebSocket and as "Authorization: Bearer" when negotiating.
+    var ticket = http.Request.Query["access_token"].ToString();
+    var authorization = http.Request.Headers.Authorization.ToString();
+    if (string.IsNullOrEmpty(ticket) && authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+    {
+        ticket = authorization["Bearer ".Length..].Trim();
+    }
+
+    var device = http.RequestServices.GetRequiredService<LiveUpdates>().RedeemTicket(ticket);
+    if (device is null || !http.RequestServices.GetRequiredService<AccessService>().IsDeviceActive(device.Id))
+    {
+        http.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return;
+    }
+
+    http.Items[LiveHub.DeviceItem] = device;
+    await next(http);
+}));
+app.MapHub<LiveHub>("/live", o => o.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets);
 app.Run();
 
 /// <summary>Entry point, visible to the automated tests.</summary>

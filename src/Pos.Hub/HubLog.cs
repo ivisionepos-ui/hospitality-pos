@@ -14,4 +14,8 @@ public static partial class HubLog
     /// <summary>Renewal failed; the current certificate stays in use.</summary>
     [LoggerMessage(EventId = 3, Level = LogLevel.Error, Message = "Could not renew the hub certificate; the current one stays in use.")]
     public static partial void CertificateRenewalFailed(ILogger logger, Exception exception);
+
+    /// <summary>A live event could not be sent; screens will fetch it on catch-up.</summary>
+    [LoggerMessage(EventId = 4, Level = LogLevel.Warning, Message = "Live event {Seq} could not be sent; screens will catch up.")]
+    public static partial void LiveSendFailed(ILogger logger, long seq, Exception exception);
 }

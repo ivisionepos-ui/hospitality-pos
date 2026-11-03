@@ -36,7 +36,7 @@ public abstract class HubTestBase : IAsyncLifetime
         MakeClients();
     }
 
-    public Task DisposeAsync()
+    public virtual Task DisposeAsync()
     {
         DisposeClients();
         Host.Dispose();

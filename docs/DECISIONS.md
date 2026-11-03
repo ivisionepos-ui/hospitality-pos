@@ -58,3 +58,7 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-052 | 2026-11-02 | Certificate files are password-protected with a password derived from hub.key | A copied certificate file alone is useless |
 | C-053 | 2026-11-02 | Tills check the shop CA with a 16-character check code shown on the hub | Catches a wrong or swapped certificate during set-up |
 | C-054 | 2026-11-02 | Hub PC gets a fixed address in the router | Tills always find the hub; the certificate still renews itself if the address changes |
+| C-055 | 2026-11-03 | Live updates by SignalR over WebSockets only; events are numbered, stored in the same transaction as the change, and sent only after it is saved | Screens never see changes that were rolled back; nothing is lost if a send fails |
+| C-056 | 2026-11-03 | Screens detect gaps by event number and fetch missed events (max 500 per call) | Simple, reliable catch-up after Wi-Fi drops or restarts |
+| C-057 | 2026-11-03 | Live connection opened with a 60-second, device-bound ticket from a normal authenticated request | Browsers cannot send device keys on a WebSocket; keys never go in URLs |
+| C-058 | 2026-11-03 | Kitchen screens receive only accepted orders; customer displays only menu changes | Online orders are checked before the kitchen starts; displays show nothing private |

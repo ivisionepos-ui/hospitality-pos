@@ -24,12 +24,12 @@
 | Roles and permissions (Owner, Manager, Cashier, Waiter, Kitchen) | 4 | Done 2026-11-02 | 18 passing | |
 | Hub access control: first-time set-up, till pairing codes, device keys, staff PIN login with lockout, 12-hour sessions, manager-PIN approvals, staff and device management | 4 | Done 2026-11-02 | 22 end-to-end tests | |
 | HTTPS on the shop network: shop CA, hub certificate with automatic renewal, CA download, HTTP for this PC only | 4 | Done 2026-11-02 | 11 passing, incl. real encrypted connections | Each till installs the shop CA once |
+| Live updates: numbered events saved with each change, sent after saving (SignalR/WebSockets), per-screen groups, catch-up, ticket access, disconnect on device removal | 4 | Done 2026-11-03 | 11 passing, real live connections | |
 
-Total: 259 automated tests passing (208 business-rule tests + 51 hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
+Total: 270 automated tests passing (208 business-rule tests + 62 hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
 - Windows Device Agent installer that installs the shop CA automatically
-- Live updates to tills and kitchen screens (SignalR)
 - Scheduled offers, delivery charge table and discount limits stored on the hub (offers currently not loaded)
 - Remaining Edit-menu operations over the API (add, move, edit panel save, extras, categories)
 - Automatic hourly local backups of the hub database

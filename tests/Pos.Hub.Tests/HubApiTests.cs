@@ -311,7 +311,7 @@ public sealed class HubApiTests : HubTestBase
     {
         using var db = new HubDatabase(Path.Combine(Path.GetDirectoryName(DbPath)!, "fresh.db"));
 
-        Assert.Equal(2, db.SchemaVersion);
+        Assert.Equal(3, db.SchemaVersion);
         Assert.Equal("wal", db.Scalar("PRAGMA journal_mode;"));
     }
 }

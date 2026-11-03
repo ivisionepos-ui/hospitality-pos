@@ -26,6 +26,7 @@ public static class Endpoints
             Results.File(System.Text.Encoding.ASCII.GetBytes(certificates.CaPem), "application/x-pem-file", "pos-hub-ca.crt"));
 
         MapSetupAndAccess(api);
+        MapLive(api);
         MapMenu(api);
         MapOrders(api);
     }
@@ -57,9 +58,10 @@ public static class Endpoints
         api.MapGet("/devices", (AccessService access) => Handle(() => Results.Ok(access.ListDevices())))
             .ForStaff(Permission.ManageDevices);
 
-        api.MapDelete("/devices/{deviceId:guid}", (HttpContext http, AccessService access, Guid deviceId) => Handle(() =>
+        api.MapDelete("/devices/{deviceId:guid}", (HttpContext http, AccessService access, Live.LiveUpdates live, Guid deviceId) => Handle(() =>
         {
             access.RemoveDevice(Caller(http).Staff!, deviceId);
+            live.DisconnectDevice(deviceId);
             return Results.NoContent();
         })).ForStaff(Permission.ManageDevices);
 
@@ -99,6 +101,19 @@ public static class Endpoints
             access.Deactivate(Caller(http).Staff!, staffId);
             return Results.NoContent();
         })).ForStaff(Permission.ManageStaff);
+    }
+
+    private static void MapLive(RouteGroupBuilder api)
+    {
+        // A 60-second pass for opening the live connection at /live (WebSockets), plus the latest event number.
+        api.MapPost("/live/ticket", (HttpContext http, Live.LiveUpdates live) => Handle(() =>
+            Results.Ok(live.IssueTicket(Caller(http).Device))))
+            .ForDevices();
+
+        // Events missed while away: ask with the last number you saw; repeat while "more" is true.
+        api.MapGet("/live/events", (HttpContext http, Live.LiveUpdates live, long? since) => Handle(() =>
+            Results.Ok(live.Since(since ?? 0, Caller(http).Device.Type))))
+            .ForDevices();
     }
 
     private static void MapMenu(RouteGroupBuilder api)

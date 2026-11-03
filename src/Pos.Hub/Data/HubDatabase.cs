@@ -84,11 +84,22 @@ public sealed class HubDatabase : IDisposable
             );
             CREATE INDEX ix_pin_failures ON pin_failures (device_id, at);
             """),
+        (3, """
+            CREATE TABLE live_events (
+                seq           INTEGER PRIMARY KEY AUTOINCREMENT,
+                at            TEXT    NOT NULL,
+                kind          TEXT    NOT NULL,
+                for_kitchen   INTEGER NOT NULL,
+                for_display   INTEGER NOT NULL,
+                payload_json  TEXT    NOT NULL
+            );
+            """),
     ];
 
     private readonly SqliteConnection _connection;
     private readonly Lock _gate = new();
     private SqliteTransaction? _transaction;
+    private List<Action> _afterCommit = [];
 
     /// <summary>Opens (and if needed creates and upgrades) the database file.</summary>
     public HubDatabase(string path)
@@ -133,21 +144,52 @@ public sealed class HubDatabase : IDisposable
             }
 
             _transaction = _connection.BeginTransaction();
+            T result;
             try
             {
-                var result = work();
+                result = work();
                 _transaction.Commit();
-                return result;
             }
             catch
             {
                 _transaction.Rollback();
+                _afterCommit = [];
                 throw;
             }
             finally
             {
                 _transaction.Dispose();
                 _transaction = null;
+            }
+
+            // Only now is the change safely saved: tell the screens.
+            var actions = _afterCommit;
+            _afterCommit = [];
+            foreach (var action in actions)
+            {
+                action();
+            }
+
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Runs an action once the current transaction has been saved (straight away if there is none).
+    /// If the transaction is rolled back, the action never runs.
+    /// </summary>
+    public void AfterCommit(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        lock (_gate)
+        {
+            if (_transaction is null)
+            {
+                action();
+            }
+            else
+            {
+                _afterCommit.Add(action);
             }
         }
     }

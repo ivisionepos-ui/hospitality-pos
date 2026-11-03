@@ -288,6 +288,10 @@ public sealed class AccessService
         });
     }
 
+    /// <summary>True when the device is registered and not removed.</summary>
+    public bool IsDeviceActive(Guid deviceId) => _db.Run(() =>
+        Convert.ToInt64(_db.Scalar("SELECT COUNT(*) FROM devices WHERE id = $id AND is_active = 1;", ("$id", deviceId.ToString())), CultureInfo.InvariantCulture) == 1);
+
     /// <summary>Removes a device: it stops working immediately, and its logins end.</summary>
     public void RemoveDevice(StaffMember actor, Guid deviceId) => _db.RunInTransaction(() =>
     {

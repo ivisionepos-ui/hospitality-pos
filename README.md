@@ -94,6 +94,20 @@ ends, or when the PC's address changes; tills do not need anything new when that
 Files next to the database: `hub.db` (data), `hub.key` (protects PINs and certificate files), `hub-ca.pfx` and
 `hub-tls.pfx` (certificates). Back up all of them together, and keep backups safe: they hold the shop CA's private key.
 
+### Live updates
+
+Tills and screens keep one live connection open to the hub (SignalR over WebSockets at `/live`):
+
+1. `POST /api/live/ticket` (device headers) returns a ticket valid for 60 seconds and the latest event number.
+2. Connect to `/live` with the ticket as `access_token`. The hub sends `event` messages:
+   `OrderCreated`, `OrderUpdated` (with the whole order as it is now) and `MenuChanged` (reload the menu).
+3. Every event has a number (`seq`) one higher than the last. If a screen sees a gap, or reconnects after being
+   away, it calls `GET /api/live/events?since=<last seq seen>` (repeat while `more` is true).
+
+Tills and the back office get every event; kitchen screens get accepted orders and menu changes; customer displays
+get menu changes. Events are saved in the same database transaction as the change, and only sent once it is saved,
+so a screen never sees something that did not happen. A removed device is disconnected at once.
+
 ### Roles
 
 | Role | Can do |
@@ -109,6 +123,8 @@ Files next to the database: `hub.db` (data), `hub.key` (protects PINs and certif
 | Method | Route | Who | What it does |
 | --- | --- | --- | --- |
 | GET | /api/health | anyone | Is the hub running, and the shop CA check code |
+| POST | /api/live/ticket | any device | 60-second pass for the live connection |
+| GET | /api/live/events?since=N | any device | Events missed since N |
 | GET | /ca.crt | anyone | The shop CA's public certificate, to install on tills |
 | GET/POST | /api/setup | hub PC, once | First-time set-up |
 | POST | /api/devices/pairing-code | owner | Code to register a new till or screen |

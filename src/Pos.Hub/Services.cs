@@ -2,6 +2,7 @@ using Pos.Domain.Menus;
 using Pos.Domain.Orders;
 using Pos.Hub.Api;
 using Pos.Hub.Data;
+using Pos.Hub.Live;
 
 namespace Pos.Hub;
 
@@ -11,13 +12,15 @@ public sealed class MenuService
     private readonly HubDatabase _db;
     private readonly SqliteMenuStore _store;
     private readonly TimeProvider _clock;
+    private readonly LiveUpdates _live;
     private Menu _menu;
 
     /// <summary>Loads the saved menu, or starts with an empty one.</summary>
-    public MenuService(HubDatabase db, TimeProvider clock)
+    public MenuService(HubDatabase db, TimeProvider clock, LiveUpdates live)
     {
         _db = db;
         _clock = clock;
+        _live = live;
         _store = new SqliteMenuStore(db);
         _menu = LoadSaved();
     }
@@ -33,6 +36,7 @@ public sealed class MenuService
         try
         {
             _store.Save(_menu, _menu.ChangeLog.Skip(logged), _clock.GetUtcNow());
+            _live.MenuChanged(_menu.Version, change.Summary);
         }
         catch
         {
@@ -48,6 +52,7 @@ public sealed class MenuService
     {
         var imported = Menu.Import(state, userId, _clock, continueFromVersion: _menu.Version);
         _store.Save(imported, imported.ChangeLog, _clock.GetUtcNow());
+        _live.MenuChanged(imported.Version, "Menu imported");
         _menu = imported;
         return imported.ToState();
     });
@@ -68,10 +73,12 @@ public sealed class OrderService
     private readonly TimeProvider _clock;
     private readonly SqliteOrderStore _store;
     private readonly OrderIntake _intake;
+    private readonly LiveUpdates _live;
 
     /// <summary>Creates the service.</summary>
-    public OrderService(HubDatabase db, HubSettings settings, MenuService menu, TimeProvider clock)
+    public OrderService(HubDatabase db, HubSettings settings, MenuService menu, TimeProvider clock, LiveUpdates live)
     {
+        _live = live;
         ArgumentNullException.ThrowIfNull(settings);
         _db = db;
         _settings = settings;
@@ -90,7 +97,7 @@ public sealed class OrderService
         return _db.RunInTransaction(() =>
         {
             var lines = _menu.Read(menu => BuildLines(menu, request.Lines ?? []));
-            return _intake.Submit(new NewOrder
+            var result = _intake.Submit(new NewOrder
             {
                 OrderId = request.OrderId,
                 IdempotencyKey = request.IdempotencyKey,
@@ -103,6 +110,12 @@ public sealed class OrderService
                 TableId = request.TableId,
                 Lines = lines,
             });
+            if (!result.WasDuplicate)
+            {
+                _live.OrderChanged(result.Order, created: true);
+            }
+
+            return result;
         });
     }
 
@@ -123,6 +136,7 @@ public sealed class OrderService
         var order = _store.FindById(orderId) ?? throw new KeyNotFoundException("Order not found.");
         var result = change(order);
         _store.Save(order);
+        _live.OrderChanged(order, created: false);
         return result;
     });
 

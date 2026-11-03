@@ -22,6 +22,12 @@ public static class LiveEventKinds
 
     /// <summary>The menu changed (price, name, sold out, import…). Screens reload the menu.</summary>
     public const string MenuChanged = "MenuChanged";
+
+    /// <summary>A payment or refund was taken on an order (tills only).</summary>
+    public const string PaymentChanged = "PaymentChanged";
+
+    /// <summary>A till shift was opened, changed or closed (tills only).</summary>
+    public const string ShiftChanged = "ShiftChanged";
 }
 
 /// <summary>
@@ -79,6 +85,14 @@ public sealed class LiveUpdates(HubDatabase db, IHubContext<LiveHub> hub, TimePr
         var forKitchen = order.Status is not (OrderStatus.Pending or OrderStatus.Received);
         Record(created ? LiveEventKinds.OrderCreated : LiveEventKinds.OrderUpdated, OrderView.From(order), null, $"{order.Number.Display} {order.Status}", forKitchen, forDisplay: false);
     }
+
+    /// <summary>Records a payment or refund on an order (tills and back office only).</summary>
+    public void PaymentChanged(OrderView order, string summary) =>
+        Record(LiveEventKinds.PaymentChanged, order, null, summary, forKitchen: false, forDisplay: false);
+
+    /// <summary>Records a shift change (tills and back office only).</summary>
+    public void ShiftChanged(string summary) =>
+        Record(LiveEventKinds.ShiftChanged, null, null, summary, forKitchen: false, forDisplay: false);
 
     /// <summary>Records a menu change. Call inside the transaction that saves the menu.</summary>
     public void MenuChanged(long version, string summary) =>

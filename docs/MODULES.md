@@ -25,8 +25,11 @@
 | Hub access control: first-time set-up, till pairing codes, device keys, staff PIN login with lockout, 12-hour sessions, manager-PIN approvals, staff and device management | 4 | Done 2026-11-02 | 22 end-to-end tests | |
 | HTTPS on the shop network: shop CA, hub certificate with automatic renewal, CA download, HTTP for this PC only | 4 | Done 2026-11-02 | 11 passing, incl. real encrypted connections | Each till installs the shop CA once |
 | Live updates: numbered events saved with each change, sent after saving (SignalR/WebSockets), per-screen groups, catch-up, ticket access, disconnect on device removal | 4 | Done 2026-11-03 | 11 passing, real live connections | |
+| Payments: cash with change, card with tip and reference, part payments, split equally / by items, refunds with manager | 3 | Done 2026-11-03 | 14 rule tests + hub tests | Card amount keyed into the Worldpay terminal for now |
+| Shifts: float, paid in/out, blind close, expected vs counted cash, X report | 3 | Done 2026-11-03 | 5 rule tests + hub tests | |
+| Z report: sales, sources, payments by method, VAT after refunds, cancels, voids, refunds, open orders, cash over/short, tips by staff | 3 | Done 2026-11-03 | 3 rule tests + full-day hub test | Numbered and stored; accountant to review layout |
 
-Total: 270 automated tests passing (208 business-rule tests + 62 hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
+Total: 303 automated tests passing (230 business-rule tests + 73 hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
 - Windows Device Agent installer that installs the shop CA automatically
@@ -34,4 +37,5 @@ Total: 270 automated tests passing (208 business-rule tests + 62 hub tests), inc
 - Remaining Edit-menu operations over the API (add, move, edit panel save, extras, categories)
 - Automatic hourly local backups of the hub database
 - Syncing menu and order changes between tills, hub and cloud
-- Card tips taken at payment, and tip allocation records (Tipping Act) — with the payments module
+- Tip allocation between staff (tronc) and the written tipping policy record (tips by staff are already in the Z report)
+- Worldpay terminal integration (amount sent from the till)

@@ -31,6 +31,12 @@ public enum Permission
     /// <summary>See reports and takings.</summary>
     ViewReports,
 
+    /// <summary>Refund payments (or approve a refund).</summary>
+    RefundPayments,
+
+    /// <summary>Put cash into or take cash out of a till drawer outside a sale (or approve it).</summary>
+    CashManagement,
+
     /// <summary>Add staff, change roles and PINs.</summary>
     ManageStaff,
 
@@ -69,7 +75,7 @@ public static class RolePermissions
         [
             Permission.TakeOrders, Permission.VoidBeforeKitchen, Permission.AcceptOnlineOrders, Permission.VoidAfterKitchen,
             Permission.CancelOrders, Permission.ApproveDiscounts, Permission.EditMenu, Permission.KitchenDisplay,
-            Permission.ViewReports, Permission.ManageStaff,
+            Permission.ViewReports, Permission.ManageStaff, Permission.RefundPayments, Permission.CashManagement,
         ],
         [StaffRole.Owner] = [.. Enum.GetValues<Permission>()],
     };

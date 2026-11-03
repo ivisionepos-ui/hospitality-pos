@@ -2,6 +2,7 @@ using System.Text.Json;
 using Pos.Domain.Common;
 using Pos.Domain.Menus;
 using Pos.Domain.Orders;
+using Pos.Domain.Payments;
 using Pos.Domain.Pricing;
 using Pos.Domain.Staff;
 using Pos.Hub.Security;
@@ -27,6 +28,7 @@ public static class Endpoints
 
         MapSetupAndAccess(api);
         MapLive(api);
+        MapTill(api);
         MapMenu(api);
         MapOrders(api);
     }
@@ -116,6 +118,91 @@ public static class Endpoints
             .ForDevices();
     }
 
+    private static void MapTill(RouteGroupBuilder api)
+    {
+        static Money Gbp(long pence) => Money.Gbp(pence);
+        static Guid TillId(HttpContext http)
+        {
+            var device = Caller(http).Device;
+            return device.Type is DeviceType.Till or DeviceType.BackOffice
+                ? device.Id
+                : throw new AccessDeniedException("NotATill", "Payments and shifts are only on tills.", 403);
+        }
+
+        static PaymentsView View(OrderPayments ledger) => new(ledger.Total, ledger.Paid, ledger.Balance, ledger.Tips, ledger.Payments);
+
+        // ----- Shifts -----
+        api.MapGet("/shifts/current", (HttpContext http, TillService tills) => Handle(() =>
+            tills.CurrentShift(TillId(http)) is { } shift ? Results.Ok(shift) : Results.NoContent()))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapPost("/shifts/open", (HttpContext http, TillService tills, OpenShiftRequest request) => Handle(() =>
+            Results.Ok(tills.OpenShift(TillId(http), Caller(http).Staff!.Id, Gbp(request.OpeningFloatPence)))))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapPost("/shifts/paid-in", (HttpContext http, TillService tills, CashMovementRequest request) => Handle(() =>
+            Results.Ok(tills.MoveCash(TillId(http), CashMovementType.PaidIn, Gbp(request.AmountPence), request.Reason, Caller(http).Staff!.Id, CashApprover(http)))))
+            .ForStaff();
+
+        api.MapPost("/shifts/paid-out", (HttpContext http, TillService tills, CashMovementRequest request) => Handle(() =>
+            Results.Ok(tills.MoveCash(TillId(http), CashMovementType.PaidOut, Gbp(request.AmountPence), request.Reason, Caller(http).Staff!.Id, CashApprover(http)))))
+            .ForStaff();
+
+        // Blind count: staff enter what they counted; the expected figure and over/short are shown only after closing.
+        api.MapPost("/shifts/close", (HttpContext http, TillService tills, CloseShiftRequest request) => Handle(() =>
+            Results.Ok(tills.CloseShift(TillId(http), Caller(http).Staff!.Id, Gbp(request.CountedCashPence)))))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapGet("/shifts/current/x-report", (HttpContext http, TillService tills) => Handle(() =>
+            Results.Ok(tills.XReport(TillId(http)))))
+            .ForStaff(Permission.ViewReports);
+
+        // ----- Payments -----
+        api.MapGet("/orders/{orderId:guid}/payments", (OrderService orders, TillService tills, Guid orderId) => Handle(() =>
+            Results.Ok(View(tills.Ledger(orders.Get(orderId))))))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapPost("/orders/{orderId:guid}/payments/cash", (HttpContext http, TillService tills, Guid orderId, CashPaymentRequest request) => Handle(() =>
+        {
+            var result = tills.TakeCash(orderId, TillId(http), Caller(http).Staff!.Id, request.PaymentId, Gbp(request.TenderedPence),
+                request.AmountPence is { } a ? Gbp(a) : null, request.ForLineIds);
+            return Results.Ok(new PaymentResponse(result.Payment, View(result.Ledger), result.WasDuplicate));
+        })).ForStaff(Permission.TakeOrders);
+
+        api.MapPost("/orders/{orderId:guid}/payments/card", (HttpContext http, TillService tills, Guid orderId, CardPaymentRequest request) => Handle(() =>
+        {
+            var result = tills.TakeCard(orderId, TillId(http), Caller(http).Staff!.Id, request.PaymentId, Gbp(request.AmountPence),
+                request.TipPence is { } t ? Gbp(t) : null, request.Reference, request.ForLineIds);
+            return Results.Ok(new PaymentResponse(result.Payment, View(result.Ledger), result.WasDuplicate));
+        })).ForStaff(Permission.TakeOrders);
+
+        api.MapPost("/orders/{orderId:guid}/payments/{paymentId:guid}/refund", (HttpContext http, TillService tills, Guid orderId, Guid paymentId, RefundRequest request) => Handle(() =>
+        {
+            var approver = Approver(http, Permission.RefundPayments)
+                ?? throw new AccessDeniedException("ApprovalRequired", "Refunds need a manager. Ask a manager to enter their PIN.", 403);
+            var result = tills.Refund(orderId, paymentId, TillId(http), Caller(http).Staff!.Id, approver, Gbp(request.AmountPence), request.Reason, request.RefundId);
+            return Results.Ok(new PaymentResponse(result.Payment, View(result.Ledger), result.WasDuplicate));
+        })).ForStaff();
+
+        // ----- Splitting a bill -----
+        api.MapGet("/orders/{orderId:guid}/split", (OrderService orders, TillService tills, Guid orderId, int parts) => Handle(() =>
+            Results.Ok(new SplitView(BillSplitter.Equally(tills.Ledger(orders.Get(orderId)).Balance, parts)))))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapPost("/orders/{orderId:guid}/split-by-items", (OrderService orders, TillService tills, Guid orderId, SplitByItemsRequest request) => Handle(() =>
+            Results.Ok(new SplitView([tills.AmountForLines(orders.Get(orderId), request.LineIds)]))))
+            .ForStaff(Permission.TakeOrders);
+
+        // ----- End of day -----
+        api.MapPost("/reports/z", (HttpContext http, TillService tills, ZReportRequest? request) => Handle(() =>
+            Results.Ok(tills.ZReport(request?.BusinessDate, Caller(http).Staff!.Id))))
+            .ForStaff(Permission.ViewReports);
+    }
+
+    private static Guid CashApprover(HttpContext http) =>
+        Approver(http, Permission.CashManagement)
+            ?? throw new AccessDeniedException("ApprovalRequired", "Paid in and paid out need a manager. Ask a manager to enter their PIN.", 403);
+
     private static void MapMenu(RouteGroupBuilder api)
     {
         api.MapGet("/menu", (MenuService menu) => Handle(() => Results.Ok(menu.Read(m => m.ToState()))))
@@ -171,7 +258,7 @@ public static class Endpoints
             Handle(() => Results.Ok(OrderView.From(orders.AddLines(orderId, request.Lines, Actor(http))))))
             .ForStaff(Permission.TakeOrders);
 
-        api.MapPost("/orders/{orderId:guid}/status", (HttpContext http, OrderService orders, Guid orderId, StatusRequest request) => Handle(() =>
+        api.MapPost("/orders/{orderId:guid}/status", (HttpContext http, OrderService orders, TillService tills, Guid orderId, StatusRequest request) => Handle(() =>
         {
             var actor = Actor(http);
             Guid? approver = null;
@@ -194,6 +281,20 @@ public static class Endpoints
 
             var order = orders.Change(orderId, o =>
             {
+                // Money rules: an order is completed only when fully paid, and cancelled only once any payment is refunded.
+                var ledger = tills.Ledger(o);
+                if (request.Status == OrderStatus.Completed && !ledger.IsSettled)
+                {
+                    throw new InvalidOperationException(ledger.Balance.IsNegative
+                        ? $"{Money.Zero(ledger.Total.Currency) - ledger.Balance} must be refunded before this order can be completed."
+                        : $"{ledger.Balance} is still to pay.");
+                }
+
+                if (request.Status is OrderStatus.Cancelled or OrderStatus.Rejected && ledger.Paid.MinorUnits != 0)
+                {
+                    throw new InvalidOperationException($"Refund the {ledger.Paid} paid before cancelling this order.");
+                }
+
                 if (request.Status == OrderStatus.Cancelled)
                 {
                     o.Cancel(request.Reason ?? string.Empty, actor, approver);

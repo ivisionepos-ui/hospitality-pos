@@ -94,6 +94,37 @@ public sealed class HubDatabase : IDisposable
                 payload_json  TEXT    NOT NULL
             );
             """),
+        (4, """
+            CREATE TABLE shifts (
+                id             TEXT    PRIMARY KEY,
+                device_id      TEXT    NOT NULL,
+                business_date  TEXT    NOT NULL,
+                is_open        INTEGER NOT NULL,
+                opened_at      TEXT    NOT NULL,
+                state_json     TEXT    NOT NULL
+            );
+            CREATE UNIQUE INDEX ux_shifts_one_open_per_till ON shifts (device_id) WHERE is_open = 1;
+            CREATE INDEX ix_shifts_day ON shifts (business_date);
+            CREATE TABLE payments (
+                id             TEXT    PRIMARY KEY,
+                order_id       TEXT    NOT NULL,
+                shift_id       TEXT    NOT NULL REFERENCES shifts (id),
+                business_date  TEXT    NOT NULL,
+                method         TEXT    NOT NULL,
+                amount         INTEGER NOT NULL,
+                at             TEXT    NOT NULL,
+                state_json     TEXT    NOT NULL
+            );
+            CREATE INDEX ix_payments_order ON payments (order_id);
+            CREATE INDEX ix_payments_shift ON payments (shift_id);
+            CREATE INDEX ix_payments_day ON payments (business_date);
+            CREATE TABLE z_reports (
+                business_date  TEXT    PRIMARY KEY,
+                z_number       INTEGER NOT NULL UNIQUE,
+                created_at     TEXT    NOT NULL,
+                report_json    TEXT    NOT NULL
+            );
+            """),
     ];
 
     private readonly SqliteConnection _connection;

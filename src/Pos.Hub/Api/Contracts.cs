@@ -157,6 +157,12 @@ public sealed record OrderView(
     Money OutsideScopeOfVat,
     bool Duplicate)
 {
+    /// <summary>Paid so far (after refunds), when known.</summary>
+    public Money? Paid { get; init; }
+
+    /// <summary>Still to pay (negative = refund due), when known.</summary>
+    public Money? Balance { get; init; }
+
     /// <summary>Builds the view of an order.</summary>
     public static OrderView From(Order order, bool duplicate = false)
     {
@@ -177,3 +183,58 @@ public sealed record OrderView(
             t.OutsideScopeOfVat, duplicate);
     }
 }
+
+/// <summary>Open a shift.</summary>
+/// <param name="OpeningFloatPence">Cash in the drawer at the start, in pence.</param>
+public sealed record OpenShiftRequest(long OpeningFloatPence);
+
+/// <summary>Paid in or paid out. A manager's PIN goes in X-Manager-Pin unless the logged-in user is a manager.</summary>
+/// <param name="AmountPence">Amount in pence.</param>
+/// <param name="Reason">Why.</param>
+public sealed record CashMovementRequest(long AmountPence, string Reason);
+
+/// <summary>Close a shift with the cash counted in the drawer.</summary>
+/// <param name="CountedCashPence">Counted cash in pence.</param>
+public sealed record CloseShiftRequest(long CountedCashPence);
+
+/// <summary>Take cash.</summary>
+/// <param name="TenderedPence">Cash handed over, in pence.</param>
+/// <param name="AmountPence">Amount to put towards the order (a share of a split bill); empty = as much of the balance as the cash covers.</param>
+/// <param name="ForLineIds">Items this payment is for (split by items).</param>
+/// <param name="PaymentId">Id made on the till, reused on retries.</param>
+public sealed record CashPaymentRequest(long TenderedPence, long? AmountPence = null, IReadOnlyList<Guid>? ForLineIds = null, Guid? PaymentId = null);
+
+/// <summary>Record a card payment taken on the terminal.</summary>
+/// <param name="AmountPence">Amount towards the order, in pence.</param>
+/// <param name="TipPence">Tip added on the terminal, in pence.</param>
+/// <param name="Reference">Terminal receipt number.</param>
+/// <param name="ForLineIds">Items this payment is for (split by items).</param>
+/// <param name="PaymentId">Id made on the till, reused on retries.</param>
+public sealed record CardPaymentRequest(long AmountPence, long? TipPence = null, string? Reference = null, IReadOnlyList<Guid>? ForLineIds = null, Guid? PaymentId = null);
+
+/// <summary>Refund a payment. A manager's PIN goes in X-Manager-Pin unless the logged-in user is a manager.</summary>
+/// <param name="AmountPence">Amount to refund, in pence.</param>
+/// <param name="Reason">Why.</param>
+/// <param name="RefundId">Id made on the till, reused on retries.</param>
+public sealed record RefundRequest(long AmountPence, string Reason, Guid? RefundId = null);
+
+/// <summary>Amount for chosen items.</summary>
+/// <param name="LineIds">Order lines.</param>
+public sealed record SplitByItemsRequest(IReadOnlyList<Guid> LineIds);
+
+/// <summary>Take the Z report.</summary>
+/// <param name="BusinessDate">Trading day; empty = today.</param>
+public sealed record ZReportRequest(DateOnly? BusinessDate);
+
+/// <summary>An order's money.</summary>
+public sealed record PaymentsView(Money Total, Money Paid, Money Balance, Money Tips, IReadOnlyList<Pos.Domain.Payments.Payment> Payments);
+
+/// <summary>Result of a payment or refund.</summary>
+/// <param name="Payment">The payment.</param>
+/// <param name="Order">The order's money after it.</param>
+/// <param name="Duplicate">True when the till re-sent a payment already taken.</param>
+public sealed record PaymentResponse(Pos.Domain.Payments.Payment Payment, PaymentsView Order, bool Duplicate);
+
+/// <summary>Shares of a split bill.</summary>
+/// <param name="Shares">Amount for each share.</param>
+public sealed record SplitView(IReadOnlyList<Money> Shares);

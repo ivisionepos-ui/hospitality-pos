@@ -108,6 +108,16 @@ Tills and the back office get every event; kitchen screens get accepted orders a
 get menu changes. Events are saved in the same database transaction as the change, and only sent once it is saved,
 so a screen never sees something that did not happen. A removed device is disconnected at once.
 
+### Money rules
+
+- Every payment goes on the open shift of the till it was taken on. Tills only (not kitchen screens or displays).
+- An order can be completed only when fully paid, and cancelled only after anything paid is refunded.
+- Nobody can pay more than is owed; cash change is worked out by the hub. Card tips are recorded separately.
+- Refunds go back the same way they were paid, never more than was paid, always with a reason and a manager.
+- Paid-in and paid-out need a manager and a reason; a paid-out cannot take the drawer below zero.
+- Closing a shift is a blind count: the expected cash and over/short are shown only after the count is entered.
+- The Z report needs every shift of the day closed; it is kept, numbered, and taking it again returns the same one.
+
 ### Roles
 
 | Role | Can do |
@@ -125,6 +135,16 @@ so a screen never sees something that did not happen. A removed device is discon
 | GET | /api/health | anyone | Is the hub running, and the shop CA check code |
 | POST | /api/live/ticket | any device | 60-second pass for the live connection |
 | GET | /api/live/events?since=N | any device | Events missed since N |
+| GET | /api/shifts/current | cashier | The till's open shift |
+| POST | /api/shifts/open, /api/shifts/close | cashier | Open with a float; close with a blind cash count |
+| POST | /api/shifts/paid-in, /paid-out | manager (or manager PIN) | Cash in or out of the drawer, with a reason |
+| GET | /api/shifts/current/x-report | manager | Figures so far for this till's shift |
+| GET | /api/orders/{id}/payments | cashier | Total, paid, balance, tips, payments |
+| POST | /api/orders/{id}/payments/cash, /card | cashier | Take cash (change worked out) or record a card payment; safe to resend |
+| POST | /api/orders/{id}/payments/{paymentId}/refund | manager (or manager PIN) | Refund all or part of a payment, same method |
+| GET | /api/orders/{id}/split?parts=N | cashier | Split the balance equally |
+| POST | /api/orders/{id}/split-by-items | cashier | Amount for chosen items |
+| POST | /api/reports/z | manager | End-of-day Z report (all shifts must be closed) |
 | GET | /ca.crt | anyone | The shop CA's public certificate, to install on tills |
 | GET/POST | /api/setup | hub PC, once | First-time set-up |
 | POST | /api/devices/pairing-code | owner | Code to register a new till or screen |

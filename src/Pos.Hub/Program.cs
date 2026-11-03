@@ -31,6 +31,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(sp => new HubDatabase(sp.GetRequiredService<HubSettings>().DatabasePath));
 builder.Services.AddSingleton<MenuService>();
 builder.Services.AddSingleton<OrderService>();
+builder.Services.AddSingleton<TillService>();
 builder.Services.AddSingleton<Pos.Hub.Security.AccessService>();
 builder.Services.AddSingleton(sp => new HubCertificates(sp.GetRequiredService<HubSettings>(), sp.GetRequiredService<TimeProvider>()));
 builder.Services.AddHostedService<CertificateRenewal>();

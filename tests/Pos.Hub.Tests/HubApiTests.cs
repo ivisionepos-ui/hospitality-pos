@@ -147,6 +147,9 @@ public sealed class HubApiTests : HubTestBase
         Assert.Equal(OrderStatus.Ready, (await (await Kitchen.Post(url, To(OrderStatus.Ready))).Read<OrderView>()).Status);
         Assert.Equal(HttpStatusCode.Conflict, (await Cashier.Post(url, To(OrderStatus.Preparing))).StatusCode); // no going back
         Assert.Equal(HttpStatusCode.Forbidden, (await Kitchen.Post(url, To(OrderStatus.Completed))).StatusCode); // kitchen cannot hand over
+        Assert.Equal(HttpStatusCode.Conflict, (await Cashier.Post(url, To(OrderStatus.Completed))).StatusCode);  // not paid yet
+        await Cashier.Post("/api/shifts/open", new OpenShiftRequest(0));
+        await Cashier.Post($"/api/orders/{order.Id}/payments/card", new CardPaymentRequest(899));
         Assert.Equal(OrderStatus.Completed, (await (await Cashier.Post(url, To(OrderStatus.Completed))).Read<OrderView>()).Status);
 
         var history = await Manager.GetJson<List<OrderEvent>>($"/api/orders/{order.Id}/history");
@@ -311,7 +314,7 @@ public sealed class HubApiTests : HubTestBase
     {
         using var db = new HubDatabase(Path.Combine(Path.GetDirectoryName(DbPath)!, "fresh.db"));
 
-        Assert.Equal(3, db.SchemaVersion);
+        Assert.Equal(4, db.SchemaVersion);
         Assert.Equal("wal", db.Scalar("PRAGMA journal_mode;"));
     }
 }

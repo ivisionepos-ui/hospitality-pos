@@ -62,3 +62,13 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-056 | 2026-11-03 | Screens detect gaps by event number and fetch missed events (max 500 per call) | Simple, reliable catch-up after Wi-Fi drops or restarts |
 | C-057 | 2026-11-03 | Live connection opened with a 60-second, device-bound ticket from a normal authenticated request | Browsers cannot send device keys on a WebSocket; keys never go in URLs |
 | C-058 | 2026-11-03 | Kitchen screens receive only accepted orders; customer displays only menu changes | Online orders are checked before the kitchen starts; displays show nothing private |
+| C-059 | 2026-11-03 | Payments and refunds are separate records, never changed; refunds are negative and point at the payment refunded | Full audit trail; totals are simple sums |
+| C-060 | 2026-11-03 | Every payment belongs to the open shift of the till it was taken on; only tills take payments | Each drawer's cash can be reconciled |
+| C-061 | 2026-11-03 | Complete only when fully paid; cancel/reject only after refunding anything paid | No order is left half-paid or with money unaccounted |
+| C-062 | 2026-11-03 | Refunds use the original method, never exceed what is left of that payment, need a reason and a manager; tips are not refunded through this | Matches card-terminal practice; prevents refund fraud |
+| C-063 | 2026-11-03 | Paid-in/paid-out need a manager and a reason; paid-out cannot overdraw the drawer | Cash control |
+| C-064 | 2026-11-03 | Closing a shift is a blind count; expected cash shown after | Standard cash-control practice |
+| C-065 | 2026-11-03 | Shift business date is the day it opens; its payments count on that day | Z report and drawer always agree |
+| C-066 | 2026-11-03 | Z report needs all shifts closed; numbered and stored; repeat returns the same; no new shift after a day's Z | A Z is final, as tax records require |
+| C-067 | 2026-11-03 | Refund VAT is taken off pro rata to the refunded order's VAT rates | Correct VAT when refunding mixed-rate orders without picking items |
+| C-068 | 2026-11-03 | Payments carry a till-made id; a resent payment returns the one already taken | Safe retries after a dropped connection, no double charge |

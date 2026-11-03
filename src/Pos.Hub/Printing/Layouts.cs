@@ -397,8 +397,8 @@ public static class Layouts
         public static Lang Parse(string? value) => value?.Trim().ToLowerInvariant() switch
         {
             "ar" => new Lang(false, true),
-            "en" => new Lang(true, false),
-            _ => new Lang(true, true),
+            "both" => new Lang(true, true),
+            _ => new Lang(true, false),
         };
     }
 }

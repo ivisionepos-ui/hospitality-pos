@@ -78,3 +78,4 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-072 | 2026-11-03 | While there are no printers: PDF files by default; "Microsoft Print to PDF" supported as a Windows printer, saving without a dialog | Owner can see every printout without hardware |
 | C-073 | 2026-11-03 | Print jobs saved in the same transaction as the change; printed after saving, in order; retried, then failed with a live alert and a manual retry | Kitchen tickets never lost or printed for changes that did not happen; printer faults never stop sales |
 | C-074 | 2026-11-03 | Receipt printed on completion; later prints marked COPY; void slip when a sent item is removed | Standard practice; the kitchen always knows to stop |
+| C-075 | 2026-11-03 | English only by default on receipts, kitchen tickets and the print test; Arabic kept as a setting (`Language` = `both`/`ar`) | Owner needs English only for now; Arabic stays available for other shops |

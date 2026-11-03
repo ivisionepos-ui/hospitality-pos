@@ -6,31 +6,40 @@ namespace Pos.Hub.Printing;
 /// </summary>
 public static class PrintTest
 {
-    /// <summary>A sample receipt with English and Arabic text.</summary>
+    /// <summary>A sample receipt; Arabic lines are added only when the shop prints Arabic.</summary>
     public static PrintDocument SampleReceipt(ReceiptSettings shop)
     {
         ArgumentNullException.ThrowIfNull(shop);
-        return new PrintDocument("Print test receipt",
-        [
+        var arabic = shop.Language.Trim().ToLowerInvariant() is "ar" or "both";
+        var blocks = new List<PrintBlock>
+        {
             new PrintText("PRINT TEST", PrintAlign.Center, PrintSize.Large, Bold: true, Inverted: true),
             new PrintText(shop.BusinessName, PrintAlign.Center, PrintSize.Large, Bold: true),
-            new PrintText(string.IsNullOrWhiteSpace(shop.BusinessNameAr) ? "مطعم تجريبي" : shop.BusinessNameAr, PrintAlign.Center, PrintSize.Large, Bold: true),
-            new PrintRule(),
-            new PrintText("Order 001", PrintAlign.Center, PrintSize.Huge, Bold: true),
-            new PrintColumns("1 x Doner kebab", "£8.99 S", Bold: true),
-            new PrintText("دونر كباب", Indent: 1),
-            new PrintText("+ Garlic sauce / صلصة الثوم", Size: PrintSize.Small, Indent: 1),
-            new PrintColumns("2 x Can 330ml", "£2.40 S", Bold: true),
-            new PrintText("مشروب غازي", Indent: 1),
-            new PrintRule(),
-            new PrintColumns("TOTAL", "£11.39", PrintSize.Large, Bold: true),
-            new PrintColumns("Cash", "£20.00"),
-            new PrintColumns("Change", "£8.61", Bold: true),
-            new PrintRule(),
-            new PrintColumns("S 20%", "£9.49 / £1.90", PrintSize.Small),
-            new PrintText("If you can read the Arabic and the £ signs, printing works.", PrintAlign.Center, PrintSize.Small),
-            new PrintText("شكراً لطلبكم", PrintAlign.Center),
-        ]);
+        };
+        if (arabic)
+        {
+            blocks.Add(new PrintText(string.IsNullOrWhiteSpace(shop.BusinessNameAr) ? "مطعم تجريبي" : shop.BusinessNameAr, PrintAlign.Center, PrintSize.Large, Bold: true));
+        }
+
+        blocks.Add(new PrintRule());
+        blocks.Add(new PrintText("Order 001", PrintAlign.Center, PrintSize.Huge, Bold: true));
+        blocks.Add(new PrintColumns("1 x Doner kebab", "£8.99 S", Bold: true));
+        if (arabic)
+        {
+            blocks.Add(new PrintText("دونر كباب", Indent: 1));
+        }
+
+        blocks.Add(new PrintText(arabic ? "+ Garlic sauce / صلصة الثوم" : "+ Garlic sauce", Size: PrintSize.Small, Indent: 1));
+        blocks.Add(new PrintColumns("2 x Can 330ml", "£2.40 S", Bold: true));
+        blocks.Add(new PrintRule());
+        blocks.Add(new PrintColumns("TOTAL", "£11.39", PrintSize.Large, Bold: true));
+        blocks.Add(new PrintColumns("Cash", "£20.00"));
+        blocks.Add(new PrintColumns("Change", "£8.61", Bold: true));
+        blocks.Add(new PrintRule());
+        blocks.Add(new PrintColumns("S 20%", "£9.49 / £1.90", PrintSize.Small));
+        blocks.Add(new PrintText(arabic ? "If you can read the Arabic and the £ signs, printing works." : "If you can read this and the £ signs, printing works.", PrintAlign.Center, PrintSize.Small));
+        blocks.Add(new PrintText(shop.Footer ?? "Thank you for your order", PrintAlign.Center));
+        return new PrintDocument("Print test receipt", blocks);
     }
 
     /// <summary>A sample kitchen ticket.</summary>
@@ -41,7 +50,6 @@ public static class PrintTest
         new PrintText("TAKEAWAY", PrintAlign.Center, PrintSize.Large, Bold: true),
         new PrintRule(),
         new PrintText("1 x Doner kebab", Size: PrintSize.Large, Bold: true),
-        new PrintText("دونر كباب", Size: PrintSize.Large, Indent: 1),
         new PrintText("+ Garlic sauce", Indent: 1),
         new PrintText("** No onions **", Size: PrintSize.Large, Bold: true, Indent: 1),
         new PrintRule(),

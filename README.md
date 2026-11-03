@@ -1,7 +1,7 @@
 # Hospitality POS Platform
 
 Point of sale, kitchen display and online ordering for restaurants, coffee shops and takeaways.
-UK first (GBP, UK VAT), Arabic and English.
+UK first (GBP, UK VAT). English by default; Arabic names can be switched on per shop.
 
 The full architecture and requirements are in the "Hospitality POS Platform – Architecture & SRS" document.
 
@@ -149,7 +149,7 @@ tries again (`MaxAttempts`, `RetrySeconds`), then marks it failed, tells the til
 staff can retry it. Printer problems never hold up taking orders. The cash drawer opens only on a real receipt
 printer (to come). The `Pdf` output embeds the font, so each file is about 0.7 MB; clear the folder now and then.
 
-Receipt text (shop name in English and Arabic, address, phone, VAT number, footer, language `en`/`ar`/`both`) is
+Receipt text (shop name, address, phone, VAT number, footer, language `en` (default), `ar` or `both`) is
 under `Printing` → `ReceiptText`. UK VAT receipts must show the VAT number when the business is VAT registered.
 
 ### Money rules

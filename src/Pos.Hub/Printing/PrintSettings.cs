@@ -64,8 +64,8 @@ public sealed class ReceiptSettings
     /// <summary>Footer in Arabic (optional).</summary>
     public string? FooterAr { get; set; }
 
-    /// <summary>"en", "ar" or "both": which language names are printed in.</summary>
-    public string Language { get; set; } = "both";
+    /// <summary>"en" (default), "ar" or "both": which language names are printed in.</summary>
+    public string Language { get; set; } = "en";
 }
 
 /// <summary>The "Printing" section of appsettings.json.</summary>

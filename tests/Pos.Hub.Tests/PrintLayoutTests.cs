@@ -68,6 +68,21 @@ public sealed class PrintLayoutTests : IDisposable
     }
 
     [Fact]
+    public void English_only_is_the_default_and_the_print_test_has_no_arabic()
+    {
+        var shop = new ReceiptSettings { BusinessName = "My Takeaway" };
+        Assert.Equal("en", shop.Language);
+
+        var (order, payments) = PrintSamples.Order();
+        var receipt = Layouts.Receipt(order, payments, new ReceiptSettings { BusinessName = "Olive Grill", FooterAr = "شكراً لطلبكم" }, PrintSamples.London, "Sam", isCopy: false).PlainText;
+        var test = PrintTest.SampleReceipt(shop).PlainText + PrintTest.SampleKitchenTicket().PlainText;
+
+        Assert.DoesNotContain(receipt + test, Renderer.IsArabic);
+        Assert.Contains("Doner kebab", receipt, StringComparison.Ordinal);
+        Assert.Contains("£11.39", test, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Kitchen_ticket_has_no_prices_and_shows_notes_and_deal_choices()
     {
         var (order, _) = PrintSamples.Order();

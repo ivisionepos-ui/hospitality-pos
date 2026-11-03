@@ -7,11 +7,21 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Fonts for receipts and kitchen tickets (DejaVu: free licence, includes Arabic). -->
+    <None Include="Printing/Fonts/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Pos.Domain\Pos.Domain.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="14.2.1.400" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <PackageReference Include="SkiaSharp" Version="4.154.0" />
+    <PackageReference Include="SkiaSharp.HarfBuzz" Version="4.154.0" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.154.0" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.14" />
   </ItemGroup>
 
 </Project>

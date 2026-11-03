@@ -3,6 +3,7 @@ using Pos.Hub;
 using Pos.Hub.Api;
 using Pos.Hub.Data;
 using Pos.Hub.Live;
+using Pos.Hub.Printing;
 using Pos.Hub.Security;
 
 // The Store Hub: runs on one PC in the shop, keeps the shop trading without internet,
@@ -37,6 +38,15 @@ builder.Services.AddSingleton(sp => new HubCertificates(sp.GetRequiredService<Hu
 builder.Services.AddHostedService<CertificateRenewal>();
 builder.Services.ConfigureHttpJsonOptions(o => PosJson.Configure(o.SerializerOptions));
 builder.Services.AddSingleton<LiveUpdates>();
+builder.Services.AddSingleton(sp => sp.GetRequiredService<IConfiguration>().GetSection("Printing").Get<PrintSettings>() ?? new PrintSettings());
+builder.Services.AddSingleton(sp =>
+{
+    var printing = sp.GetRequiredService<PrintSettings>();
+    return new Renderer(printing.FontFile, printing.BoldFontFile);
+});
+builder.Services.AddSingleton<PrintOutputs>();
+builder.Services.AddSingleton<PrintService>();
+builder.Services.AddHostedService<PrintWorker>();
 builder.Services.AddSignalR().AddJsonProtocol(o => PosJson.Configure(o.PayloadSerializerOptions));
 
 var app = builder.Build();

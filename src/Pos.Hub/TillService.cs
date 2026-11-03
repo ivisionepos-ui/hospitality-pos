@@ -147,6 +147,12 @@ public sealed class TillService(HubDatabase db, HubSettings settings, OrderServi
         return report;
     });
 
+    /// <summary>A Z report already taken, or null.</summary>
+    public DayReport? FindZReport(DateOnly businessDate) => db.Run(() =>
+        db.Scalar("SELECT report_json FROM z_reports WHERE business_date = $d;", ("$d", Iso(businessDate))) is string json
+            ? PosJson.Deserialize<DayReport>(json)
+            : null);
+
     // ---------- Internals ----------
 
     private PaymentResult Take(

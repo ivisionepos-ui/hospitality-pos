@@ -5,6 +5,7 @@ using Pos.Domain.Orders;
 using Pos.Domain.Payments;
 using Pos.Domain.Pricing;
 using Pos.Domain.Staff;
+using Pos.Hub.Printing;
 using Pos.Hub.Security;
 using static Pos.Hub.Security.AccessFilter;
 
@@ -29,6 +30,7 @@ public static class Endpoints
         MapSetupAndAccess(api);
         MapLive(api);
         MapTill(api);
+        MapPrinting(api);
         MapMenu(api);
         MapOrders(api);
     }
@@ -199,6 +201,35 @@ public static class Endpoints
             .ForStaff(Permission.ViewReports);
     }
 
+    private static void MapPrinting(RouteGroupBuilder api)
+    {
+        api.MapPost("/orders/{orderId:guid}/print-receipt", (OrderService orders, PrintService print, Guid orderId) => Handle(() =>
+        {
+            _ = orders.Get(orderId);
+            return Results.Ok(print.QueueReceipt(orderId));
+        })).ForStaff(Permission.TakeOrders);
+
+        // Receipt preview for the till screen (not printed, not counted as a print).
+        api.MapGet("/orders/{orderId:guid}/receipt", (PrintService print, Guid orderId, string? format) => Handle(() =>
+        {
+            var pdf = string.Equals(format, "pdf", StringComparison.OrdinalIgnoreCase);
+            return Results.File(print.PreviewReceipt(orderId, pdf), pdf ? "application/pdf" : "image/png");
+        })).ForStaff(Permission.TakeOrders);
+
+        api.MapPost("/reports/z/print", (PrintService print, TillService tills, HubSettings hub, TimeProvider clock, ZReportRequest? request) => Handle(() =>
+            Results.Ok(print.QueueZReport(request?.BusinessDate ?? BusinessDay.For(clock.GetUtcNow(), hub.TimeZone, hub.DayStartsAt)))))
+            .ForStaff(Permission.ViewReports);
+
+        api.MapGet("/print-jobs", (PrintService print, PrintJobStatus? status) => Handle(() => Results.Ok(print.List(status))))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapPost("/print-jobs/{jobId:guid}/retry", (PrintService print, Guid jobId) => Handle(() =>
+        {
+            print.Retry(jobId);
+            return Results.NoContent();
+        })).ForStaff(Permission.TakeOrders);
+    }
+
     private static Guid CashApprover(HttpContext http) =>
         Approver(http, Permission.CashManagement)
             ?? throw new AccessDeniedException("ApprovalRequired", "Paid in and paid out need a manager. Ask a manager to enter their PIN.", 403);
@@ -258,7 +289,7 @@ public static class Endpoints
             Handle(() => Results.Ok(OrderView.From(orders.AddLines(orderId, request.Lines, Actor(http))))))
             .ForStaff(Permission.TakeOrders);
 
-        api.MapPost("/orders/{orderId:guid}/status", (HttpContext http, OrderService orders, TillService tills, Guid orderId, StatusRequest request) => Handle(() =>
+        api.MapPost("/orders/{orderId:guid}/status", (HttpContext http, OrderService orders, TillService tills, PrintService print, Guid orderId, StatusRequest request) => Handle(() =>
         {
             var actor = Actor(http);
             Guid? approver = null;
@@ -304,18 +335,33 @@ public static class Endpoints
                     o.MoveTo(request.Status, actor, request.Reason);
                 }
 
+                if (request.Status == OrderStatus.Completed && print.Settings.AutoPrintReceipt)
+                {
+                    print.QueueReceipt(o.Id);
+                }
+
                 return o;
             });
             return Results.Ok(OrderView.From(order));
         })).ForStaff();
 
-        api.MapPost("/orders/{orderId:guid}/send-to-kitchen", (HttpContext http, OrderService orders, Guid orderId) => Handle(() =>
+        api.MapPost("/orders/{orderId:guid}/send-to-kitchen", (HttpContext http, OrderService orders, PrintService print, Guid orderId) => Handle(() =>
         {
-            var sent = orders.Change(orderId, o => o.SendToKitchen(Actor(http)));
+            var sent = orders.Change(orderId, o =>
+            {
+                var sentBefore = o.Lines.Any(l => l.SentToKitchen && !l.IsVoided);
+                var lines = o.SendToKitchen(Actor(http));
+                if (lines.Count > 0 && print.Settings.AutoPrintKitchen)
+                {
+                    print.QueueKitchen(o, lines, sentBefore ? KitchenTicketKind.Additional : KitchenTicketKind.New);
+                }
+
+                return lines;
+            });
             return Results.Ok(sent.Select(l => new { l.Id, l.Display, l.Pricing.Quantity, l.Note }));
         })).ForStaff(Permission.TakeOrders);
 
-        api.MapPost("/orders/{orderId:guid}/lines/{lineId:guid}/void", (HttpContext http, OrderService orders, Guid orderId, Guid lineId, VoidRequest request) => Handle(() =>
+        api.MapPost("/orders/{orderId:guid}/lines/{lineId:guid}/void", (HttpContext http, OrderService orders, PrintService print, Guid orderId, Guid lineId, VoidRequest request) => Handle(() =>
         {
             var line = orders.Get(orderId).Lines.FirstOrDefault(l => l.Id == lineId) ?? throw new KeyNotFoundException("Line not found on this order.");
             Guid? approver = null;
@@ -332,6 +378,11 @@ public static class Endpoints
             var order = orders.Change(orderId, o =>
             {
                 o.VoidLine(lineId, request.Reason, Actor(http), approver);
+                if (line.SentToKitchen && print.Settings.AutoPrintKitchen)
+                {
+                    print.QueueKitchen(o, [o.Lines.Single(l => l.Id == lineId)], KitchenTicketKind.Void);
+                }
+
                 return o;
             });
             return Results.Ok(OrderView.From(order));

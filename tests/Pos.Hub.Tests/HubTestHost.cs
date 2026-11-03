@@ -21,11 +21,18 @@ internal sealed class TestClock(DateTimeOffset now) : TimeProvider
 /// <summary>Runs a real hub in memory with its own database file, and talks to it over HTTP.</summary>
 internal sealed class HubTestHost : WebApplicationFactory<Program>
 {
-    public HubTestHost(string databasePath, TestClock clock)
+    public HubTestHost(string databasePath, TestClock clock, IReadOnlyDictionary<string, string>? settings = null)
     {
         DatabasePath = databasePath;
         Clock = clock;
+        Settings = settings ?? new Dictionary<string, string>();
     }
+
+    /// <summary>Extra settings for this hub (e.g. printer outputs).</summary>
+    public IReadOnlyDictionary<string, string> Settings { get; }
+
+    /// <summary>Folder the test hub prints into.</summary>
+    public string PrintFolder => Path.Combine(Path.GetDirectoryName(DatabasePath)!, "prints");
 
     public string DatabasePath { get; }
 
@@ -37,6 +44,14 @@ internal sealed class HubTestHost : WebApplicationFactory<Program>
         builder.UseSetting("Hub:BranchCode", "TEST1");
         builder.UseSetting("Hub:StaffDiscountMaxPercent", "1000");
         builder.UseSetting("Hub:StaffDiscountMaxPence", "500");
+        builder.UseSetting("Printing:Receipt:Folder", Path.Combine(PrintFolder, "receipts"));
+        builder.UseSetting("Printing:Kitchen:Folder", Path.Combine(PrintFolder, "kitchen"));
+        builder.UseSetting("Printing:RetrySeconds", "0.1");
+        builder.UseSetting("Printing:MaxAttempts", "2");
+        foreach (var (key, value) in Settings)
+        {
+            builder.UseSetting(key, value);
+        }
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<TimeProvider>();

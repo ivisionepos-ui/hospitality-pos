@@ -19,6 +19,7 @@ src/
     Menus/               Menu, Edit-menu rules, change log, undo, checking order choices
     Orders/              Orders, statuses, numbers, business day, duplicate-proof intake
   Pos.Hub/               Store Hub: runs on the shop PC, SQLite database, web API for tills and screens
+    Printing/            Receipt, kitchen ticket and Z layouts; drawing (Arabic); PDF/PNG/Windows outputs; print queue
     Data/                Database (schema upgrades, WAL), order and menu storage
     Api/                 Web API routes and request/response formats
 tests/
@@ -108,6 +109,45 @@ Tills and the back office get every event; kitchen screens get accepted orders a
 get menu changes. Events are saved in the same database transaction as the change, and only sent once it is saved,
 so a screen never sees something that did not happen. A removed device is disconnected at once.
 
+### Printing
+
+Receipts, kitchen tickets and Z reports are drawn as pictures at thermal-printer width (80 mm or 58 mm), so Arabic
+prints correctly on any printer. Each printer in `appsettings.json` → `Printing` has an `Output`:
+
+| Output | What happens | Use it for |
+| --- | --- | --- |
+| `Pdf` (default) | A PDF the width of the paper roll is saved in `Folder` | Testing without printers, on any PC |
+| `Png` | A picture is saved in `Folder` | Checking layouts |
+| `Windows` | Sent to the Windows printer called `PrinterName` | Microsoft Print to PDF now; any Windows-driver printer later |
+| `None` | Nothing is printed | Turning a printer off |
+
+**Using Microsoft Print to PDF** (the hub must run on Windows):
+
+```json
+"Printing": {
+  "Receipt": { "Output": "Windows", "PrinterName": "Microsoft Print to PDF", "PaperWidthMm": 80, "Folder": "C:\\POS\\Receipts" },
+  "Kitchen": { "Output": "Windows", "PrinterName": "Microsoft Print to PDF", "PaperWidthMm": 80, "Folder": "C:\\POS\\Kitchen" }
+}
+```
+
+For a printer whose name contains "PDF", the hub tells Windows the file name in advance, so PDFs are saved into
+`Folder` without a "Save as" window. The receipt prints at its real width (72 mm) at the top of an A4 page; long
+receipts continue on the next page.
+
+When printing happens:
+- **Kitchen ticket** when items are sent to the kitchen ("NEW ORDER", then "ADDITIONAL ITEMS" for later items).
+- **Void slip** when an item already in the kitchen is removed.
+- **Receipt** when an order is completed; asking again prints a copy marked **COPY**.
+- **Z report slip** on request, once the Z report has been taken.
+
+Prints are queued and saved with the change that asked for them, then printed in order. If a printer fails, the hub
+tries again (`MaxAttempts`, `RetrySeconds`), then marks it failed, tells the tills (`PrintFailed` live event), and
+staff can retry it. Printer problems never hold up taking orders. The cash drawer opens only on a real receipt
+printer (to come). The `Pdf` output embeds the font, so each file is about 0.7 MB; clear the folder now and then.
+
+Receipt text (shop name in English and Arabic, address, phone, VAT number, footer, language `en`/`ar`/`both`) is
+under `Printing` → `ReceiptText`. UK VAT receipts must show the VAT number when the business is VAT registered.
+
 ### Money rules
 
 - Every payment goes on the open shift of the till it was taken on. Tills only (not kitchen screens or displays).
@@ -145,6 +185,11 @@ so a screen never sees something that did not happen. A removed device is discon
 | GET | /api/orders/{id}/split?parts=N | cashier | Split the balance equally |
 | POST | /api/orders/{id}/split-by-items | cashier | Amount for chosen items |
 | POST | /api/reports/z | manager | End-of-day Z report (all shifts must be closed) |
+| POST | /api/orders/{id}/print-receipt | cashier | Print the receipt (COPY if printed before) |
+| GET | /api/orders/{id}/receipt?format=png\|pdf | cashier | Receipt preview, not printed |
+| POST | /api/reports/z/print | manager | Print the Z report slip |
+| GET | /api/print-jobs?status= | cashier | Print jobs (e.g. Failed) |
+| POST | /api/print-jobs/{id}/retry | cashier | Try a failed print again |
 | GET | /ca.crt | anyone | The shop CA's public certificate, to install on tills |
 | GET/POST | /api/setup | hub PC, once | First-time set-up |
 | POST | /api/devices/pairing-code | owner | Code to register a new till or screen |

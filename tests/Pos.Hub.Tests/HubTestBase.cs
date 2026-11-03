@@ -8,6 +8,9 @@ public abstract class HubTestBase : IAsyncLifetime
 
     internal TestClock Clock { get; } = new(new DateTimeOffset(2026, 11, 5, 18, 0, 0, TimeSpan.Zero));
 
+    /// <summary>Settings a test class wants on its hub.</summary>
+    internal virtual IReadOnlyDictionary<string, string> ExtraSettings => new Dictionary<string, string>();
+
     internal HubTestHost Host { get; private set; } = null!;
 
     internal TestShop Shop { get; private set; } = null!;
@@ -31,7 +34,7 @@ public abstract class HubTestBase : IAsyncLifetime
     public async Task InitializeAsync()
     {
         Directory.CreateDirectory(_folder);
-        Host = new HubTestHost(DbPath, Clock);
+        Host = new HubTestHost(DbPath, Clock, ExtraSettings);
         Shop = await TestShop.SetUp(Host);
         MakeClients();
     }
@@ -57,7 +60,7 @@ public abstract class HubTestBase : IAsyncLifetime
     {
         DisposeClients();
         Host.Dispose();
-        Host = new HubTestHost(DbPath, Clock);
+        Host = new HubTestHost(DbPath, Clock, ExtraSettings);
         MakeClients();
     }
 

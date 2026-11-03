@@ -22,7 +22,8 @@ async function boot() {
   stopLive();
   closeDialogs();
   try {
-    await api.get('/api/health', { noSession: true });
+    const health = await api.get('/api/health', { noSession: true });
+    window.posVersion = health.version;
   } catch {
     mount(root, h('div', { class: 'gate' }, h('div', { class: 'gate-card' },
       h('h1', { class: 'gate-title', text: 'Cannot reach the hub' }),

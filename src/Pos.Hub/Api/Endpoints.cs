@@ -22,7 +22,7 @@ public static class Endpoints
         var api = app.MapGroup("/api");
 
         api.MapGet("/health", (HubSettings s, TimeProvider clock, HubCertificates certificates) =>
-            Results.Ok(new { status = "ok", branch = s.BranchCode, time = clock.GetUtcNow(), caCheckCode = certificates.CaCheckCode }));
+            Results.Ok(new { status = "ok", version = HubVersion.Text, branch = s.BranchCode, time = clock.GetUtcNow(), caCheckCode = certificates.CaCheckCode }));
 
         // The shop CA's public certificate, for installing on tills (not secret). Compare its check code with the hub screen.
         app.MapGet("/ca.crt", (HubCertificates certificates) =>

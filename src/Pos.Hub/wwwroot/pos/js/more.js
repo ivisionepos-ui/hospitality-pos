@@ -108,24 +108,36 @@ export function moreDialog(till) {
     close();
     try { await action(); } catch (e) { till.showError(e); }
   };
-  return openDialog(close => ({
-    title: 'More',
-    class: 'dialog-narrow',
-    body: h('div', { class: 'menu-list' },
-      h('h3', { class: 'menu-heading', text: 'Till' }),
-      h('button', { class: 'btn menu-btn', onclick: run(close, async () => { if (await ensureShift()) toast('The till is open.', 'ok'); }), text: 'Open till' }),
-      h('button', { class: 'btn menu-btn', onclick: run(close, closeShift), text: 'Close till (cash count)' }),
-      h('button', { class: 'btn menu-btn', onclick: run(close, () => cashMovement('paid-in')), text: 'Paid in' }),
-      h('button', { class: 'btn menu-btn', onclick: run(close, () => cashMovement('paid-out')), text: 'Paid out' }),
-      can('ViewReports') ? h('h3', { class: 'menu-heading', text: 'Reports' }) : null,
-      can('ViewReports') ? h('button', { class: 'btn menu-btn', onclick: run(close, xReport), text: 'X report (this till)' }) : null,
-      can('ViewReports') ? h('button', { class: 'btn menu-btn', onclick: run(close, zReport), text: 'End of day (Z report)' }) : null,
-      h('h3', { class: 'menu-heading', text: 'Shop' }),
-      h('button', { class: 'btn menu-btn', onclick: run(close, failedPrints), text: 'Failed printouts' }),
-      can('ViewReports') ? h('button', { class: 'btn menu-btn', onclick: run(close, backupNow), text: 'Back up now' }) : null,
-      can('ManageDevices') ? h('button', { class: 'btn menu-btn', onclick: run(close, addTill), text: 'Add a till' }) : null,
-      h('h3', { class: 'menu-heading', text: 'Menu' }),
-      h('button', { class: 'btn menu-btn', onclick: run(close, () => soldOutDialog(till)), text: 'Sold out items' }),
-      can('EditMenu') ? h('button', { class: 'btn menu-btn', onclick: run(close, () => till.enterEditMode()), text: 'Edit menu' }) : null),
-  }));
+  // Columns, so every option is visible at once on a 768-pixel-high till screen (no hidden scrolling).
+  const section = (title, ...buttons) => {
+    const shown = buttons.filter(Boolean);
+    return shown.length ? h('section', { class: 'more-col' }, h('h3', { class: 'menu-heading', text: title }), shown) : null;
+  };
+  const item = (label, action, primary = false) => h('button', { class: `btn menu-btn ${primary ? 'menu-btn-main' : ''}`, onclick: run(close, action), text: label });
+  let close;
+  return openDialog(c => {
+    close = c;
+    return {
+      title: 'More',
+      wide: true,
+      body: [
+        h('div', { class: 'more-grid' },
+          section('Menu',
+            can('EditMenu') ? item('Edit menu', () => till.enterEditMode(), true) : null,
+            item('Sold out items', () => soldOutDialog(till))),
+          section('Till',
+            item('Open till', async () => { if (await ensureShift()) toast('The till is open.', 'ok'); }),
+            item('Close till (cash count)', closeShift),
+            item('Paid in', () => cashMovement('paid-in')),
+            item('Paid out', () => cashMovement('paid-out'))),
+          section('Reports and shop',
+            can('ViewReports') ? item('X report (this till)', xReport) : null,
+            can('ViewReports') ? item('End of day (Z report)', zReport) : null,
+            item('Failed printouts', failedPrints),
+            can('ViewReports') ? item('Back up now', backupNow) : null,
+            can('ManageDevices') ? item('Add a till', addTill) : null)),
+        h('p', { class: 'version', text: `Version ${window.posVersion ?? ''} · ${till.ctx.me.staff.name} (${till.ctx.me.staff.role})` }),
+      ],
+    };
+  });
 }

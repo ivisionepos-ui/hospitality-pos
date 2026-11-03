@@ -94,5 +94,6 @@ export function loginScreen(root, done) {
       }
     },
   });
-  mount(root, card(credentials.device?.name ?? 'Till', 'Enter your PIN', clock, pad.el, problem));
+  mount(root, card(credentials.device?.name ?? 'Till', 'Enter your PIN', clock, pad.el, problem,
+    h('p', { class: 'version', text: `Version ${window.posVersion ?? ''}` })));
 }

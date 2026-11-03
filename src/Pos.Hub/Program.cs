@@ -80,7 +80,9 @@ try
 }
 catch (InvalidOperationException ex)
 {
-    Console.Error.WriteLine(ex.Message);
+    Console.Error.WriteLine();
+    Console.Error.WriteLine($"THE HUB COULD NOT START: {ex.Message}");
+    Console.Error.WriteLine("Close the other \"POS Hub\" window (or end Pos.Hub.exe in Task Manager), then start the hub again.");
     return 1;
 }
 
@@ -135,7 +137,20 @@ app.UseWhen(http => http.Request.Path.StartsWithSegments("/live"), live => live.
     await next(http);
 }));
 app.MapHub<LiveHub>("/live", o => o.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets);
-app.Run();
+Console.WriteLine($"POS Hub version {HubVersion.Text}");
+try
+{
+    app.Run();
+}
+catch (IOException ex) when (ex.InnerException is System.Net.Sockets.SocketException { SocketErrorCode: System.Net.Sockets.SocketError.AddressAlreadyInUse } || ex.Message.Contains("address already in use", StringComparison.OrdinalIgnoreCase))
+{
+    Console.Error.WriteLine();
+    Console.Error.WriteLine("THE HUB COULD NOT START: another program is already using its address (port).");
+    Console.Error.WriteLine("This is usually an older copy of the hub that is still running.");
+    Console.Error.WriteLine("Close the other \"POS Hub\" window (or end Pos.Hub.exe in Task Manager), then start the hub again.");
+    return 1;
+}
+
 return 0;
 
 /// <summary>Entry point, visible to the automated tests.</summary>

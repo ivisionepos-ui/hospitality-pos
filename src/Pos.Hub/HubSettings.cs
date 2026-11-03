@@ -6,6 +6,15 @@ using Pos.Domain.Tax;
 
 namespace Pos.Hub;
 
+/// <summary>The hub program's version, e.g. "0.5.0".</summary>
+public static class HubVersion
+{
+    /// <summary>Version from the project file.</summary>
+    public static string Text { get; } =
+        typeof(HubVersion).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "dev";
+}
+
 /// <summary>The branch's settings, from the "Hub" section of appsettings.json.</summary>
 public sealed class HubSettings
 {

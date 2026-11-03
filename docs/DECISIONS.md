@@ -104,3 +104,6 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-098 | 2026-11-03 | Moving buttons uses Earlier / Later and Move-to-category buttons instead of drag and drop for now | Reliable on every touch screen; drag and drop can be added later on top of the same move route |
 | C-099 | 2026-11-03 | Meal-deal choices are not edited on the till yet (name, price, VAT, sold out and hidden are) | Deal slots are complex; they come with the back office |
 | C-100 | 2026-11-03 | Sold out can be switched by anyone taking orders from More → Sold out items | The counter must react straight away when something runs out |
+| C-101 | 2026-11-04 | Version number shown on the login screen and in More, and in /api/health | Owner and support can see at once which version a till is talking to |
+| C-102 | 2026-11-04 | Clear start-up message when the port or data folder is already used by another hub | An old hub left running made the new version look broken (owner report: "edit menu is not active") |
+| C-103 | 2026-11-04 | More menu in three columns, Menu first | On 768-pixel-high till screens the old single list hid Edit menu below the fold |

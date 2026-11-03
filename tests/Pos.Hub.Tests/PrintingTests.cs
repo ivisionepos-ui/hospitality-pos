@@ -72,7 +72,7 @@ public sealed class PrintingTests : HubTestBase
     }
 
     [Fact]
-    public async Task Completing_prints_the_receipt_and_a_reprint_is_a_copy()
+    public async Task Paying_in_full_prints_the_receipt_once_and_a_reprint_is_a_copy()
     {
         var order = await Order(Doner);
         await Cashier.Post("/api/shifts/open", new OpenShiftRequest(0));
@@ -84,6 +84,23 @@ public sealed class PrintingTests : HubTestBase
 
         Assert.Equal([PrintJobKind.ReceiptCopy, PrintJobKind.Receipt], jobs.Select(j => j.Job.Kind));
         Assert.All(jobs, j => Assert.StartsWith(Path.Combine(Host.PrintFolder, "receipts"), j.Output, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Part_payment_prints_nothing_until_the_order_is_paid_in_full()
+    {
+        var order = await Order(Doner, Can); // £10.19
+        await Cashier.Post("/api/shifts/open", new OpenShiftRequest(0));
+
+        await Cashier.Post($"/api/orders/{order.Id}/payments/card", new CardPaymentRequest(500));
+        await Task.Delay(300);
+        Assert.Empty(await Cashier.GetJson<List<PrintJobView>>("/api/print-jobs"));
+
+        await Cashier.Post($"/api/orders/{order.Id}/payments/cash", new CashPaymentRequest(1000));
+        await Cashier.Post($"/api/orders/{order.Id}/status", new StatusRequest(OrderStatus.Completed));
+
+        var job = Assert.Single(await Settled(1));
+        Assert.Equal(PrintJobKind.Receipt, job.Job.Kind);
     }
 
     [Fact]

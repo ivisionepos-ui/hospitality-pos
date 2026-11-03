@@ -119,6 +119,26 @@ public sealed class OrderService
         });
     }
 
+    /// <summary>Prices an order still being built on the till, without saving it or using an order number.</summary>
+    public Order Quote(CreateOrderRequest request, OrderActor actor)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var lines = _menu.Read(menu => BuildLines(menu, request.Lines ?? []));
+        return _intake.Quote(new NewOrder
+        {
+            OrderId = request.OrderId,
+            IdempotencyKey = request.IdempotencyKey,
+            BranchId = _settings.BranchId,
+            BranchCode = _settings.BranchCode,
+            Source = request.Source,
+            Type = request.Type,
+            CreatedBy = actor,
+            CustomerId = request.CustomerId,
+            TableId = request.TableId,
+            Lines = lines,
+        });
+    }
+
     /// <summary>Finds an order.</summary>
     public Order Get(Guid orderId) =>
         _db.Run(() => _store.FindById(orderId)) ?? throw new KeyNotFoundException("Order not found.");

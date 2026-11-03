@@ -89,6 +89,28 @@ _ = app.Services.GetRequiredService<Pos.Hub.Security.AccessService>();
 var certificates = app.Services.GetRequiredService<HubCertificates>();
 HubLog.CertificatesLoaded(app.Logger, certificates);
 
+// The till screen (wwwroot/pos): plain files served by the hub, so tills need nothing installed and work without internet.
+// Strict browser rules: the page may only load its own files and talk to this hub.
+app.Use(async (http, next) =>
+{
+    if (!http.Request.Path.StartsWithSegments("/api"))
+    {
+        var headers = http.Response.Headers;
+        headers.ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+        headers.XContentTypeOptions = "nosniff";
+        headers["Referrer-Policy"] = "no-referrer";
+    }
+
+    await next(http);
+});
+app.MapGet("/", () => Results.Redirect("/pos/"));
+app.UseDefaultFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    // Always check for a newer version, so a hub update reaches every till on the next reload.
+    OnPrepareResponse = file => file.Context.Response.Headers.CacheControl = "no-cache",
+});
+
 app.MapHubApi();
 
 // Live connection: the ticket from POST /api/live/ticket must be valid and the device still registered.

@@ -19,3 +19,15 @@ jobs:
         run: dotnet build --no-restore --configuration Release
       - name: Test
         run: dotnet test --no-build --configuration Release --verbosity normal
+      - name: Set up Node for the till-screen tests
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install Playwright and Chromium
+        run: |
+          npm install --prefix tests/ui --no-audit --no-fund
+          npx --prefix tests/ui playwright install --with-deps chromium
+      - name: Till screen tests (real browser, real hub)
+        run: node --test --test-concurrency=1 tests/ui/till.test.cjs
+        env:
+          DOTNET: dotnet

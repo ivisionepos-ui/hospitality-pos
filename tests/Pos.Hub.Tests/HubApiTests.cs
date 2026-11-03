@@ -50,6 +50,67 @@ public sealed class HubApiTests : HubTestBase
     }
 
     [Fact]
+    public async Task Sample_menu_loads_only_into_an_empty_menu_and_every_item_can_be_ordered()
+    {
+        var menu = await (await Manager.PostAsync(new Uri("/api/menu/sample", UriKind.Relative), null)).Read<MenuState>();
+        var again = await Manager.PostAsync(new Uri("/api/menu/sample", UriKind.Relative), null);
+
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Cashier.PostAsync(new Uri("/api/menu/sample", UriKind.Relative), null)).StatusCode);
+        Assert.True(menu.Products.Count > 20);
+
+        // Every item and deal, with the fewest choices allowed, is accepted by the hub.
+        var groups = menu.ModifierGroups.ToDictionary(g => g.Id);
+        IReadOnlyList<Guid> Required(Product p) =>
+            [.. p.ModifierGroupIds.Select(id => groups[id]).SelectMany(g => g.Options.Take(g.MinChoices)).Select(o => o.Id)];
+        var lines = new List<OrderLineRequest>();
+        foreach (var product in menu.Products)
+        {
+            if (product.Type == ProductType.MealDeal)
+            {
+                var choices = product.DealSlots.Select(slot =>
+                {
+                    var option = slot.Options[0];
+                    var chosen = option.Kind switch
+                    {
+                        SlotOptionKind.Category => menu.Products.First(p => p.CategoryId == option.TargetId),
+                        SlotOptionKind.Variant => menu.Products.First(p => p.Variants.Any(v => v.Id == option.TargetId)),
+                        _ => menu.Products.First(p => p.Id == option.TargetId),
+                    };
+                    var variant = option.Kind == SlotOptionKind.Variant ? option.TargetId : chosen.Variants[0].Id;
+                    return new DealChoiceRequest(slot.Id, chosen.Id, variant, Required(chosen));
+                }).ToList();
+                lines.Add(new OrderLineRequest(product.Id, product.Variants[0].Id, 1, null, choices));
+            }
+            else
+            {
+                lines.AddRange(product.Variants.Select(v => new OrderLineRequest(product.Id, v.Id, 1, Required(product))));
+            }
+        }
+
+        var quote = await Cashier.Post("/api/orders/quote", NewOrder([.. lines]));
+        Assert.Equal(HttpStatusCode.OK, quote.StatusCode);
+        Assert.Equal(lines.Count, (await quote.Read<OrderView>()).Lines.Count);
+    }
+
+    [Fact]
+    public async Task Quote_prices_an_order_being_built_without_saving_or_numbering_it()
+    {
+        await ImportMenu();
+
+        var quote = await (await Cashier.Post("/api/orders/quote", NewOrder(DonerLine, CanLine))).Read<OrderView>();
+        var bad = await Cashier.Post("/api/orders/quote", NewOrder(new OrderLineRequest(TestMenu.Doner, TestMenu.DonerRegular)));
+
+        Assert.Equal(Money.Gbp(899 + 240), quote.Total);
+        Assert.Equal(Money.Gbp(190), Assert.Single(quote.Vat).Vat);
+        Assert.Equal("000", quote.Number);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, bad.StatusCode); // kebab needs a sauce
+        Assert.Empty(await TillOnly.GetJson<List<OrderView>>("/api/orders?date=2026-11-05"));
+        Assert.Equal("001", (await (await Cashier.Post("/api/orders", NewOrder(CanLine))).Read<OrderView>()).Number);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Kitchen.Post("/api/orders/quote", NewOrder(CanLine))).StatusCode);
+    }
+
+    [Fact]
     public async Task Order_is_created_priced_numbered_and_recorded_against_the_logged_in_cashier()
     {
         await ImportMenu();

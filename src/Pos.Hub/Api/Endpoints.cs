@@ -165,17 +165,19 @@ public static class Endpoints
             Results.Ok(View(tills.Ledger(orders.Get(orderId))))))
             .ForStaff(Permission.TakeOrders);
 
-        api.MapPost("/orders/{orderId:guid}/payments/cash", (HttpContext http, TillService tills, Guid orderId, CashPaymentRequest request) => Handle(() =>
+        api.MapPost("/orders/{orderId:guid}/payments/cash", (HttpContext http, TillService tills, PrintService print, Guid orderId, CashPaymentRequest request) => Handle(() =>
         {
             var result = tills.TakeCash(orderId, TillId(http), Caller(http).Staff!.Id, request.PaymentId, Gbp(request.TenderedPence),
                 request.AmountPence is { } a ? Gbp(a) : null, request.ForLineIds);
+            ReceiptWhenPaid(print, orderId, result.Ledger, result.WasDuplicate);
             return Results.Ok(new PaymentResponse(result.Payment, View(result.Ledger), result.WasDuplicate));
         })).ForStaff(Permission.TakeOrders);
 
-        api.MapPost("/orders/{orderId:guid}/payments/card", (HttpContext http, TillService tills, Guid orderId, CardPaymentRequest request) => Handle(() =>
+        api.MapPost("/orders/{orderId:guid}/payments/card", (HttpContext http, TillService tills, PrintService print, Guid orderId, CardPaymentRequest request) => Handle(() =>
         {
             var result = tills.TakeCard(orderId, TillId(http), Caller(http).Staff!.Id, request.PaymentId, Gbp(request.AmountPence),
                 request.TipPence is { } t ? Gbp(t) : null, request.Reference, request.ForLineIds);
+            ReceiptWhenPaid(print, orderId, result.Ledger, result.WasDuplicate);
             return Results.Ok(new PaymentResponse(result.Payment, View(result.Ledger), result.WasDuplicate));
         })).ForStaff(Permission.TakeOrders);
 
@@ -259,6 +261,17 @@ public static class Endpoints
             Results.Ok(menu.Import(state, Caller(http).Staff!.Id))))
             .ForStaff(Permission.EditMenu);
 
+        // Sample takeaway menu for trying the till; refused once the menu has items, so a real menu is never replaced.
+        api.MapPost("/menu/sample", (HttpContext http, MenuService menu) => Handle(() =>
+        {
+            if (menu.Read(m => m.ToState().Products.Count) > 0)
+            {
+                throw new InvalidOperationException("The menu already has items; the sample menu is only for an empty menu.");
+            }
+
+            return Results.Ok(menu.Import(SampleMenu.Build(), Caller(http).Staff!.Id));
+        })).ForStaff(Permission.EditMenu);
+
         api.MapPost("/menu/products/{productId:guid}/price", (HttpContext http, MenuService menu, Guid productId, PriceRequest request) => Handle(() =>
             Change(menu.Edit(m => m.SetPrice(productId, request.VariantId, new Money(request.PricePence, m.Currency), Caller(http).Staff!.Id)))))
             .ForStaff(Permission.EditMenu);
@@ -286,12 +299,21 @@ public static class Endpoints
             return result.WasDuplicate ? Results.Ok(view) : Results.Created($"/api/orders/{result.Order.Id}", view);
         })).ForStaff(Permission.TakeOrders);
 
-        api.MapGet("/orders", (OrderService orders, DateOnly? date, OrderStatus? status) =>
-            Handle(() => Results.Ok(orders.ForDay(date, status).Select(o => OrderView.From(o)))))
+        // Totals for an order still being built on the till; nothing is saved and no order number is used.
+        api.MapPost("/orders/quote", (HttpContext http, OrderService orders, CreateOrderRequest request) => Handle(() =>
+            Results.Ok(OrderView.From(orders.Quote(request, Actor(http))))))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapGet("/orders", (OrderService orders, TillService tills, DateOnly? date, OrderStatus? status) =>
+            Handle(() => Results.Ok(orders.ForDay(date, status).Select(o => WithMoney(OrderView.From(o), tills.Ledger(o))))))
             .ForDevices();
 
-        api.MapGet("/orders/{orderId:guid}", (OrderService orders, Guid orderId) =>
-            Handle(() => Results.Ok(OrderView.From(orders.Get(orderId)))))
+        api.MapGet("/orders/{orderId:guid}", (OrderService orders, TillService tills, Guid orderId) =>
+            Handle(() =>
+            {
+                var order = orders.Get(orderId);
+                return Results.Ok(WithMoney(OrderView.From(order), tills.Ledger(order)));
+            }))
             .ForDevices();
 
         api.MapGet("/orders/{orderId:guid}/history", (OrderService orders, Guid orderId) =>
@@ -348,7 +370,8 @@ public static class Endpoints
                     o.MoveTo(request.Status, actor, request.Reason);
                 }
 
-                if (request.Status == OrderStatus.Completed && print.Settings.AutoPrintReceipt)
+                // Normally the receipt printed when the order was paid; print one now only if it never was.
+                if (request.Status == OrderStatus.Completed && print.Settings.AutoPrintReceipt && !print.HasReceipt(o.Id))
                 {
                     print.QueueReceipt(o.Id);
                 }
@@ -405,6 +428,17 @@ public static class Endpoints
     private static IResult Change(MenuChange change) => Results.Ok(new MenuChangeView(change.Version, change.Summary));
 
     /// <summary>Turns refusals into clear answers for the till instead of server errors.</summary>
+    private static OrderView WithMoney(OrderView view, OrderPayments ledger) => view with { Paid = ledger.Paid, Balance = ledger.Balance };
+
+    /// <summary>Prints the receipt automatically the moment an order becomes fully paid (once).</summary>
+    private static void ReceiptWhenPaid(PrintService print, Guid orderId, OrderPayments ledger, bool duplicate)
+    {
+        if (!duplicate && print.Settings.AutoPrintReceipt && ledger.IsSettled && ledger.Paid.MinorUnits > 0 && !print.HasReceipt(orderId))
+        {
+            print.QueueReceipt(orderId);
+        }
+    }
+
     private static IResult Handle(Func<IResult> action)
     {
         try

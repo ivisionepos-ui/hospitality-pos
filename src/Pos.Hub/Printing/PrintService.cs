@@ -89,11 +89,14 @@ public sealed class PrintService(
 
     // ---------- Asking for printouts (call inside the transaction that makes the change) ----------
 
+    /// <summary>True when a receipt has already been printed (or queued) for this order.</summary>
+    public bool HasReceipt(Guid orderId) => db.Run(() => db.Scalar(
+        "SELECT 1 FROM print_jobs WHERE order_id = $o AND kind IN ('Receipt', 'ReceiptCopy') LIMIT 1;", ("$o", orderId.ToString())) is not null);
+
     /// <summary>Queues a receipt. If one was printed before for this order, it is marked COPY.</summary>
     public PrintJob QueueReceipt(Guid orderId)
     {
-        var printedBefore = db.Run(() => db.Scalar(
-            "SELECT 1 FROM print_jobs WHERE order_id = $o AND kind IN ('Receipt', 'ReceiptCopy') LIMIT 1;", ("$o", orderId.ToString())) is not null);
+        var printedBefore = HasReceipt(orderId);
         return Save(new PrintJob(NewId(), printedBefore ? PrintJobKind.ReceiptCopy : PrintJobKind.Receipt, PrintTarget.Receipt, orderId, [], null));
     }
 

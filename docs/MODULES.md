@@ -29,9 +29,11 @@
 | Shifts: float, paid in/out, blind close, expected vs counted cash, X report | 3 | Done 2026-11-03 | 5 rule tests + hub tests | |
 | Z report: sales, sources, payments by method, VAT after refunds, cancels, voids, refunds, open orders, cash over/short, tips by staff | 3 | Done 2026-11-03 | 3 rule tests + full-day hub test | Numbered and stored; accountant to review layout |
 | Printing: receipts (UK VAT details, food-group order, English by default, Arabic optional), kitchen tickets (new/additional/void), Z slip; PDF, PNG and Windows-printer outputs; print queue with retry and failure alerts; receipt preview | 3 | Done 2026-11-03 | 11 layout/drawing tests + 7 hub tests | Windows printer output (Microsoft Print to PDF) tested by the owner on Windows 2026-11-03 |
+| Till screen (POS order screen): set-up, register a till, PIN login, categories and item buttons, sizes/extras with required choices, meal deals, live totals, send to kitchen, cash/card/part payments with change, open orders, add items, remove with manager PIN, cancel, reprint, collected, open/close till with blind count, paid in/out, X/Z reports, failed prints, backup now, add a till, live updates between tills | 3 | Done 2026-11-03 | 6 browser tests (real Chromium, real hub) + 4 hub tests | Edit menu mode is next |
+| Hub additions for the till: order quote, sample menu, paid/balance on orders, receipt printed when fully paid | 3 | Done 2026-11-03 | 4 hub tests | |
 | Backups: hourly / start-up / after Z report / on demand; checked zip of database snapshot, PIN key and certificates; second copy folder; keep 48 h then daily for 30 days; restore command; live warning on failure; one hub per data folder; copy before schema upgrades | 2 | Done 2026-11-03 | 13 passing, plus restore run on the real program | Owner to set a USB/second-disk copy folder |
 
-Total: 334 automated tests passing (230 business-rule tests + 104 hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
+Total: 343 automated tests passing (230 business-rule tests + 107 hub tests + 6 till-screen browser tests), including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
 - ESC/POS thermal printers over USB and network, and the cash drawer kick (when printers are available)
@@ -39,7 +41,9 @@ Total: 334 automated tests passing (230 business-rule tests + 104 hub tests), in
 - Group headings on receipts ("STARTERS", "DRINKS")
 - Windows Device Agent installer that installs the shop CA automatically
 - Scheduled offers, delivery charge table and discount limits stored on the hub (offers currently not loaded)
-- Remaining Edit-menu operations over the API (add, move, edit panel save, extras, categories)
+- Edit menu mode on the till (same layout as ordering): rename, prices, sold out, add, move; plus the remaining menu API operations
+- Delivery orders on the till (address, postcode search, delivery charge), discounts and refunds on screen, split bill screen
+- Till-made line ids so adding items to a saved order is safe to resend
 - Encrypted off-site (cloud) backup copy
 - Syncing menu and order changes between tills, hub and cloud
 - Tip allocation between staff (tronc) and the written tipping policy record (tips by staff are already in the Z report)

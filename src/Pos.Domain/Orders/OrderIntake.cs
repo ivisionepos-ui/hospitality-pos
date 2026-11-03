@@ -147,6 +147,36 @@ public sealed class OrderIntake
         _clock = clock ?? TimeProvider.System;
     }
 
+    /// <summary>
+    /// Prices an order that is still being built on the till, exactly as <see cref="Submit"/> would,
+    /// without saving it or using up an order number. The order number shown is 000.
+    /// </summary>
+    public Order Quote(NewOrder request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var businessDate = BusinessDay.For(_clock.GetUtcNow(), _pricing.TimeZone, _dayStartsAt);
+        var order = new Order(
+            request.OrderId,
+            "quote",
+            string.Empty,
+            request.BranchId,
+            new OrderNumber(string.IsNullOrWhiteSpace(request.BranchCode) ? "QUOTE" : request.BranchCode, businessDate, 0),
+            request.Source,
+            request.Type,
+            request.StartingStatus ?? OrderStatusRules.StartingStatusAtShop(request.Source),
+            _pricing,
+            _clock,
+            request.CreatedBy,
+            request.CustomerId,
+            request.TableId);
+        foreach (var line in request.Lines)
+        {
+            order.AddLine(line.Pricing, line.Display, request.CreatedBy, line.Note);
+        }
+
+        return order;
+    }
+
     /// <summary>Submits an order. Safe to call again with the same submission.</summary>
     public SubmitResult Submit(NewOrder request)
     {

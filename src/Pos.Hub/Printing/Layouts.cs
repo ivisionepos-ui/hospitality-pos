@@ -368,7 +368,7 @@ public static class Layouts
         var smaller = size == PrintSize.Large ? PrintSize.Normal : PrintSize.Small;
         foreach (var extra in display.Extras)
         {
-            blocks.Add(new PrintText($"+ {Text(extra, lang)}", Size: smaller, Indent: indent));
+            blocks.Add(new PrintText(Extra(Text(extra, lang)), Size: smaller, Indent: indent));
         }
 
         foreach (var item in display.DealItems)
@@ -381,10 +381,14 @@ public static class Layouts
 
             foreach (var extra in item.Extras)
             {
-                blocks.Add(new PrintText($"+ {Text(extra, lang)}", Size: smaller, Indent: indent + 1));
+                blocks.Add(new PrintText(Extra(Text(extra, lang)), Size: smaller, Indent: indent + 1));
             }
         }
     }
+
+    /// <summary>"+ Garlic", but a removal such as "No onion" is printed as it is.</summary>
+    private static string Extra(string name) =>
+        name.StartsWith("No ", StringComparison.OrdinalIgnoreCase) ? name : $"+ {name}";
 
     private static string Text(LocalizedText text, Lang lang) =>
         lang.Both && text.Ar is { } ar ? $"{text.En} / {ar}" : (lang.English || text.Ar is null ? text.En : text.Ar);

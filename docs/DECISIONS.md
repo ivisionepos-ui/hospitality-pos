@@ -87,3 +87,14 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-081 | 2026-11-03 | Data-folder lock file (hub.lock): one hub per database; restore refused while it is held | Two programs writing one database, or a restore under a running hub, could damage the data |
 | C-082 | 2026-11-03 | Copy of the database kept before any schema upgrade; databases from newer versions refused | A failed or unwanted upgrade can be rolled back; an older program never damages newer data |
 | C-083 | 2026-11-03 | Windows launchers (.bat) kept in tools/windows | Owner runs the hub, tests and restores by double-click, no command line needed |
+| C-084 | 2026-11-03 | Till screen built as plain HTML/CSS/JavaScript modules served by the hub, no framework or build step (replaces the React plan for the till) | No install on tills, works offline, nothing to download (npm is unreachable from the build environment); fewer moving parts for the owner to maintain |
+| C-085 | 2026-11-03 | Small built-in client for SignalR's JSON protocol instead of the npm package | Same protocol, no download; reconnects with back-off and catches up by event number |
+| C-086 | 2026-11-03 | An order being built lives on the till until Send or Pay; the hub prices it live with /orders/quote | No order numbers wasted on abandoned orders; totals always match the hub's rules |
+| C-087 | 2026-11-03 | Receipt prints automatically when an order becomes fully paid; on completion only if it never printed | Takeaway customers pay first and want the receipt then; no unwanted copies |
+| C-088 | 2026-11-03 | Order list and single order include paid and balance | The till can show what is still due without one call per order |
+| C-089 | 2026-11-03 | Sample takeaway menu built into the hub, loadable only into an empty menu | Lets the owner try the till at once; can never overwrite a real menu |
+| C-090 | 2026-11-03 | Device key and staff login kept in the till browser's local storage | A till is a dedicated device; logins survive a page reload; logout clears it |
+| C-091 | 2026-11-03 | Strict Content-Security-Policy on the screen; all names inserted as text | Blocks injected scripts even if a menu name contained code |
+| C-092 | 2026-11-03 | Typing on a pre-filled amount replaces it | Matches what staff expect from a selected field; fewer taps |
+| C-093 | 2026-11-03 | Browser tests (Playwright + Node's test runner) run against a real hub, locally and in CI | The screen is only "done" when a real browser has used it end to end |
+| C-094 | 2026-11-03 | Known gap: adding items to a saved order is not yet protected against a duplicate if the connection drops after the hub saved them | To fix with till-made line ids (next order-screen update) |

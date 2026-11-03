@@ -20,12 +20,14 @@ src/
     Orders/              Orders, statuses, numbers, business day, duplicate-proof intake
   Pos.Hub/               Store Hub: runs on the shop PC, SQLite database, web API for tills and screens
     Printing/            Receipt, kitchen ticket and Z layouts; drawing (Arabic optional); PDF/PNG/Windows outputs; print queue
+    wwwroot/pos/         The till screen: plain HTML, CSS and JavaScript served by the hub (no install, works offline)
     Backups/             Automatic checked backups, second copy, tidy-up, restore; one-hub-per-data-folder lock
     Data/                Database (schema upgrades, WAL), order and menu storage
     Api/                 Web API routes and request/response formats
 tests/
   Pos.Domain.Tests/      Automated tests for Pos.Domain
   Pos.Hub.Tests/         End-to-end tests: real HTTP calls to a real hub with a real database
+  ui/                    Till screen tests: a real browser (Playwright/Chromium) against a real hub
 tools/
   windows/               Double-click launchers for the shop PC: start hub, print tests, restore a backup
 docs/
@@ -34,7 +36,7 @@ docs/
   CODING-STANDARDS.md    Naming and coding rules
 ```
 
-Projects still to come: `Pos.Cloud.Api`, `Pos.Sync`, and the React apps (POS, kitchen display, customer display, back office, ordering website).
+Projects still to come: `Pos.Cloud.Api`, `Pos.Sync`, the kitchen display, customer display, back office and ordering website.
 
 ## Requirements
 
@@ -98,6 +100,33 @@ ends, or when the PC's address changes; tills do not need anything new when that
 Files next to the database: `hub.db` (data), `hub.key` (protects PINs and certificate files), `hub-ca.pfx` and
 `hub-tls.pfx` (certificates). The hub backs all of them up together (see Backups); keep backups safe, as they hold
 the shop CA's private key.
+
+### Till screen
+Open `http://localhost:5080/` on the hub PC, or `https://<hub address>:5443/` on another till (after installing the
+shop CA). The screen is plain HTML, CSS and JavaScript in `src/Pos.Hub/wwwroot/pos`, served by the hub: nothing to
+install on tills, no internet needed, and a hub update reaches every till on the next reload.
+
+- **First time:** on the hub PC the screen offers the first-time set-up (owner, PIN, till name). Other tills are
+  registered with a 6-digit code from More → Add a till (owner). The till's device key is kept in the browser.
+- **Login:** staff PIN on a keypad. Wrong PINs lock out after several tries (hub rule).
+- **Taking orders:** Takeaway / Eat in / Phone; colour-coded category tabs; tap items. Items with sizes or extras
+  open a panel that enforces required choices (e.g. kebab sauce); meal deals step through their choices. Lines can
+  be changed (+/−, note, remove) until sent. Totals (offers, deals, VAT) come from the hub as you go (`/orders/quote`).
+- **Send / Pay:** Send saves the order and prints the kitchen ticket. Pay does the same, then takes cash (quick notes,
+  change shown big) or card (key the amount into the Worldpay terminal, then confirm). Part payments and split
+  card/cash work; each payment has its own id so a retry never charges twice. The receipt prints when fully paid.
+- **Orders:** today's orders with status and paid/due. Open one to add items (Send new), remove items (a manager's PIN
+  if already in the kitchen; the kitchen gets a void slip), pay, reprint the receipt, cancel, or mark Collected.
+- **More:** open/close the till with a blind cash count, paid in/out, X and Z reports, failed printouts, back up now,
+  add a till (each shown only to roles allowed to use it).
+- **Live:** orders, payments and menu changes (e.g. sold out) appear on every till at once; printer and backup
+  failures pop up. After a network drop the till reconnects and catches up by itself.
+- **Security:** the page may load only its own files and talk only to the hub (Content-Security-Policy); all text from
+  the menu is shown as text, never as HTML.
+- **Try it:** with an empty menu, managers see "Load sample menu" (a typical takeaway menu; refused once a menu exists).
+
+Till screen tests: after a Release build, `npm install --prefix tests/ui`, `npx --prefix tests/ui playwright install chromium`,
+then `node --test --test-concurrency=1 tests/ui/till.test.cjs`. They start their own hub on a temporary folder.
 
 ### Backups
 Each backup is one zip in `data/backups` named `hub-backup-<branch>-<yyyyMMdd-HHmmss>.zip` (shop time). It holds a
@@ -216,7 +245,7 @@ under `Printing` → `ReceiptText`. UK VAT receipts must show the VAT number whe
 | POST | /api/reports/z | manager | End-of-day Z report (all shifts must be closed); starts a backup |
 | GET | /api/backups | manager | Backup status, last result, backups in both folders |
 | POST | /api/backups | manager | Make a backup now |
-| POST | /api/orders/{id}/print-receipt | cashier | Print the receipt (COPY if printed before) |
+| POST | /api/orders/{id}/print-receipt | cashier | Print the receipt (COPY if printed before); it also prints by itself when an order is fully paid |
 | GET | /api/orders/{id}/receipt?format=png\|pdf | cashier | Receipt preview, not printed |
 | POST | /api/reports/z/print | manager | Print the Z report slip |
 | GET | /api/print-jobs?status= | cashier | Print jobs (e.g. Failed) |
@@ -236,7 +265,9 @@ under `Printing` → `ReceiptText`. UK VAT receipts must show the VAT number whe
 | POST | /api/menu/products/{id}/sold-out | cashier, kitchen, manager | Sold out / back in stock |
 | POST | /api/menu/undo | manager | Undo the last menu change |
 | POST | /api/orders | cashier, waiter | New order from what was picked; safe to resend |
-| GET | /api/orders?date=&status=, /api/orders/{id} | any device | Orders for a trading day, one order |
+| POST | /api/orders/quote | cashier, waiter | Totals for an order being built; nothing saved, no number used |
+| POST | /api/menu/sample | manager | Load the sample takeaway menu (empty menu only) |
+| GET | /api/orders?date=&status=, /api/orders/{id} | any device | Orders for a trading day, one order (with paid and balance) |
 | GET | /api/orders/{id}/history | manager | Everything that happened to it |
 | POST | /api/orders/{id}/lines | cashier, waiter | Add items to an open order |
 | POST | /api/orders/{id}/status | depends on status | Accept/reject (cashier), preparing/ready (kitchen), complete, cancel (manager) |

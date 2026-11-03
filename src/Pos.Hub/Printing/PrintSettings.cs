@@ -80,7 +80,7 @@ public sealed class PrintSettings
     /// <summary>What appears on receipts.</summary>
     public ReceiptSettings ReceiptText { get; init; } = new();
 
-    /// <summary>Print the receipt automatically when an order is completed.</summary>
+    /// <summary>Print the receipt automatically when an order is fully paid (or completed, if never printed).</summary>
     public bool AutoPrintReceipt { get; set; } = true;
 
     /// <summary>Print kitchen tickets automatically when items are sent to the kitchen.</summary>

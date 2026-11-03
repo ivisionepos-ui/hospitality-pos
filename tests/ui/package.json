@@ -1,0 +1,11 @@
+{
+  "name": "pos-ui-tests",
+  "private": true,
+  "description": "End-to-end tests of the till screen in a real browser against a real hub.",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 till.test.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

@@ -160,16 +160,38 @@ public sealed class OrderService
         return result;
     });
 
-    /// <summary>Adds items to an open order (e.g. more drinks for a table).</summary>
-    public Order AddLines(Guid orderId, IReadOnlyList<OrderLineRequest> lines, OrderActor actor) => Change(orderId, order =>
-    {
-        foreach (var line in _menu.Read(menu => BuildLines(menu, lines)))
+    /// <summary>
+    /// Adds items to an open order (e.g. more drinks for a table). With a request id, sending the same request
+    /// again (after a dropped connection) adds nothing and returns the order as it is.
+    /// </summary>
+    public (Order Order, bool Duplicate) AddLines(Guid orderId, IReadOnlyList<OrderLineRequest> lines, OrderActor actor, Guid? requestId = null) =>
+        _db.RunInTransaction(() =>
         {
-            order.AddLine(line.Pricing, line.Display, actor, line.Note);
-        }
+            if (requestId is { } id)
+            {
+                var seen = _db.Scalar("SELECT order_id FROM order_line_requests WHERE request_id = $r;", ("$r", id.ToString()));
+                if (seen is string forOrder)
+                {
+                    return forOrder == orderId.ToString()
+                        ? (Get(orderId), true)
+                        : throw new IdempotencyConflictException("This request id was already used for another order.");
+                }
 
-        return order;
-    });
+                _db.Execute("INSERT INTO order_line_requests (request_id, order_id, at) VALUES ($r, $o, $at);",
+                    ("$r", id.ToString()), ("$o", orderId.ToString()), ("$at", _clock.GetUtcNow().ToString("O", System.Globalization.CultureInfo.InvariantCulture)));
+            }
+
+            var order = Change(orderId, order =>
+            {
+                foreach (var line in _menu.Read(menu => BuildLines(menu, lines)))
+                {
+                    order.AddLine(line.Pricing, line.Display, actor, line.Note);
+                }
+
+                return order;
+            });
+            return (order, false);
+        });
 
     private static List<NewOrderLine> BuildLines(Menu menu, IReadOnlyList<OrderLineRequest> requests)
     {

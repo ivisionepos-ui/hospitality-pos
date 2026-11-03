@@ -46,7 +46,8 @@ public sealed record DealChoiceRequest(Guid SlotId, Guid ProductId, Guid Variant
 
 /// <summary>Items to add to an open order.</summary>
 /// <param name="Lines">Items and deals.</param>
-public sealed record AddLinesRequest(IReadOnlyList<OrderLineRequest> Lines);
+/// <param name="RequestId">Id made on the till and reused on every retry, so the items are added only once.</param>
+public sealed record AddLinesRequest(IReadOnlyList<OrderLineRequest> Lines, Guid? RequestId = null);
 
 /// <summary>Move an order to a new status. A manager's PIN for approval goes in the X-Manager-Pin header.</summary>
 /// <param name="Status">New status.</param>
@@ -238,3 +239,60 @@ public sealed record PaymentResponse(Pos.Domain.Payments.Payment Payment, Paymen
 /// <summary>Shares of a split bill.</summary>
 /// <param name="Shares">Amount for each share.</param>
 public sealed record SplitView(IReadOnlyList<Money> Shares);
+
+/// <summary>Save an item's edit panel.</summary>
+/// <param name="Product">The item as it should be.</param>
+/// <param name="Original">The item as the till loaded it; if it has changed since (on another till), the save is refused.</param>
+public sealed record SaveProductRequest(Product Product, Product? Original = null);
+
+/// <summary>Add an item button.</summary>
+/// <param name="Product">The new item (id made on the till).</param>
+/// <param name="Position">Place in its category (default: the end).</param>
+public sealed record AddProductRequest(Product Product, int? Position = null);
+
+/// <summary>Move an item button or category tab.</summary>
+/// <param name="Position">New place, counting from 0.</param>
+/// <param name="CategoryId">Category to move an item into (default: its own).</param>
+public sealed record MoveRequest(int Position, Guid? CategoryId = null);
+
+/// <summary>Save a category's edit panel.</summary>
+/// <param name="Category">The category as it should be.</param>
+/// <param name="Original">As the till loaded it; refused if changed since.</param>
+public sealed record SaveCategoryRequest(Category Category, Category? Original = null);
+
+/// <summary>Save a group of extras (e.g. sauces, toppings).</summary>
+/// <param name="Group">The group as it should be.</param>
+/// <param name="Original">As the till loaded it; refused if changed since. Empty for a new group.</param>
+public sealed record SaveModifierGroupRequest(ModifierGroup Group, ModifierGroup? Original = null);
+
+/// <summary>Raised when an edit was based on an item that has changed since it was loaded.</summary>
+public sealed class ChangedElsewhereException : InvalidOperationException
+{
+    /// <summary>Creates the exception.</summary>
+    public ChangedElsewhereException()
+        : base("Someone else changed this on another till while you were editing. Open it again to see the latest, then make your change.")
+    {
+    }
+
+    /// <summary>Creates the exception with a message.</summary>
+    public ChangedElsewhereException(string message)
+        : base(message)
+    {
+    }
+
+    /// <summary>Creates the exception with a message and inner exception.</summary>
+    public ChangedElsewhereException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
+    /// <summary>Refuses the edit if the item no longer matches what the till loaded.</summary>
+    public static void ThrowIfChanged<T>(T current, T? original)
+        where T : class
+    {
+        if (original is not null && PosJson.Serialize(current) != PosJson.Serialize(original))
+        {
+            throw new ChangedElsewhereException();
+        }
+    }
+}

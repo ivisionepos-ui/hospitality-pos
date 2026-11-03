@@ -142,6 +142,13 @@ public sealed class HubDatabase : IDisposable
             CREATE INDEX ix_print_jobs_status ON print_jobs (status, created_at);
             CREATE INDEX ix_print_jobs_order ON print_jobs (order_id, kind);
             """),
+        (6, """
+            CREATE TABLE order_line_requests (
+                request_id  TEXT PRIMARY KEY,
+                order_id    TEXT NOT NULL,
+                at          TEXT NOT NULL
+            );
+            """),
     ];
 
     private readonly SqliteConnection _connection;

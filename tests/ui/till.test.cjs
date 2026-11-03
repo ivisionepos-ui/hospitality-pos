@@ -284,6 +284,117 @@ test('phone and eat-in orders are saved with the right type; the till closes wit
   await page.context().close();
 });
 
+test('manager edits the menu on the order layout; the cashier till updates live; clashes are caught', async () => {
+  const owner = { device: shop.owner.device, token: shop.owner.token };
+  const product = async name => (await call('GET', '/api/menu', owner)).products.find(p => p.name.en === name);
+  const cashier = await tillPage(shop.till1);
+  await login(cashier, '5931');
+  const page = await tillPage(shop.till2);
+  await login(page, '7402');
+
+  // Cashiers have no Edit menu, only Sold out items.
+  await cashier.getByRole('button', { name: 'More', exact: true }).click();
+  assert.equal(await top(cashier).getByRole('button', { name: 'Edit menu' }).count(), 0);
+  await top(cashier).getByRole('button', { name: 'Sold out items' }).click();
+  await top(cashier).getByRole('button', { name: 'Drinks', exact: true }).click();
+  await top(cashier).getByRole('button', { name: /Bottle 1.5L/ }).click();
+  await top(cashier).getByText('SOLD OUT — tap to bring back').waitFor();
+  await top(cashier).getByRole('button', { name: /Bottle 1.5L/ }).click();
+  await top(cashier).getByRole('button', { name: 'Done' }).click();
+  assert.equal((await product('Bottle 1.5L')).isSoldOut, false);
+
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Edit menu' }).click();
+  await page.getByText('EDIT MENU', { exact: true }).waitFor();
+
+  // Rename and re-price the 10" Margherita.
+  await page.locator('.cats').getByRole('button', { name: 'Pizzas' }).click();
+  await page.locator('.items').getByRole('button', { name: /Margherita/ }).click();
+  await page.getByLabel('Name (on receipts and kitchen tickets)').fill('Margherita classic');
+  await page.getByRole('button', { name: /Price of 10"/ }).click();
+  await pin(page, '850');
+  await top(page).getByRole('button', { name: 'Set price' }).click();
+  await shot(page, 'ui-edit-item');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByText('Margherita classic saved. All tills updated.').waitFor();
+  const margherita = await product('Margherita classic');
+  assert.deepEqual(margherita.variants.map(v => v.price.minorUnits), [850, 999, 1199]);
+  await cashier.locator('.cats').getByRole('button', { name: 'Pizzas', exact: true }).click();
+  await cashier.locator('.items').getByRole('button', { name: /Margherita classic.*from £8\.50/ }).waitFor(); // live on the other till
+
+  // A second size for coleslaw; sauce offered with the cheeseburger; a new sauce choice.
+  await page.locator('.cats').getByRole('button', { name: 'Sides' }).click();
+  await page.locator('.items').getByRole('button', { name: /Coleslaw/ }).click();
+  await page.getByRole('button', { name: '+ Add size' }).click();
+  await page.getByRole('button', { name: /Price of Large/ }).click();
+  await pin(page, '250');
+  await top(page).getByRole('button', { name: 'Set price' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByText('Coleslaw saved.').waitFor();
+  assert.deepEqual((await product('Coleslaw')).variants.map(v => [v.name.en, v.price.minorUnits]), [['Regular', 150], ['Large', 250]]);
+
+  await page.locator('.cats').getByRole('button', { name: 'Burgers' }).click();
+  await page.locator('.items').getByRole('button', { name: /^Cheeseburger/ }).click();
+  await page.getByRole('button', { name: 'Sauce', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit Sauce' }).click();
+  await top(page).getByRole('button', { name: '+ Add choice' }).click();
+  await top(page).getByLabel('Choice 6 name').fill('Harissa');
+  await top(page).getByRole('button', { name: 'Price of Harissa' }).click();
+  await pin(page, '30');
+  await top(page).getByRole('button', { name: 'Set price' }).click();
+  await top(page).getByRole('button', { name: 'Save extras' }).click();
+  await page.getByText('Sauce saved. Every item using it is updated.').waitFor();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByText('Cheeseburger saved.').waitFor();
+  const menu = await call('GET', '/api/menu', owner);
+  const sauce = menu.modifierGroups.find(g => g.name.en === 'Sauce');
+  assert.ok((await product('Cheeseburger')).modifierGroupIds.includes(sauce.id));
+  assert.deepEqual(sauce.options.at(-1).name.en + ' ' + sauce.options.at(-1).price.minorUnits, 'Harissa 30');
+
+  // A new category with a new item.
+  await page.getByRole('button', { name: '+ Category' }).click();
+  await top(page).getByLabel('Name, e.g. Wraps').fill('Wraps');
+  await top(page).getByRole('button', { name: 'Add' }).click();
+  await page.getByText('Wraps added.').waitFor();
+  await page.getByRole('button', { name: '+ Add item' }).click();
+  await page.getByLabel('Name (on receipts and kitchen tickets)').fill('Falafel wrap');
+  await page.getByRole('button', { name: /Price of Regular/ }).click();
+  await pin(page, '599');
+  await top(page).getByRole('button', { name: 'Set price' }).click();
+  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  await page.getByText('Falafel wrap saved.').waitFor();
+  const wraps = (await call('GET', '/api/menu', owner)).categories.find(c => c.name.en === 'Wraps');
+  assert.equal((await product('Falafel wrap')).categoryId, wraps.id);
+  await cashier.locator('.cats').getByRole('button', { name: 'Wraps', exact: true }).waitFor();
+
+  // Move Pepperoni to the front, then undo it.
+  await page.locator('.cats').getByRole('button', { name: 'Pizzas' }).click();
+  await page.locator('.items').getByRole('button', { name: /Pepperoni/ }).click();
+  await page.getByRole('button', { name: '◀ Earlier' }).click();
+  await page.locator('.items .item').first().filter({ hasText: 'Pepperoni' }).waitFor();
+  await page.getByRole('button', { name: 'Undo last' }).click();
+  await page.getByText(/^Undid: Moved "Pepperoni"/).waitFor();
+  await page.locator('.items .item').first().filter({ hasText: 'Margherita' }).waitFor();
+
+  // Someone else changes Hawaiian while it is open here: the save is refused, nothing is lost.
+  await page.locator('.items').getByRole('button', { name: /Hawaiian/ }).click();
+  const hawaiian = await product('Hawaiian');
+  await call('POST', `/api/menu/products/${hawaiian.id}/price`, owner, { variantId: hawaiian.variants[0].id, pricePence: 950 });
+  await page.getByLabel('Name (on receipts and kitchen tickets)').fill('Hawaiian special');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByText(/Someone else changed this on another till/).waitFor();
+  const after = await product('Hawaiian');
+  assert.equal(after.variants[0].price.minorUnits, 950);
+
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await top(page).getByRole('button', { name: 'Leave' }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await page.locator('.ticket-head').waitFor();
+  assert.deepEqual([...page.errors, ...cashier.errors], []);
+  await page.context().close();
+  await cashier.context().close();
+});
+
 test('every printout was made: kitchen tickets, additions, the void slip and receipts', async () => {
   const jobs = await call('GET', '/api/print-jobs', { device: shop.owner.device, token: shop.owner.token });
   const kinds = new Set(jobs.map(j => j.job.kind));

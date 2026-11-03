@@ -117,6 +117,13 @@ install on tills, no internet needed, and a hub update reaches every till on the
   card/cash work; each payment has its own id so a retry never charges twice. The receipt prints when fully paid.
 - **Orders:** today's orders with status and paid/due. Open one to add items (Send new), remove items (a manager's PIN
   if already in the kitchen; the kitchen gets a void slip), pay, reprint the receipt, cancel, or mark Collected.
+- **Edit menu (managers):** More → Edit menu. Same layout as taking orders, with an amber bar so it is never
+  mistaken for selling. Tap an item to change its name, button name, sizes and prices (price keypad), VAT type,
+  extras, sold out or hidden, or move it earlier/later or to another category. Tap the selected category tab to
+  change its name, colour, food type (receipt order), hidden or position. "+ Add item", "+ Category", new extras and
+  extra choices with prices. Undo last and the change log are in the bar. Changes show on every till at once; if
+  two people edit the same item, the second save is refused (nothing is overwritten) and the latest is shown.
+- **Sold out items (everyone taking orders):** More → Sold out items, one tap per item.
 - **More:** open/close the till with a blind cash count, paid in/out, X and Z reports, failed printouts, back up now,
   add a till (each shown only to roles allowed to use it).
 - **Live:** orders, payments and menu changes (e.g. sold out) appear on every till at once; printer and backup
@@ -263,13 +270,19 @@ under `Printing` → `ReceiptText`. UK VAT receipts must show the VAT number whe
 | PUT | /api/menu | manager | Import a whole menu (checked) |
 | POST | /api/menu/products/{id}/price, /rename | manager | Change price or name |
 | POST | /api/menu/products/{id}/sold-out | cashier, kitchen, manager | Sold out / back in stock |
+| PUT | /api/menu/products/{id} | manager | Save an item's edit panel (refused if changed elsewhere since loaded) |
+| POST | /api/menu/products | manager | Add an item |
+| POST | /api/menu/products/{id}/move | manager | Move an item (position, optional category) |
+| POST / PUT | /api/menu/categories[/{id}] | manager | Add a category / save its panel |
+| POST | /api/menu/categories/{id}/move | manager | Move a category tab |
+| PUT | /api/menu/modifier-groups/{id} | manager | Add or save a group of extras |
 | POST | /api/menu/undo | manager | Undo the last menu change |
 | POST | /api/orders | cashier, waiter | New order from what was picked; safe to resend |
 | POST | /api/orders/quote | cashier, waiter | Totals for an order being built; nothing saved, no number used |
 | POST | /api/menu/sample | manager | Load the sample takeaway menu (empty menu only) |
 | GET | /api/orders?date=&status=, /api/orders/{id} | any device | Orders for a trading day, one order (with paid and balance) |
 | GET | /api/orders/{id}/history | manager | Everything that happened to it |
-| POST | /api/orders/{id}/lines | cashier, waiter | Add items to an open order |
+| POST | /api/orders/{id}/lines | cashier, waiter | Add items to an open order; with a requestId, safe to resend |
 | POST | /api/orders/{id}/status | depends on status | Accept/reject (cashier), preparing/ready (kitchen), complete, cancel (manager) |
 | POST | /api/orders/{id}/send-to-kitchen | cashier, waiter | Send new items to the kitchen |
 | POST | /api/orders/{id}/lines/{lineId}/void | cashier; manager if in the kitchen | Remove an item |

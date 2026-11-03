@@ -4,6 +4,7 @@ import { api, ApiError } from './api.js';
 import { h, mount, money, newId, penceText, text, timeText, toast } from './dom.js';
 import { alertDialog, busy, confirmDialog, managerPinDialog, openDialog, textDialog } from './dialogs.js';
 import { dealDialog, itemOptionsDialog } from './item-dialogs.js';
+import { MenuEditor } from './editmenu.js';
 import { MenuView } from './menu.js';
 import { moreDialog } from './more.js';
 import { payDialog } from './pay.js';
@@ -106,6 +107,11 @@ export class Till {
     switch (event.kind) {
       case 'MenuChanged':
         await this.loadMenu();
+        if (this.editor) {
+          this.editor.renderCatalog(); // keep the edit panel as it is; a clash is caught when saving
+          break;
+        }
+
         this.render();
         if (this.draft.lines.length) this.requestQuote();
         break;
@@ -143,9 +149,37 @@ export class Till {
 
   // ---------- Layout ----------
 
+  /** Edit menu mode: same layout, the left side becomes the edit panel. The order in progress is kept. */
+  enterEditMode() {
+    this.editor = new MenuEditor(this);
+    this.render();
+  }
+
+  async leaveEditMode() {
+    if (this.editor?.isDirty() && !(await confirmDialog('Leave without saving?', 'Your changes have not been saved.', 'Leave'))) return;
+    this.editor = null;
+    await this.loadMenu();
+    this.render();
+    if (this.draft.lines.length) this.requestQuote();
+  }
+
   render() {
-    this.ticketEl = h('section', { class: 'ticket', 'aria-label': 'Order' });
+    this.ticketEl = h('section', { class: 'ticket', 'aria-label': this.editor ? 'Edit panel' : 'Order' });
     this.catalogEl = h('section', { class: 'catalog', 'aria-label': 'Menu' });
+    if (this.editor) {
+      mount(this.root,
+        h('header', { class: 'topbar topbar-edit' },
+          h('strong', { text: 'EDIT MENU' }),
+          h('span', { class: 'edit-note', text: 'Changes go live on every till' }),
+          h('div', { class: 'topbar-actions' },
+            h('button', { class: 'top-btn', onclick: () => this.editor.undo(), text: 'Undo last' }),
+            h('button', { class: 'top-btn', onclick: () => this.editor.showChanges(), text: 'Changes' }),
+            h('button', { class: 'top-btn top-btn-done', onclick: () => this.leaveEditMode(), text: 'Done' }))),
+        h('main', { class: 'till' }, this.ticketEl, this.catalogEl));
+      this.editor.render();
+      return;
+    }
+
     mount(this.root,
       h('header', { class: 'topbar' },
         h('div', { class: 'brand' }, h('strong', { text: this.ctx.device?.name ?? 'Till' })),
@@ -161,6 +195,7 @@ export class Till {
   }
 
   renderCatalog() {
+    if (this.editor) { this.editor.renderCatalog(); return; }
     if (!this.menu || this.menu.isEmpty) {
       mount(this.catalogEl, h('div', { class: 'empty' },
         h('h2', { text: 'The menu is empty' }),
@@ -277,6 +312,7 @@ export class Till {
   // ---------- The order (left) ----------
 
   renderTicket() {
+    if (this.editor) return;
     const saved = this.saved;
     const draft = this.draft.lines;
     const head = saved
@@ -430,7 +466,11 @@ export class Till {
       this.draft.lines = [];
       added = true;
     } else if (this.draft.lines.length) {
-      await api.post(`/api/orders/${this.saved.id}/lines`, { lines: this.draft.lines.map(lineRequest) });
+      // One request id per set of new items, reused if the same items are sent again, so they are added only once.
+      const lines = this.draft.lines.map(lineRequest);
+      const content = JSON.stringify(lines);
+      if (this.draft.addContent !== content) { this.draft.addRequestId = newId(); this.draft.addContent = content; }
+      await api.post(`/api/orders/${this.saved.id}/lines`, { lines, requestId: this.draft.addRequestId });
       this.draft.lines = [];
       added = true;
     }

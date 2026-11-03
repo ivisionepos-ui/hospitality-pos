@@ -285,6 +285,69 @@ public static class Endpoints
             Change(menu.Edit(m => m.RenameProduct(productId, request.Name, Caller(http).Staff!.Id, request.ButtonName)))))
             .ForStaff(Permission.EditMenu);
 
+        // ----- Edit menu mode -----
+        api.MapPut("/menu/products/{productId:guid}", (HttpContext http, MenuService menu, Guid productId, SaveProductRequest request) => Handle(() =>
+        {
+            if (request.Product.Id != productId)
+            {
+                throw new ArgumentException("The item id does not match the address.");
+            }
+
+            return Change(menu.Edit(m =>
+            {
+                ChangedElsewhereException.ThrowIfChanged(m.GetProduct(productId), request.Original);
+                return m.UpdateProduct(request.Product, Caller(http).Staff!.Id);
+            }));
+        })).ForStaff(Permission.EditMenu);
+
+        api.MapPost("/menu/products", (HttpContext http, MenuService menu, AddProductRequest request) => Handle(() =>
+            Change(menu.Edit(m => m.AddProduct(request.Product, Caller(http).Staff!.Id, request.Position)))))
+            .ForStaff(Permission.EditMenu);
+
+        api.MapPost("/menu/products/{productId:guid}/move", (HttpContext http, MenuService menu, Guid productId, MoveRequest request) => Handle(() =>
+            Change(menu.Edit(m => m.MoveProduct(productId, request.CategoryId ?? m.GetProduct(productId).CategoryId, request.Position, Caller(http).Staff!.Id)))))
+            .ForStaff(Permission.EditMenu);
+
+        api.MapPost("/menu/categories", (HttpContext http, MenuService menu, Category category) => Handle(() =>
+            Change(menu.Edit(m => m.AddCategory(category, Caller(http).Staff!.Id)))))
+            .ForStaff(Permission.EditMenu);
+
+        api.MapPut("/menu/categories/{categoryId:guid}", (HttpContext http, MenuService menu, Guid categoryId, SaveCategoryRequest request) => Handle(() =>
+        {
+            if (request.Category.Id != categoryId)
+            {
+                throw new ArgumentException("The category id does not match the address.");
+            }
+
+            return Change(menu.Edit(m =>
+            {
+                ChangedElsewhereException.ThrowIfChanged(m.GetCategory(categoryId), request.Original);
+                return m.UpdateCategory(request.Category, Caller(http).Staff!.Id);
+            }));
+        })).ForStaff(Permission.EditMenu);
+
+        api.MapPost("/menu/categories/{categoryId:guid}/move", (HttpContext http, MenuService menu, Guid categoryId, MoveRequest request) => Handle(() =>
+            Change(menu.Edit(m => m.MoveCategory(categoryId, request.Position, Caller(http).Staff!.Id)))))
+            .ForStaff(Permission.EditMenu);
+
+        api.MapPut("/menu/modifier-groups/{groupId:guid}", (HttpContext http, MenuService menu, Guid groupId, SaveModifierGroupRequest request) => Handle(() =>
+        {
+            if (request.Group.Id != groupId)
+            {
+                throw new ArgumentException("The extras id does not match the address.");
+            }
+
+            return Change(menu.Edit(m =>
+            {
+                if (request.Original is not null)
+                {
+                    ChangedElsewhereException.ThrowIfChanged(m.GetModifierGroup(groupId), request.Original);
+                }
+
+                return m.SaveModifierGroup(request.Group, Caller(http).Staff!.Id);
+            }));
+        })).ForStaff(Permission.EditMenu);
+
         api.MapPost("/menu/undo", (HttpContext http, MenuService menu) => Handle(() =>
             Change(menu.Edit(m => m.UndoLast(Caller(http).Staff!.Id)))))
             .ForStaff(Permission.EditMenu);
@@ -321,7 +384,11 @@ public static class Endpoints
             .ForStaff(Permission.ViewReports);
 
         api.MapPost("/orders/{orderId:guid}/lines", (HttpContext http, OrderService orders, Guid orderId, AddLinesRequest request) =>
-            Handle(() => Results.Ok(OrderView.From(orders.AddLines(orderId, request.Lines, Actor(http))))))
+            Handle(() =>
+            {
+                var (order, duplicate) = orders.AddLines(orderId, request.Lines, Actor(http), request.RequestId);
+                return Results.Ok(OrderView.From(order, duplicate));
+            }))
             .ForStaff(Permission.TakeOrders);
 
         api.MapPost("/orders/{orderId:guid}/status", (HttpContext http, OrderService orders, TillService tills, PrintService print, Guid orderId, StatusRequest request) => Handle(() =>
@@ -452,6 +519,10 @@ public static class Endpoints
         catch (InvalidSelectionException ex)
         {
             return Results.Json(new ErrorView("InvalidSelection", ex.Message, ex.Problems), PosJson.Options, statusCode: StatusCodes.Status422UnprocessableEntity);
+        }
+        catch (ChangedElsewhereException ex)
+        {
+            return Error("ChangedElsewhere", ex.Message, StatusCodes.Status409Conflict);
         }
         catch (IdempotencyConflictException ex)
         {

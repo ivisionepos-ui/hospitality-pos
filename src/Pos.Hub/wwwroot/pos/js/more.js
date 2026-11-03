@@ -4,6 +4,7 @@ import { h, money, penceText, timeText, toast } from './dom.js';
 import { alertDialog, amountDialog, busy, confirmDialog, openDialog, textDialog } from './dialogs.js';
 import { ensureShift } from './pay.js';
 import { withApproval } from './till.js';
+import { soldOutDialog } from './editmenu.js';
 
 function table(rows) {
   return h('table', { class: 'report' }, h('tbody', {}, rows.filter(Boolean).map(([label, value, strong]) =>
@@ -123,6 +124,8 @@ export function moreDialog(till) {
       h('button', { class: 'btn menu-btn', onclick: run(close, failedPrints), text: 'Failed printouts' }),
       can('ViewReports') ? h('button', { class: 'btn menu-btn', onclick: run(close, backupNow), text: 'Back up now' }) : null,
       can('ManageDevices') ? h('button', { class: 'btn menu-btn', onclick: run(close, addTill), text: 'Add a till' }) : null,
-      can('EditMenu') ? h('button', { class: 'btn menu-btn', disabled: true, text: 'Edit menu (next update)' }) : null),
+      h('h3', { class: 'menu-heading', text: 'Menu' }),
+      h('button', { class: 'btn menu-btn', onclick: run(close, () => soldOutDialog(till)), text: 'Sold out items' }),
+      can('EditMenu') ? h('button', { class: 'btn menu-btn', onclick: run(close, () => till.enterEditMode()), text: 'Edit menu' }) : null),
   }));
 }

@@ -97,4 +97,10 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-091 | 2026-11-03 | Strict Content-Security-Policy on the screen; all names inserted as text | Blocks injected scripts even if a menu name contained code |
 | C-092 | 2026-11-03 | Typing on a pre-filled amount replaces it | Matches what staff expect from a selected field; fewer taps |
 | C-093 | 2026-11-03 | Browser tests (Playwright + Node's test runner) run against a real hub, locally and in CI | The screen is only "done" when a real browser has used it end to end |
-| C-094 | 2026-11-03 | Known gap: adding items to a saved order is not yet protected against a duplicate if the connection drops after the hub saved them | To fix with till-made line ids (next order-screen update) |
+| C-094 | 2026-11-03 | (Resolved by C-097) Adding items to a saved order was not protected against a duplicate after a dropped connection | — |
+| C-095 | 2026-11-03 | Edit menu mode uses the order screen's layout: same tabs and buttons on the right, edit panel in place of the order on the left; amber bar | Owner's request; staff already know where everything is; the colour makes the mode obvious |
+| C-096 | 2026-11-03 | Edits carry the item as loaded; the hub refuses the save if it changed since (409 ChangedElsewhere) | Two managers on two tills never silently overwrite each other |
+| C-097 | 2026-11-03 | Adding items to an order carries a till-made request id, recorded in the same transaction (table order_line_requests, schema 6); a resend returns the order unchanged | A dropped connection can never add the same items twice |
+| C-098 | 2026-11-03 | Moving buttons uses Earlier / Later and Move-to-category buttons instead of drag and drop for now | Reliable on every touch screen; drag and drop can be added later on top of the same move route |
+| C-099 | 2026-11-03 | Meal-deal choices are not edited on the till yet (name, price, VAT, sold out and hidden are) | Deal slots are complex; they come with the back office |
+| C-100 | 2026-11-03 | Sold out can be switched by anyone taking orders from More → Sold out items | The counter must react straight away when something runs out |

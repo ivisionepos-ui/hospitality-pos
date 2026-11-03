@@ -87,6 +87,7 @@ public class SaveAndLoadTests
         {
             OrderId = DeviceIds.New(clock), IdempotencyKey = "till1-0001", BranchId = Guid.NewGuid(), BranchCode = "LDN1",
             Source = OrderSource.Phone, Type = OrderType.Delivery, CreatedBy = Cashier,
+            Contact = new OrderContact("Sam Patel", "07700 900123", new DeliveryAddress("12 High Street", "Flat 2", "Leeds", "ls1 4ap"), "Side door"),
             Lines = [new(builder.ToLine(deal), builder.DisplayFor(deal), "Ring the bell"), new(builder.ToLine(can), builder.DisplayFor(can))],
         }).Order;
         order.ApplyDiscount(new OrderDiscountInput(OrderDiscountType.Amount, 300, "Regular", Cashier.UserId), Cashier);
@@ -102,6 +103,8 @@ public class SaveAndLoadTests
         Assert.Equal(order.Number, loaded.Number);
         Assert.Equal(order.History.Count, loaded.History.Count);
         Assert.Equal("Ring the bell", loaded.Lines[0].Note);
+        Assert.Equal("12 High Street, Flat 2, Leeds, LS1 4AP", loaded.Contact!.Address!.ToString());
+        Assert.Equal("07700900123", loaded.Contact.Phone);
         Assert.True(loaded.Lines[1].IsVoided);
         Assert.IsType<MealDealLineInput>(loaded.Lines[0].Pricing);
         Assert.Equal(json, PosJson.Serialize(loaded.ToState()));

@@ -18,6 +18,39 @@ internal sealed class TestClock(DateTimeOffset now) : TimeProvider
     public override DateTimeOffset GetUtcNow() => Now;
 }
 
+/// <summary>A postcode service with a few known places (1 mile ≈ 0.01448° of latitude).</summary>
+internal sealed class FakePostcodes : Delivery.IPostcodeLookup
+{
+    public const string Shop = "LS1 4AP";
+    private const double Lat = 53.8;
+    private const double Lon = -1.55;
+    private const double Mile = 1 / 69.05;
+
+    private readonly Dictionary<string, Delivery.PostcodeLocation> _places = new(StringComparer.Ordinal)
+    {
+        [Shop] = new(Shop, Lat, Lon, "Leeds"),
+        ["LS2 9JT"] = new("LS2 9JT", Lat + Mile, Lon, "Leeds"),          // 1 mile straight → 1.3 by road
+        ["LS7 3AA"] = new("LS7 3AA", Lat + (3 * Mile), Lon, "Leeds"),    // 3 miles → 3.9 by road
+        ["HG1 1AA"] = new("HG1 1AA", Lat + (10 * Mile), Lon, "Harrogate"), // too far
+    };
+
+    /// <summary>When true, the service is "down".</summary>
+    public bool Down { get; set; }
+
+    public int Calls { get; private set; }
+
+    public Task<Delivery.PostcodeLocation?> FindAsync(string postcode, CancellationToken cancellationToken)
+    {
+        Calls++;
+        if (Down)
+        {
+            throw new Delivery.PostcodeServiceUnavailableException();
+        }
+
+        return Task.FromResult(_places.GetValueOrDefault(postcode));
+    }
+}
+
 /// <summary>Runs a real hub in memory with its own database file, and talks to it over HTTP.</summary>
 internal sealed class HubTestHost : WebApplicationFactory<Program>
 {
@@ -41,6 +74,9 @@ internal sealed class HubTestHost : WebApplicationFactory<Program>
 
     public TestClock Clock { get; }
 
+    /// <summary>Stand-in for postcodes.io: known places, no internet.</summary>
+    public FakePostcodes Postcodes { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("Hub:DatabasePath", DatabasePath);
@@ -52,6 +88,7 @@ internal sealed class HubTestHost : WebApplicationFactory<Program>
         builder.UseSetting("Backup:Folder", BackupFolder);
         builder.UseSetting("Printing:RetrySeconds", "0.1");
         builder.UseSetting("Printing:MaxAttempts", "2");
+        builder.UseSetting("Delivery:ShopPostcode", FakePostcodes.Shop);
         foreach (var (key, value) in Settings)
         {
             builder.UseSetting(key, value);
@@ -60,6 +97,8 @@ internal sealed class HubTestHost : WebApplicationFactory<Program>
         {
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(Clock);
+            services.RemoveAll<Delivery.IPostcodeLookup>();
+            services.AddSingleton<Delivery.IPostcodeLookup>(Postcodes);
         });
     }
 }

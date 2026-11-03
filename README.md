@@ -123,6 +123,14 @@ install on tills, no internet needed, and a hub update reaches every till on the
   change its name, colour, food type (receipt order), hidden or position. "+ Add item", "+ Category", new extras and
   extra choices with prices. Undo last and the change log are in the bar. Changes show on every till at once; if
   two people edit the same item, the second save is refused (nothing is overwritten) and the latest is shown.
+- **Phone orders and delivery:** choose Collection or Delivery. The customer panel finds past customers as you type
+  part of their phone number (name, address and driver notes fill in). For delivery: house number and street,
+  postcode and **Check postcode**, which gives the distance from the shop (free postcodes.io data, remembered by
+  the hub so repeat postcodes work without internet). No internet: type the miles. The delivery charge comes from
+  the distance bands; Send and Pay are blocked, with the reason, when the order is under the minimum or too far,
+  unless a manager agrees a different fee (Change delivery fee, manager PIN). Sending a delivery prints the kitchen
+  ticket and the receipt for the bag, with the customer, address, notes and AMOUNT DUE (or PAID). Address and
+  distance can be corrected on a saved order (⋯ → Change customer or address).
 - **Sold out items (everyone taking orders):** More → Sold out items, one tap per item.
 - **More:** open/close the till with a blind cash count, paid in/out, X and Z reports, failed printouts, back up now,
   add a till (each shown only to roles allowed to use it).
@@ -134,6 +142,13 @@ install on tills, no internet needed, and a hub update reaches every till on the
 
 Till screen tests: after a Release build, `npm install --prefix tests/ui`, `npx --prefix tests/ui playwright install chromium`,
 then `node --test --test-concurrency=1 tests/ui/till.test.cjs`. They start their own hub on a temporary folder.
+
+### Delivery settings
+In `appsettings.json` → `Delivery`: `ShopPostcode` (required for the postcode check), `MaximumMiles`,
+`MinimumOrderPence`, `FreeOverPence`, and either `Bands` (from/to miles, fee, optional minimum order per band) or
+`RatePerMilePence` + `MinimumFeePence`. Distances are straight-line × `RoadFactor` (1.3) until a road-distance
+service is added. House-by-house address lists need a paid Royal Mail PAF service; the hub is ready for one
+(`PostcodeCheck.Addresses`) but none is connected.
 
 ### Backups
 Each backup is one zip in `data/backups` named `hub-backup-<branch>-<yyyyMMdd-HHmmss>.zip` (shop time). It holds a
@@ -265,6 +280,11 @@ under `Printing` → `ReceiptText`. UK VAT receipts must show the VAT number whe
 | POST | /api/auth/login, /api/auth/logout | device / staff | PIN login, logout |
 | GET | /api/auth/me | staff | Who is logged in and what they may do |
 | GET / POST / DELETE | /api/staff[/{id}] | manager, owner | List, add, remove staff |
+| GET | /api/delivery/check?postcode= | cashier | Postcode check: tidy postcode, town, distance from the shop (503 LookupUnavailable when offline) |
+| GET | /api/delivery/settings | any device | Delivery bands, minimum order, maximum distance |
+| GET | /api/customers?phone= | cashier | Past customers whose phone contains these digits (4+) |
+| POST | /api/orders/{id}/contact | cashier | Change the customer's details on an open order |
+| POST | /api/orders/{id}/delivery | cashier (manager for a changed fee) | Change the distance or fee on an open delivery order |
 | POST | /api/staff/{id}/pin | self, manager | Change a PIN |
 | GET | /api/menu, /api/menu/changes?since=N | any device | Menu and change log |
 | PUT | /api/menu | manager | Import a whole menu (checked) |
@@ -277,7 +297,7 @@ under `Printing` → `ReceiptText`. UK VAT receipts must show the VAT number whe
 | POST | /api/menu/categories/{id}/move | manager | Move a category tab |
 | PUT | /api/menu/modifier-groups/{id} | manager | Add or save a group of extras |
 | POST | /api/menu/undo | manager | Undo the last menu change |
-| POST | /api/orders | cashier, waiter | New order from what was picked; safe to resend |
+| POST | /api/orders | cashier, waiter | New order from what was picked (with contact and delivery for phone orders; a changed delivery fee needs a manager); safe to resend |
 | POST | /api/orders/quote | cashier, waiter | Totals for an order being built; nothing saved, no number used |
 | POST | /api/menu/sample | manager | Load the sample takeaway menu (empty menu only) |
 | GET | /api/orders?date=&status=, /api/orders/{id} | any device | Orders for a trading day, one order (with paid and balance) |

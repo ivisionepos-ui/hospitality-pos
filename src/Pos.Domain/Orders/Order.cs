@@ -78,6 +78,9 @@ public enum OrderEventKind
 
     /// <summary>A service charge was added or removed.</summary>
     ServiceChargeChanged,
+
+    /// <summary>The customer's name, phone, address or notes changed.</summary>
+    ContactChanged,
 }
 
 /// <summary>One entry in an order's history. Nothing is ever deleted from it.</summary>
@@ -180,6 +183,7 @@ public sealed class Order
             ? new DeliveryInput(d.DistanceMiles, DeliveryChargeTable.FromState(d.Table), d.Override)
             : null;
         ServiceCharge = state.ServiceCharge;
+        Contact = state.Contact;
         Totals = Recalculate(_lines, Discount, Delivery, ServiceCharge);
     }
 
@@ -213,6 +217,7 @@ public sealed class Order
         Discount = Discount,
         Delivery = Delivery is { } d ? new DeliveryState(d.DistanceMiles, d.Table.ToState(), d.Override) : null,
         ServiceCharge = ServiceCharge,
+        Contact = Contact,
     };
 
     /// <summary>Order id (made on the device that created it).</summary>
@@ -268,6 +273,9 @@ public sealed class Order
 
     /// <summary>Delivery details, or null.</summary>
     public DeliveryInput? Delivery { get; private set; }
+
+    /// <summary>Customer name, phone, delivery address and notes, or null.</summary>
+    public OrderContact? Contact { get; private set; }
 
     /// <summary>Service charge, or null.</summary>
     public ServiceChargeInput? ServiceCharge { get; private set; }
@@ -389,6 +397,21 @@ public sealed class Order
         Discount = null;
         Record(actor, OrderEventKind.DiscountChanged, "Discount removed");
     }
+
+    /// <summary>Sets or changes the customer's details (recorded in the history).</summary>
+    public void SetContact(OrderContact contact, OrderActor actor)
+    {
+        ArgumentNullException.ThrowIfNull(contact);
+        EnsureOpen();
+        Contact = contact.Checked();
+        Record(actor, OrderEventKind.ContactChanged, $"Customer details: {Describe(Contact)}");
+    }
+
+    /// <summary>Customer details given when the order is created (part of the "created" entry).</summary>
+    internal void SetContactAtCreation(OrderContact contact) => Contact = contact.Checked();
+
+    private static string Describe(OrderContact contact) =>
+        string.Join(", ", new[] { contact.Name, contact.Phone, contact.Address?.ToString() }.Where(p => !string.IsNullOrEmpty(p)));
 
     /// <summary>Sets the delivery distance and charges (delivery orders only).</summary>
     public void SetDelivery(DeliveryInput delivery, OrderActor actor)
@@ -570,6 +593,9 @@ public sealed record OrderState
 
     /// <summary>Delivery details.</summary>
     public DeliveryState? Delivery { get; init; }
+
+    /// <summary>Customer details.</summary>
+    public OrderContact? Contact { get; init; }
 
     /// <summary>Service charge.</summary>
     public ServiceChargeInput? ServiceCharge { get; init; }

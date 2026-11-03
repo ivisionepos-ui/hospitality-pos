@@ -70,6 +70,7 @@ public static class Layouts
             blocks.Add(new PrintText($"Served by {servedBy}", PrintAlign.Start, PrintSize.Small));
         }
 
+        AddContact(blocks, order, PrintSize.Normal);
         blocks.Add(new PrintRule());
 
         var priced = PricedByLine(order);
@@ -153,6 +154,16 @@ public static class Layouts
             }
         }
 
+        // The driver must see at a glance whether to collect money.
+        if (order.Type == OrderType.Delivery)
+        {
+            var due = payments?.Balance ?? t.Total;
+            blocks.Add(new PrintSpace(0.5));
+            blocks.Add(due.MinorUnits > 0
+                ? new PrintText($"AMOUNT DUE {Money(due)}", PrintAlign.Center, PrintSize.Large, Bold: true, Inverted: true)
+                : new PrintText("PAID - NOTHING TO COLLECT", PrintAlign.Center, PrintSize.Large, Bold: true));
+        }
+
         if (t.VatSummary.Count > 0)
         {
             blocks.Add(new PrintRule());
@@ -203,8 +214,9 @@ public static class Layouts
             new PrintText(order.Number.Display, PrintAlign.Center, PrintSize.Huge, Bold: true),
             new PrintText(OrderKind(order), PrintAlign.Center, PrintSize.Large, Bold: true),
             new PrintText($"Ordered {LocalTime(order.CreatedAt, timeZone)}", PrintAlign.Center),
-            new PrintRule(),
         };
+        AddContact(blocks, order, PrintSize.Normal);
+        blocks.Add(new PrintRule());
 
         foreach (var line in lines.OrderBy(l => l.Display.CourseSortOrder).ThenBy(l => l.EntryNumber))
         {
@@ -385,6 +397,45 @@ public static class Layouts
             }
         }
     }
+
+    /// <summary>Customer name, phone, delivery address and notes, when the order has them.</summary>
+    private static void AddContact(List<PrintBlock> blocks, Order order, PrintSize size)
+    {
+        if (order.Contact is not { } c)
+        {
+            return;
+        }
+
+        blocks.Add(new PrintRule());
+        if (c.Name is { } name)
+        {
+            blocks.Add(new PrintText(name, Size: PrintSize.Large, Bold: true));
+        }
+
+        if (c.Phone is { } phone)
+        {
+            blocks.Add(new PrintText($"Tel: {PhoneText(phone)}", Size: size));
+        }
+
+        if (c.Address is { } a)
+        {
+            blocks.Add(new PrintText(a.Line1, Size: size, Bold: true));
+            foreach (var part in new[] { a.Line2, a.Town }.Where(p => !string.IsNullOrWhiteSpace(p)))
+            {
+                blocks.Add(new PrintText(part!, Size: size));
+            }
+
+            blocks.Add(new PrintText(a.Postcode, Size: size, Bold: true));
+        }
+
+        if (c.Notes is { } notes)
+        {
+            blocks.Add(new PrintText($"** {notes} **", Size: size, Bold: true));
+        }
+    }
+
+    /// <summary>"07700900123" as "07700 900123".</summary>
+    private static string PhoneText(string digits) => digits.Length == 11 ? $"{digits[..5]} {digits[5..]}" : digits;
 
     /// <summary>"+ Garlic", but a removal such as "No onion" is printed as it is.</summary>
     private static string Extra(string name) =>

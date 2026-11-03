@@ -46,7 +46,7 @@ internal static class PrintSamples
     }
 
     /// <summary>Builds the sample order and its payments.</summary>
-    public static (Order Order, OrderPayments Payments) Order()
+    public static (Order Order, OrderPayments Payments) Order(OrderType type = OrderType.Takeaway)
     {
         var menu = Menu();
         var builder = new MenuOrderBuilder(menu);
@@ -68,7 +68,7 @@ internal static class PrintSamples
         var order = intake.Submit(new NewOrder
         {
             OrderId = DeviceIds.New(clock), IdempotencyKey = "sample", BranchId = Guid.NewGuid(), BranchCode = "OG1",
-            Source = OrderSource.Phone, Type = OrderType.Takeaway, CreatedBy = Cashier,
+            Source = OrderSource.Phone, Type = type, CreatedBy = Cashier,
             Lines =
             [
                 new NewOrderLine(builder.ToLine(cans), builder.DisplayFor(cans)),

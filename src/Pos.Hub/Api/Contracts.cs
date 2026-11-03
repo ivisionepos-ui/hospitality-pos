@@ -13,6 +13,8 @@ namespace Pos.Hub.Api;
 /// <param name="CustomerId">Customer, if known.</param>
 /// <param name="TableId">Table, for table service.</param>
 /// <param name="Lines">Items and meal deals.</param>
+/// <param name="Contact">Customer name, phone, address and notes (phone and delivery orders). With a phone, the customer is remembered.</param>
+/// <param name="Delivery">Distance and any fee change (delivery orders).</param>
 public sealed record CreateOrderRequest(
     Guid OrderId,
     string IdempotencyKey,
@@ -20,7 +22,24 @@ public sealed record CreateOrderRequest(
     OrderType Type,
     Guid? CustomerId,
     Guid? TableId,
-    IReadOnlyList<OrderLineRequest>? Lines);
+    IReadOnlyList<OrderLineRequest>? Lines,
+    OrderContact? Contact = null,
+    DeliveryRequest? Delivery = null);
+
+/// <summary>Delivery distance, and a changed fee if a manager agreed one.</summary>
+/// <param name="DistanceMiles">Distance from the shop, from the postcode check or typed in.</param>
+/// <param name="FeeOverridePence">A different fee in pence (needs a manager); empty = the normal charge.</param>
+/// <param name="OverrideReason">Why the fee was changed.</param>
+public sealed record DeliveryRequest(decimal DistanceMiles, long? FeeOverridePence = null, string? OverrideReason = null);
+
+/// <summary>Delivery as shown on the till.</summary>
+/// <param name="DistanceMiles">Distance used.</param>
+/// <param name="Status">Ok, BelowMinimumOrder or BeyondMaximumDistance.</param>
+/// <param name="Fee">Fee charged.</param>
+/// <param name="MinimumOrder">Minimum order that applies, if any.</param>
+/// <param name="IsFree">Free because the order is big enough.</param>
+/// <param name="Overridden">A manager changed the fee.</param>
+public sealed record DeliveryView(decimal DistanceMiles, Pos.Domain.Delivery.DeliveryQuoteStatus Status, Money Fee, Money? MinimumOrder, bool IsFree, bool Overridden);
 
 /// <summary>One item or meal deal picked on the till. With Choices it is a meal deal.</summary>
 /// <param name="ProductId">Item or deal.</param>
@@ -181,8 +200,20 @@ public sealed record OrderView(
             order.Id, order.Number.Display, order.Number.Reference, order.Number.BusinessDate, order.Status, order.Source, order.Type,
             order.CreatedAt, lines, t.GoodsTotal, t.Discount?.AmountOff, t.Delivery?.Fee, t.ServiceCharge?.Amount, t.Total,
             [.. t.VatSummary.Select(v => new VatView(v.Rate.Code, v.Rate.Percent, v.Gross, v.Net, v.Vat))],
-            t.OutsideScopeOfVat, duplicate);
+            t.OutsideScopeOfVat, duplicate)
+        {
+            Contact = order.Contact,
+            Delivery = t.Delivery is { } d
+                ? new DeliveryView(d.Quote.DistanceMiles, d.Override is null ? d.Quote.Status : Pos.Domain.Delivery.DeliveryQuoteStatus.Ok, d.Fee, d.Quote.MinimumOrder, d.Quote.IsFreeDelivery, d.Override is not null)
+                : null,
+        };
     }
+
+    /// <summary>Customer details, if any.</summary>
+    public OrderContact? Contact { get; init; }
+
+    /// <summary>Delivery distance, fee and whether it is allowed, for delivery orders.</summary>
+    public DeliveryView? Delivery { get; init; }
 }
 
 /// <summary>Open a shift.</summary>

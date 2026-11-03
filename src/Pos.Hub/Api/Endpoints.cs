@@ -6,6 +6,7 @@ using Pos.Domain.Payments;
 using Pos.Domain.Pricing;
 using Pos.Domain.Staff;
 using Pos.Hub.Backups;
+using Pos.Hub.Delivery;
 using Pos.Hub.Printing;
 using Pos.Hub.Security;
 using static Pos.Hub.Security.AccessFilter;
@@ -357,7 +358,9 @@ public static class Endpoints
     {
         api.MapPost("/orders", (HttpContext http, OrderService orders, CreateOrderRequest request) => Handle(() =>
         {
-            var result = orders.Submit(request, Actor(http));
+            // A changed delivery fee needs a manager (the logged-in one, or a manager's PIN).
+            var feeApprover = request.Delivery?.FeeOverridePence is null ? Actor(http).UserId : Approver(http, Permission.ApproveDiscounts);
+            var result = orders.Submit(request, Actor(http), feeApprover);
             var view = OrderView.From(result.Order, result.WasDuplicate);
             return result.WasDuplicate ? Results.Ok(view) : Results.Created($"/api/orders/{result.Order.Id}", view);
         })).ForStaff(Permission.TakeOrders);
@@ -389,6 +392,40 @@ public static class Endpoints
                 var (order, duplicate) = orders.AddLines(orderId, request.Lines, Actor(http), request.RequestId);
                 return Results.Ok(OrderView.From(order, duplicate));
             }))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapPost("/orders/{orderId:guid}/contact", (HttpContext http, OrderService orders, Guid orderId, OrderContact contact) =>
+            Handle(() => Results.Ok(OrderView.From(orders.ChangeContact(orderId, contact, Actor(http))))))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapPost("/orders/{orderId:guid}/delivery", (HttpContext http, OrderService orders, Guid orderId, DeliveryRequest delivery) =>
+            Handle(() =>
+            {
+                var approver = delivery.FeeOverridePence is null ? Actor(http).UserId : Approver(http, Permission.ApproveDiscounts);
+                return Results.Ok(OrderView.From(orders.ChangeDelivery(orderId, delivery, Actor(http), approver)));
+            }))
+            .ForStaff(Permission.TakeOrders);
+
+        // ----- Delivery and customers -----
+        api.MapGet("/delivery/check", (DeliveryService delivery, string? postcode, CancellationToken cancel) =>
+            HandleAsync(async () => Results.Ok(await delivery.CheckAsync(postcode ?? string.Empty, cancel).ConfigureAwait(false))))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapGet("/delivery/settings", (DeliveryService delivery) => Handle(() =>
+        {
+            var s = delivery.Settings;
+            return Results.Ok(new
+            {
+                shopPostcodeSet = UkPostcode.TryNormalise(s.ShopPostcode, out _),
+                s.MaximumMiles,
+                s.MinimumOrderPence,
+                s.FreeOverPence,
+                s.RatePerMilePence,
+                bands = s.Bands,
+            });
+        })).ForDevices();
+
+        api.MapGet("/customers", (CustomerService customers, string? phone) => Handle(() => Results.Ok(customers.Search(phone ?? string.Empty))))
             .ForStaff(Permission.TakeOrders);
 
         api.MapPost("/orders/{orderId:guid}/status", (HttpContext http, OrderService orders, TillService tills, PrintService print, Guid orderId, StatusRequest request) => Handle(() =>
@@ -454,6 +491,12 @@ public static class Endpoints
             {
                 var sentBefore = o.Lines.Any(l => l.SentToKitchen && !l.IsVoided);
                 var lines = o.SendToKitchen(Actor(http));
+                // Delivery: the receipt goes in the bag with the food, showing what the driver collects.
+                if (lines.Count > 0 && o.Type == Pos.Domain.Tax.OrderType.Delivery && print.Settings.AutoPrintReceipt && !print.HasReceipt(o.Id))
+                {
+                    print.QueueReceipt(o.Id);
+                }
+
                 if (lines.Count > 0 && print.Settings.AutoPrintKitchen)
                 {
                     print.QueueKitchen(o, lines, sentBefore ? KitchenTicketKind.Additional : KitchenTicketKind.New);
@@ -512,43 +555,39 @@ public static class Endpoints
         {
             return action();
         }
-        catch (AccessDeniedException ex)
+        catch (Exception ex) when (ErrorFor(ex) is { } refusal)
         {
-            return Error(ex.Code, ex.Message, ex.StatusCode);
-        }
-        catch (InvalidSelectionException ex)
-        {
-            return Results.Json(new ErrorView("InvalidSelection", ex.Message, ex.Problems), PosJson.Options, statusCode: StatusCodes.Status422UnprocessableEntity);
-        }
-        catch (ChangedElsewhereException ex)
-        {
-            return Error("ChangedElsewhere", ex.Message, StatusCodes.Status409Conflict);
-        }
-        catch (IdempotencyConflictException ex)
-        {
-            return Error("DuplicateKey", ex.Message, StatusCodes.Status409Conflict);
-        }
-        catch (DiscountApprovalRequiredException ex)
-        {
-            return Error("ApprovalRequired", ex.Message, StatusCodes.Status403Forbidden);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return Error("NotFound", ex.Message, StatusCodes.Status404NotFound);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Error("NotAllowed", ex.Message, StatusCodes.Status409Conflict);
-        }
-        catch (ArgumentException ex)
-        {
-            return Error("Invalid", ex.Message, StatusCodes.Status400BadRequest);
-        }
-        catch (JsonException ex)
-        {
-            return Error("Invalid", ex.Message, StatusCodes.Status400BadRequest);
+            return refusal;
         }
     }
+
+    private static async Task<IResult> HandleAsync(Func<Task<IResult>> action)
+    {
+        try
+        {
+            return await action().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ErrorFor(ex) is { } refusal)
+        {
+            return refusal;
+        }
+    }
+
+    /// <summary>A clear answer for the till for each kind of refusal; null for real faults (logged as server errors).</summary>
+    private static IResult? ErrorFor(Exception exception) => exception switch
+    {
+        AccessDeniedException ex => Error(ex.Code, ex.Message, ex.StatusCode),
+        InvalidSelectionException ex => Results.Json(new ErrorView("InvalidSelection", ex.Message, ex.Problems), PosJson.Options, statusCode: StatusCodes.Status422UnprocessableEntity),
+        ChangedElsewhereException ex => Error("ChangedElsewhere", ex.Message, StatusCodes.Status409Conflict),
+        IdempotencyConflictException ex => Error("DuplicateKey", ex.Message, StatusCodes.Status409Conflict),
+        DiscountApprovalRequiredException ex => Error("ApprovalRequired", ex.Message, StatusCodes.Status403Forbidden),
+        Delivery.PostcodeServiceUnavailableException ex => Error("LookupUnavailable", ex.Message, StatusCodes.Status503ServiceUnavailable),
+        KeyNotFoundException ex => Error("NotFound", ex.Message, StatusCodes.Status404NotFound),
+        InvalidOperationException ex => Error("NotAllowed", ex.Message, StatusCodes.Status409Conflict),
+        ArgumentException ex => Error("Invalid", ex.Message, StatusCodes.Status400BadRequest),
+        JsonException ex => Error("Invalid", ex.Message, StatusCodes.Status400BadRequest),
+        _ => null,
+    };
 
     private static IResult Error(string code, string message, int status) =>
         Results.Json(new ErrorView(code, message), PosJson.Options, statusCode: status);

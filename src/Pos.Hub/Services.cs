@@ -1,3 +1,4 @@
+using Pos.Domain.Common;
 using Pos.Domain.Menus;
 using Pos.Domain.Orders;
 using Pos.Hub.Api;
@@ -74,10 +75,14 @@ public sealed class OrderService
     private readonly SqliteOrderStore _store;
     private readonly OrderIntake _intake;
     private readonly LiveUpdates _live;
+    private readonly Delivery.CustomerService _customers;
+    private readonly Delivery.DeliverySettings _delivery;
 
     /// <summary>Creates the service.</summary>
-    public OrderService(HubDatabase db, HubSettings settings, MenuService menu, TimeProvider clock, LiveUpdates live)
+    public OrderService(HubDatabase db, HubSettings settings, MenuService menu, TimeProvider clock, LiveUpdates live, Delivery.CustomerService customers, Delivery.DeliverySettings delivery)
     {
+        _customers = customers;
+        _delivery = delivery;
         _live = live;
         ArgumentNullException.ThrowIfNull(settings);
         _db = db;
@@ -90,28 +95,33 @@ public sealed class OrderService
         _intake = new OrderIntake(_store, new SqliteOrderNumberSequence(db), settings.PricingSetup([]), settings.DayStartsAt, clock);
     }
 
-    /// <summary>Creates an order from what was picked on the till. Safe to send again: a repeat returns the same order.</summary>
-    public SubmitResult Submit(CreateOrderRequest request, OrderActor actor)
+    /// <summary>
+    /// Creates an order from what was picked on the till. Safe to send again: a repeat returns the same order.
+    /// Delivery orders need the address and distance; a changed delivery fee needs <paramref name="feeApprover"/>.
+    /// A customer with a phone number is remembered for next time.
+    /// </summary>
+    public SubmitResult Submit(CreateOrderRequest request, OrderActor actor, Guid? feeApprover = null)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var contact = CheckDelivery(request);
         return _db.RunInTransaction(() =>
         {
             var lines = _menu.Read(menu => BuildLines(menu, request.Lines ?? []));
-            var result = _intake.Submit(new NewOrder
-            {
-                OrderId = request.OrderId,
-                IdempotencyKey = request.IdempotencyKey,
-                BranchId = _settings.BranchId,
-                BranchCode = _settings.BranchCode,
-                Source = request.Source,
-                Type = request.Type,
-                CreatedBy = actor,
-                CustomerId = request.CustomerId,
-                TableId = request.TableId,
-                Lines = lines,
-            });
+            var customerId = contact?.Phone is not null ? _customers.Remember(contact, countOrder: false) : request.CustomerId;
+            var result = _intake.Submit(NewOrderFrom(request, actor, lines, contact, customerId));
             if (!result.WasDuplicate)
             {
+                if (request.Delivery is { } delivery)
+                {
+                    result.Order.SetDelivery(DeliveryInputFrom(delivery, feeApprover ?? throw FeeNeedsManager(delivery)), actor);
+                    _store.Save(result.Order);
+                }
+
+                if (contact?.Phone is not null)
+                {
+                    _customers.Remember(contact, countOrder: true);
+                }
+
                 _live.OrderChanged(result.Order, created: true);
             }
 
@@ -119,24 +129,94 @@ public sealed class OrderService
         });
     }
 
+    /// <summary>Changes the customer's details on an open order (e.g. a corrected address).</summary>
+    public Order ChangeContact(Guid orderId, OrderContact contact, OrderActor actor) => Change(orderId, order =>
+    {
+        order.SetContact(contact, actor);
+        if (order.Contact?.Phone is not null)
+        {
+            _customers.Remember(order.Contact, countOrder: false);
+        }
+
+        return order;
+    });
+
+    /// <summary>Changes the delivery distance or fee on an open delivery order.</summary>
+    public Order ChangeDelivery(Guid orderId, DeliveryRequest delivery, OrderActor actor, Guid? feeApprover) => Change(orderId, order =>
+    {
+        order.SetDelivery(DeliveryInputFrom(delivery, feeApprover ?? throw FeeNeedsManager(delivery)), actor);
+        return order;
+    });
+
+    private static OrderContact? CheckDelivery(CreateOrderRequest request)
+    {
+        var contact = request.Contact?.Checked();
+        if (request.Type == Pos.Domain.Tax.OrderType.Delivery)
+        {
+            if (contact?.Address is null)
+            {
+                throw new ArgumentException("A delivery order needs the customer's address.");
+            }
+
+            if (request.Delivery is null)
+            {
+                throw new ArgumentException("A delivery order needs the distance (check the postcode, or type the miles).");
+            }
+        }
+        else if (request.Delivery is not null)
+        {
+            throw new ArgumentException("Only delivery orders have a delivery charge.");
+        }
+
+        return contact;
+    }
+
+    private Pos.Domain.Delivery.DeliveryInput DeliveryInputFrom(DeliveryRequest delivery, Guid approver)
+    {
+        if (delivery.DistanceMiles is < 0 or > 100)
+        {
+            throw new ArgumentException("The distance must be between 0 and 100 miles.");
+        }
+
+        var feeOverride = delivery.FeeOverridePence is { } fee
+            ? new Pos.Domain.Delivery.DeliveryFeeOverride(Money.Gbp(fee), string.IsNullOrWhiteSpace(delivery.OverrideReason) ? throw new ArgumentException("Give a reason for changing the delivery fee.") : delivery.OverrideReason.Trim(), approver)
+            : null;
+        return new Pos.Domain.Delivery.DeliveryInput(delivery.DistanceMiles, _delivery.Table(), feeOverride);
+    }
+
+    /// <summary>Only a changed fee needs a manager; the normal charge never does.</summary>
+    private static Exception FeeNeedsManager(DeliveryRequest delivery) => delivery.FeeOverridePence is null
+        ? new InvalidOperationException("unreachable")
+        : new Security.AccessDeniedException("ApprovalRequired", "Changing the delivery fee needs a manager. Ask a manager to enter their PIN.", 403);
+
+    private NewOrder NewOrderFrom(CreateOrderRequest request, OrderActor actor, IReadOnlyList<NewOrderLine> lines, OrderContact? contact, Guid? customerId) => new()
+    {
+        OrderId = request.OrderId,
+        IdempotencyKey = request.IdempotencyKey,
+        BranchId = _settings.BranchId,
+        BranchCode = _settings.BranchCode,
+        Source = request.Source,
+        Type = request.Type,
+        CreatedBy = actor,
+        CustomerId = customerId,
+        TableId = request.TableId,
+        Contact = contact,
+        Lines = lines,
+    };
+
     /// <summary>Prices an order still being built on the till, without saving it or using an order number.</summary>
     public Order Quote(CreateOrderRequest request, OrderActor actor)
     {
         ArgumentNullException.ThrowIfNull(request);
+        // Customer details do not change the price, so they are not checked here (they may be half-typed).
         var lines = _menu.Read(menu => BuildLines(menu, request.Lines ?? []));
-        return _intake.Quote(new NewOrder
+        var order = _intake.Quote(NewOrderFrom(request, actor, lines, null, request.CustomerId));
+        if (request.Delivery is { } delivery && request.Type == Pos.Domain.Tax.OrderType.Delivery)
         {
-            OrderId = request.OrderId,
-            IdempotencyKey = request.IdempotencyKey,
-            BranchId = _settings.BranchId,
-            BranchCode = _settings.BranchCode,
-            Source = request.Source,
-            Type = request.Type,
-            CreatedBy = actor,
-            CustomerId = request.CustomerId,
-            TableId = request.TableId,
-            Lines = lines,
-        });
+            order.SetDelivery(DeliveryInputFrom(delivery, actor.UserId), actor); // a preview: the fee change is approved when the order is saved
+        }
+
+        return order;
     }
 
     /// <summary>Finds an order.</summary>

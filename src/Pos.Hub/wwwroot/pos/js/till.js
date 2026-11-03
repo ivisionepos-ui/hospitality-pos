@@ -2,7 +2,8 @@
 // An order being built lives only on this till until it is sent or paid; the hub prices it live (quote).
 import { api, ApiError } from './api.js';
 import { h, mount, money, newId, penceText, text, timeText, toast } from './dom.js';
-import { alertDialog, busy, confirmDialog, managerPinDialog, openDialog, textDialog } from './dialogs.js';
+import { alertDialog, amountDialog, busy, confirmDialog, managerPinDialog, openDialog, textDialog } from './dialogs.js';
+import { contactSummary, customerDialog } from './customer.js';
 import { dealDialog, itemOptionsDialog } from './item-dialogs.js';
 import { MenuEditor } from './editmenu.js';
 import { MenuView } from './menu.js';
@@ -12,8 +13,10 @@ import { payDialog } from './pay.js';
 const ORDER_MODES = [
   { id: 'counter', label: 'Takeaway', source: 'Counter', type: 'Takeaway' },
   { id: 'eatin', label: 'Eat in', source: 'Counter', type: 'EatIn' },
-  { id: 'phone', label: 'Phone', source: 'Phone', type: 'Takeaway' },
+  { id: 'phone', label: 'Collection', source: 'Phone', type: 'Takeaway' },
+  { id: 'delivery', label: 'Delivery', source: 'Phone', type: 'Delivery' },
 ];
+const modeLabel = (source, type) => ORDER_MODES.find(m => m.source === source && m.type === type)?.label ?? type;
 const CLOSED = ['Completed', 'Cancelled', 'Rejected'];
 const VOID_REASONS = ['Customer changed mind', 'Entered by mistake', 'Out of stock'];
 
@@ -77,7 +80,8 @@ export class Till {
   }
 
   newDraft() {
-    this.draft = { orderId: newId(), key: newId(), lines: [] };
+    // customer: { contact, distanceMiles } for phone and delivery orders; feeOverride: { pence, reason } (needs a manager).
+    this.draft = { orderId: newId(), key: newId(), lines: [], customer: null, feeOverride: null };
     this.quote = null;
   }
 
@@ -301,6 +305,7 @@ export class Till {
         const quote = await api.post('/api/orders/quote', {
           orderId: this.draft.orderId, idempotencyKey: this.draft.key, source: mode.source, type: mode.type,
           lines: this.draft.lines.map(lineRequest),
+          delivery: this.saved ? null : this.deliveryRequest(),
         });
         if (seq === this.quoteSeq) { this.quote = quote; this.renderTicket(); }
       } catch (e) {
@@ -318,14 +323,16 @@ export class Till {
     const head = saved
       ? h('div', { class: 'ticket-head' },
         h('div', {}, h('span', { class: 'ticket-number', text: `Order ${saved.number}` }),
-          h('span', { class: 'ticket-meta', text: `${ORDER_MODES.find(m => m.source === saved.source && m.type === saved.type)?.label ?? saved.type} · ${timeText(saved.createdAt)}` })),
+          h('span', { class: 'ticket-meta', text: `${modeLabel(saved.source, saved.type)} · ${timeText(saved.createdAt)}` }),
+          saved.contact ? h('span', { class: 'ticket-customer', text: contactSummary(saved.contact) }) : null),
         h('span', { class: `status status-${saved.status.toLowerCase()}`, text: saved.status }))
       : h('div', { class: 'ticket-head' },
         h('span', { class: 'ticket-number', text: 'New order' }),
         h('div', { class: 'seg seg-small' }, ORDER_MODES.map(m => h('button', {
           class: `seg-btn ${this.mode.id === m.id ? 'seg-on' : ''}`, 'aria-pressed': String(this.mode.id === m.id),
-          onclick: () => { this.mode = m; this.renderTicket(); this.requestQuote(); }, text: m.label,
-        }))));
+          onclick: () => { this.mode = m; this.renderTicket(); this.requestQuote(); if (m.id === 'delivery' && !this.draft.customer) this.editCustomer(); }, text: m.label,
+        }))),
+        this.customerBox());
 
     const rows = [];
     if (saved) {
@@ -400,6 +407,7 @@ export class Till {
     const rows = [];
     if (saved) {
       if (saved.discountAmount) rows.push(['Discount', `-${money(saved.discountAmount)}`]);
+      if (saved.delivery) rows.push([`Delivery (${saved.delivery.distanceMiles} mi)`, saved.delivery.isFree ? 'Free' : money(saved.delivery.fee)]);
       rows.push(['Total', money(saved.total), 'total']);
       if (saved.paid?.minorUnits) rows.push(['Paid', money(saved.paid)]);
       if (saved.balance && saved.balance.minorUnits > 0) rows.push(['To pay', money(saved.balance), 'due']);
@@ -408,13 +416,76 @@ export class Till {
       const q = this.quote;
       const vat = q ? q.vat.reduce((s, v) => s + v.vat.minorUnits, 0) : 0;
       const atMenu = this.draft.lines.reduce((s, l) => s + l.unitPence * l.quantity, 0);
-      if (q && atMenu > q.total.minorUnits) rows.push(['Offers', `-${penceText(atMenu - q.total.minorUnits)}`]);
+      const fee = q?.delivery?.fee.minorUnits ?? 0;
+      if (q && atMenu + fee > q.total.minorUnits) rows.push(['Offers', `-${penceText(atMenu + fee - q.total.minorUnits)}`]);
+      if (q?.delivery) rows.push([`Delivery (${q.delivery.distanceMiles} mi)${q.delivery.overridden ? ' — changed' : ''}`, q.delivery.isFree ? 'Free' : money(q.delivery.fee)]);
       rows.push(['Total', q ? money(q.total) : this.draft.lines.length ? '…' : penceText(0), 'total']);
       if (q) rows.push(['incl. VAT', penceText(vat), 'small']);
     }
 
-    return h('div', { class: 'totals' }, rows.map(([label, value, kind]) =>
-      h('div', { class: `total-row ${kind ? `total-${kind}` : ''}` }, h('span', { text: label }), h('span', { text: value }))));
+    const block = this.saved ? null : this.deliveryProblem();
+    return h('div', { class: 'totals' },
+      block ? h('p', { class: 'ticket-warning', role: 'alert', text: block }) : null,
+      rows.map(([label, value, kind]) =>
+        h('div', { class: `total-row ${kind ? `total-${kind}` : ''}` }, h('span', { text: label }), h('span', { text: value }))));
+  }
+
+  // ---------- Phone and delivery customers ----------
+
+  isDeliveryMode() {
+    return !this.saved && this.mode.type === 'Delivery';
+  }
+
+  /** What the hub needs to price a delivery, or null. */
+  deliveryRequest() {
+    if (this.mode.type !== 'Delivery' || this.draft.customer?.distanceMiles == null) return null;
+    const o = this.draft.feeOverride;
+    return { distanceMiles: this.draft.customer.distanceMiles, feeOverridePence: o?.pence ?? null, overrideReason: o?.reason ?? null };
+  }
+
+  /** Why this delivery cannot be sent yet, or null. */
+  deliveryProblem() {
+    if (!this.isDeliveryMode() || !this.draft.lines.length) return null;
+    if (!this.draft.customer) return 'Add the customer’s address first.';
+    const d = this.quote?.delivery;
+    if (!d) return null;
+    if (d.status === 'BeyondMaximumDistance') return `Too far to deliver (${d.distanceMiles} miles). A manager can still agree a fee.`;
+    if (d.status === 'BelowMinimumOrder' && d.minimumOrder) {
+      const food = this.quote.total.minorUnits - d.fee.minorUnits;
+      return `Minimum order for delivery is ${money(d.minimumOrder)}: add ${penceText(d.minimumOrder.minorUnits - food)} more.`;
+    }
+    return null;
+  }
+
+  customerBox() {
+    if (this.mode.source !== 'Phone') return null;
+    const c = this.draft.customer;
+    const o = this.draft.feeOverride;
+    return h('div', { class: 'customer-box' },
+      h('button', { class: `customer-btn ${c ? '' : 'customer-btn-empty'}`, onclick: () => this.editCustomer() },
+        c ? contactSummary(c.contact) : this.mode.type === 'Delivery' ? '+ Add customer and address' : '+ Add customer name or phone (optional)'),
+      this.mode.type === 'Delivery' && c ? h('div', { class: 'fee-row' },
+        o ? h('span', { class: 'chip chip-on', text: `Fee ${penceText(o.pence)} (${o.reason}) — needs a manager` }) : null,
+        o ? h('button', { class: 'chip', onclick: () => { this.draft.feeOverride = null; this.renderTicket(); this.requestQuote(); }, text: 'Normal fee' })
+          : h('button', { class: 'chip', onclick: () => this.changeFee(), text: 'Change delivery fee' })) : null);
+  }
+
+  async editCustomer() {
+    const result = await customerDialog({ delivery: this.mode.type === 'Delivery', initial: this.draft.customer });
+    if (!result) return;
+    this.draft.customer = result;
+    this.renderTicket();
+    this.requestQuote();
+  }
+
+  async changeFee() {
+    const pence = await amountDialog('Delivery fee', { message: 'The new delivery fee. A manager will be asked to approve it.', ok: 'Next', allowZero: true });
+    if (pence === null) return;
+    const reason = await textDialog('Reason', { suggestions: ['Regular customer', 'Complaint last time', 'Large order', 'Just outside the area'], ok: 'Save' });
+    if (!reason) return;
+    this.draft.feeOverride = { pence, reason };
+    this.renderTicket();
+    this.requestQuote();
   }
 
   actions() {
@@ -423,8 +494,8 @@ export class Till {
     if (!saved) {
       return h('div', { class: 'ticket-actions' },
         h('button', { class: 'btn', disabled: !draftCount, onclick: () => this.clear(), text: 'Clear' }),
-        h('button', { class: 'btn btn-kitchen', disabled: !draftCount, onclick: () => this.send(), text: 'Send' }),
-        h('button', { class: 'btn btn-primary btn-pay', disabled: !draftCount || !this.quote, onclick: () => this.pay() },
+        h('button', { class: 'btn btn-kitchen', disabled: !draftCount || Boolean(this.deliveryProblem()), onclick: () => this.send(), text: 'Send' }),
+        h('button', { class: 'btn btn-primary btn-pay', disabled: !draftCount || !this.quote || Boolean(this.deliveryProblem()), onclick: () => this.pay() },
           'Pay ', this.quote ? money(this.quote.total) : ''));
     }
 
@@ -459,10 +530,15 @@ export class Till {
     let added = false;
     if (!this.saved) {
       // Same order id and key on every retry, so a dropped connection never makes a second order.
-      this.saved = await api.post('/api/orders', {
+      const body = {
         orderId: this.draft.orderId, idempotencyKey: this.draft.key, source: this.mode.source, type: this.mode.type,
         lines: this.draft.lines.map(lineRequest),
-      });
+        contact: this.mode.source === 'Phone' ? this.draft.customer?.contact ?? null : null,
+        delivery: this.deliveryRequest(),
+      };
+      const created = await withApproval(pin => api.post('/api/orders', body, { managerPin: pin }));
+      if (!created) throw new ApiError(0, 'NotApproved', 'The delivery fee change was not approved. Choose "Normal fee" or ask a manager.');
+      this.saved = created;
       this.draft.lines = [];
       added = true;
     } else if (this.draft.lines.length) {
@@ -553,8 +629,28 @@ export class Till {
       class: 'dialog-narrow',
       body: h('div', { class: 'menu-list' },
         h('button', { class: 'btn menu-btn', onclick: async () => { close(); await this.printReceipt(order); }, text: 'Print receipt' }),
+        order.source === 'Phone' && !CLOSED.includes(order.status) ? h('button', { class: 'btn menu-btn', onclick: async () => { close(); await this.changeSavedCustomer(order); }, text: order.type === 'Delivery' ? 'Change customer or address' : 'Change customer' }) : null,
         !CLOSED.includes(order.status) ? h('button', { class: 'btn btn-danger menu-btn', onclick: async () => { close(); await this.cancelOrder(order); }, text: 'Cancel order' }) : null),
     }));
+  }
+
+  async changeSavedCustomer(order) {
+    const delivery = order.type === 'Delivery';
+    const result = await customerDialog({ delivery, initial: { contact: order.contact, distanceMiles: order.delivery?.distanceMiles ?? null } });
+    if (!result) return;
+    try {
+      await busy(async () => {
+        await api.post(`/api/orders/${order.id}/contact`, result.contact);
+        if (delivery && result.distanceMiles !== order.delivery?.distanceMiles) {
+          await api.post(`/api/orders/${order.id}/delivery`, { distanceMiles: result.distanceMiles });
+        }
+      });
+      this.saved = await api.get(`/api/orders/${order.id}`);
+      this.renderTicket();
+      toast('Customer details saved. Reprint the receipt for the driver if it has already printed.', 'ok', 6000);
+    } catch (e) {
+      this.showError(e);
+    }
   }
 
   async printReceipt(order) {
@@ -609,7 +705,7 @@ export class Till {
           return h('div', { class: 'order-row' },
             h('button', { class: 'order-open', onclick: () => close({ open: o }) },
               h('span', { class: 'order-no', text: o.number }),
-              h('span', { class: 'order-meta', text: `${timeText(o.createdAt)} · ${ORDER_MODES.find(m => m.source === o.source && m.type === o.type)?.label ?? o.type}` }),
+              h('span', { class: 'order-meta', text: [timeText(o.createdAt), modeLabel(o.source, o.type), o.contact?.name, o.contact?.address?.postcode].filter(Boolean).join(' · ') }),
               h('span', { class: `status status-${o.status.toLowerCase()}`, text: o.status }),
               h('span', { class: 'order-total', text: money(o.total) }),
               h('span', { class: `paid-badge ${due > 0 ? 'paid-due' : 'paid-ok'}`, text: due > 0 ? `Due ${penceText(due)}` : 'Paid' })),

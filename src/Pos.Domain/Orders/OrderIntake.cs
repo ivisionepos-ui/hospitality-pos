@@ -45,6 +45,9 @@ public sealed record NewOrder
     /// <summary>Customer, if known.</summary>
     public Guid? CustomerId { get; init; }
 
+    /// <summary>Customer name, phone, address and notes (phone and delivery orders).</summary>
+    public OrderContact? Contact { get; init; }
+
     /// <summary>Table, for table service.</summary>
     public Guid? TableId { get; init; }
 
@@ -169,6 +172,11 @@ public sealed class OrderIntake
             request.CreatedBy,
             request.CustomerId,
             request.TableId);
+        if (request.Contact is { } contact)
+        {
+            order.SetContactAtCreation(contact);
+        }
+
         foreach (var line in request.Lines)
         {
             order.AddLine(line.Pricing, line.Display, request.CreatedBy, line.Note);
@@ -230,6 +238,11 @@ public sealed class OrderIntake
                 request.CustomerId,
                 request.TableId);
 
+            if (request.Contact is { } contact)
+            {
+                order.SetContactAtCreation(contact);
+            }
+
             foreach (var line in request.Lines)
             {
                 order.AddLine(line.Pricing, line.Display, request.CreatedBy, line.Note);
@@ -248,6 +261,11 @@ public sealed class OrderIntake
         ArgumentNullException.ThrowIfNull(request);
         var text = new StringBuilder();
         text.Append(CultureInfo.InvariantCulture, $"{request.OrderId}|{request.BranchId}|{request.Source}|{request.Type}|{request.CustomerId}|{request.TableId}");
+        if (request.Contact is { } c)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"|C:{c.Name}|{c.Phone}|{c.Address}|{c.Notes}");
+        }
+
         foreach (var line in request.Lines)
         {
             text.Append('#');

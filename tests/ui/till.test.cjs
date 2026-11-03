@@ -4,6 +4,7 @@
 const { test, before, after, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
+const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -21,7 +22,32 @@ let data;
 let browser;
 let shop;
 
+// A stand-in for postcodes.io (same answers format), so tests never need the internet.
+// 1 mile north ≈ 0.01448° latitude. LS9 9XX answers "service down".
+const PLACES = {
+  'LS1 4AP': [53.8, -1.55, 'Leeds'],
+  'LS2 9JT': [53.8 + 1 / 69.05, -1.55, 'Leeds'],
+};
+let postcodeServer;
+let postcodeBase;
+
+function startPostcodeService() {
+  postcodeServer = http.createServer((req, res) => {
+    const code = decodeURIComponent(req.url.split('/postcodes/')[1] ?? '').toUpperCase();
+    res.setHeader('Content-Type', 'application/json');
+    if (code === 'LS9 9XX') { res.statusCode = 500; res.end('{"status":500}'); return; }
+    const place = PLACES[code];
+    if (!place) { res.statusCode = 404; res.end('{"status":404,"error":"Postcode not found"}'); return; }
+    res.end(JSON.stringify({ status: 200, result: { postcode: code, latitude: place[0], longitude: place[1], admin_district: place[2] } }));
+  });
+  return new Promise(resolve => postcodeServer.listen(0, '127.0.0.1', () => {
+    postcodeBase = `http://127.0.0.1:${postcodeServer.address().port}`;
+    resolve();
+  }));
+}
+
 async function startHub() {
+  await startPostcodeService();
   data = fs.mkdtempSync(path.join(os.tmpdir(), 'pos-ui-'));
   const port = 5200 + Math.floor(Math.random() * 700);
   base = `http://localhost:${port}`;
@@ -31,6 +57,7 @@ async function startHub() {
     `--Backup:Folder=${path.join(data, 'data', 'backups')}`,
     `--Printing:Receipt:Folder=${path.join(data, 'prints', 'receipts')}`,
     `--Printing:Kitchen:Folder=${path.join(data, 'prints', 'kitchen')}`,
+    '--Delivery:ShopPostcode=LS1 4AP', `--Delivery:PostcodeService=${postcodeBase}`,
   ], { cwd: hubDir, stdio: 'ignore' });
   for (let i = 0; i < 60; i++) {
     try { if ((await fetch(`${base}/api/health`)).ok) return; } catch { /* starting */ }
@@ -117,6 +144,7 @@ before(async () => {
 after(async () => {
   await browser?.close();
   hub?.kill();
+  postcodeServer?.close();
   fs.rmSync(data, { recursive: true, force: true });
 });
 
@@ -257,7 +285,7 @@ test('two tills see each other’s orders and menu changes live', async () => {
 test('phone and eat-in orders are saved with the right type; the till closes with a blind count', async () => {
   const page = await tillPage(shop.till1, { width: 1024, height: 768 });
   await login(page, '5931');
-  await page.getByRole('button', { name: 'Phone', exact: true }).click();
+  await page.getByRole('button', { name: 'Collection', exact: true }).click();
   await pick(page, 'Starters', 'Garlic bread £');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.locator('.lines-empty').waitFor();
@@ -393,6 +421,101 @@ test('manager edits the menu on the order layout; the cashier till updates live;
   assert.deepEqual([...page.errors, ...cashier.errors], []);
   await page.context().close();
   await cashier.context().close();
+});
+
+test('phone delivery: postcode check, minimum order, remembered customer, manager-approved fee, no-internet miles', async () => {
+  const owner = { device: shop.owner.device, token: shop.owner.token };
+  const page = await tillPage(shop.till1);
+  await login(page, '5931');
+
+  // Delivery opens the customer panel straight away.
+  await page.getByRole('button', { name: 'Delivery', exact: true }).click();
+  await top(page).getByLabel('Phone number').fill('07700 900456');
+  await top(page).getByLabel('Name').fill('Priya Shah');
+  await top(page).getByLabel('House number and street').fill('12 Park Lane');
+  await top(page).getByLabel('Postcode').fill('ls29jt');
+  await top(page).getByLabel('Notes for the driver (optional)').fill('Ring the side door');
+  await top(page).getByRole('button', { name: 'Check postcode' }).click();
+  await top(page).getByText('1.3 miles from the shop · Leeds').waitFor();
+  assert.equal(await top(page).getByLabel('Postcode').inputValue(), 'LS2 9JT');
+  await shot(page, 'ui-delivery-customer');
+  await top(page).getByRole('button', { name: 'Use these details' }).click();
+  await page.locator('.customer-btn', { hasText: 'Priya Shah · 07700 900456 · 12 Park Lane, LS2 9JT' }).waitFor();
+
+  // Below the £12 minimum: Send and Pay are blocked, with the reason.
+  await pick(page, 'Pizzas', 'Margherita');
+  await top(page).getByRole('button', { name: /^10"/ }).click();
+  await top(page).getByRole('button', { name: /^Add/ }).click();
+  // (The menu-editing test above changed the 10" Margherita to £8.50.)
+  await page.locator('.ticket-warning', { hasText: 'Minimum order for delivery is £12.00: add £3.50 more.' }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).isDisabled(), true);
+  await pick(page, 'Sides', 'Coleslaw'); // has two sizes since the menu-editing test
+  await top(page).getByRole('button', { name: /^Regular/ }).click();
+  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await page.locator('.total-row', { hasText: 'Delivery (1.3 mi)' }).getByText('£1.50').waitFor();
+  await page.locator('.total-total', { hasText: '£11.50' }).waitFor(); // 8.50 + 1.50 coleslaw + 1.50 delivery: food £10.00 still under £12
+  await page.locator('.ticket-warning').waitFor();
+  await pick(page, 'Drinks', 'Bottle 1.5L');
+  await page.locator('.ticket-warning').waitFor({ state: 'detached' });
+  await shot(page, 'ui-delivery-order');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await page.locator('.lines-empty').waitFor();
+  let order = (await call('GET', '/api/orders', owner)).at(-1);
+  assert.equal(order.type, 'Delivery');
+  assert.equal(order.contact.notes, 'Ring the side door');
+  assert.equal(order.delivery.fee.minorUnits, 150);
+  assert.equal(order.total.minorUnits, 850 + 150 + 299 + 150);
+
+  // Next call from the same number: typing part of it finds Priya and fills everything in.
+  await page.getByRole('button', { name: 'Delivery', exact: true }).click();
+  await top(page).getByLabel('Phone number').fill('900456');
+  await top(page).getByRole('button', { name: /Priya Shah/ }).click();
+  await top(page).getByText('1.3 miles from the shop').waitFor();
+  assert.equal(await top(page).getByLabel('House number and street').inputValue(), '12 Park Lane');
+  await top(page).getByRole('button', { name: 'Use these details' }).click();
+
+  // Free delivery agreed by a manager.
+  await page.getByRole('button', { name: 'Change delivery fee' }).click();
+  await pin(page, '0');
+  await top(page).getByRole('button', { name: 'Next' }).click();
+  await top(page).getByRole('button', { name: 'Regular customer' }).click();
+  await pick(page, 'Pizzas', 'Pepperoni');
+  await top(page).getByRole('button', { name: /^14"/ }).click();
+  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await page.locator('.total-row', { hasText: 'changed' }).waitFor();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await top(page).getByText('Manager, enter your PIN.').waitFor();
+  await pin(page, '7402');
+  await top(page).getByRole('button', { name: 'Approve' }).click();
+  await page.locator('.lines-empty').waitFor();
+  order = (await call('GET', '/api/orders', owner)).at(-1);
+  assert.equal(order.delivery.overridden, true);
+  assert.equal(order.total.minorUnits, 1299);
+  const priya = await call('GET', '/api/customers?phone=07700900456', owner);
+  assert.equal(priya[0].orderCount, 2);
+
+  // No internet: the postcode cannot be checked, so the miles are typed in. Too far is blocked.
+  await page.getByRole('button', { name: 'Delivery', exact: true }).click();
+  await top(page).getByLabel('Phone number').fill('0113 496 0000');
+  await top(page).getByLabel('House number and street').fill('1 Mill Road');
+  await top(page).getByLabel('Postcode').fill('LS9 9XX');
+  await top(page).getByRole('button', { name: 'Check postcode' }).click();
+  await top(page).getByText(/Type the distance in miles instead/).waitFor();
+  await top(page).getByText('No internet? Type the miles').click();
+  await top(page).getByLabel('Distance in miles').fill('9');
+  await top(page).getByRole('button', { name: 'Use these details' }).click();
+  await pick(page, 'Pizzas', 'Meat feast');
+  await top(page).getByRole('button', { name: /^14"/ }).click();
+  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await page.locator('.ticket-warning', { hasText: 'Too far to deliver (9 miles)' }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).isDisabled(), true);
+  await page.locator('.customer-btn').click();
+  await top(page).getByText('No internet? Type the miles').click();
+  await top(page).getByLabel('Distance in miles').fill('3.5');
+  await top(page).getByRole('button', { name: 'Use these details' }).click();
+  await page.locator('.total-row', { hasText: 'Delivery (3.5 mi)' }).getByText('£3.00').waitFor();
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
 });
 
 test('every printout was made: kitchen tickets, additions, the void slip and receipts', async () => {

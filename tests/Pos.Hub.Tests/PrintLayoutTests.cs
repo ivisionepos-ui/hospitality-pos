@@ -83,6 +83,28 @@ public sealed class PrintLayoutTests : IDisposable
     }
 
     [Fact]
+    public void Delivery_receipt_and_ticket_show_the_customer_and_what_the_driver_collects()
+    {
+        var (order, _) = PrintSamples.Order(Pos.Domain.Tax.OrderType.Delivery);
+        order.SetContact(new Pos.Domain.Orders.OrderContact("Sam Patel", "07700900123", new Pos.Domain.Orders.DeliveryAddress("12 Park Lane", "Flat 2", "Leeds", "LS2 9JT"), "Side door"),
+            new Pos.Domain.Orders.OrderActor(Guid.NewGuid(), null));
+
+        var receipt = Layouts.Receipt(order, null, PrintSamples.Shop, PrintSamples.London, null, isCopy: false).PlainText;
+        var ticket = Layouts.KitchenTicket(order, order.ActiveLines, KitchenTicketKind.New, PrintSamples.Shop, PrintSamples.London).PlainText;
+
+        Keep("receipt-delivery.png", _renderer.RenderPng(Layouts.Receipt(order, null, PrintSamples.Shop, PrintSamples.London, null, isCopy: false), 576));
+        Assert.Contains("AMOUNT DUE", receipt, StringComparison.Ordinal);
+        foreach (var text in new[] { receipt, ticket })
+        {
+            Assert.Contains("Sam Patel", text, StringComparison.Ordinal);
+            Assert.Contains("Tel: 07700 900123", text, StringComparison.Ordinal);
+            Assert.Contains("12 Park Lane", text, StringComparison.Ordinal);
+            Assert.Contains("LS2 9JT", text, StringComparison.Ordinal);
+            Assert.Contains("** Side door **", text, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void Kitchen_ticket_has_no_prices_and_shows_notes_and_deal_choices()
     {
         var (order, _) = PrintSamples.Order();

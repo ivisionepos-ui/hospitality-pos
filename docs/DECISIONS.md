@@ -107,3 +107,13 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-101 | 2026-11-04 | Version number shown on the login screen and in More, and in /api/health | Owner and support can see at once which version a till is talking to |
 | C-102 | 2026-11-04 | Clear start-up message when the port or data folder is already used by another hub | An old hub left running made the new version look broken (owner report: "edit menu is not active") |
 | C-103 | 2026-11-04 | More menu in three columns, Menu first | On 768-pixel-high till screens the old single list hid Edit menu below the fold |
+| C-104 | 2026-11-04 | Postcode check and distance through postcodes.io (free ONS data, no account); house-by-house address lists left for a paid PAF service later | Owner's "avoid paid services where possible"; staff type the house number and street |
+| C-105 | 2026-11-04 | Every postcode looked up is kept in the hub database forever (postcode_cache) | Postcodes do not move; repeat customers work without internet; fewer outside calls |
+| C-106 | 2026-11-04 | Distance = straight line × 1.3 (setting) until a road-distance service (D-018: self-hosted OSRM) is added | Simple and close enough for charge bands; replaceable without changing the till |
+| C-107 | 2026-11-04 | Customers remembered by phone number (digits only, +44 → 0); a blank field never wipes a saved one | Fast repeat orders; ready for caller ID |
+| C-108 | 2026-11-04 | Customer details and address stored on the order itself (OrderContact), recorded in history when changed | Receipts, tickets and records stay right even if the customer's saved address changes later |
+| C-109 | 2026-11-04 | Delivery orders need address, phone and distance; a changed delivery fee needs a manager (PIN) and a reason; the order and the customer save are rolled back together if not approved | Nothing half-saved; fee changes are accountable |
+| C-110 | 2026-11-04 | Till blocks Send/Pay below the minimum order or beyond the maximum distance (with the reason); a manager-agreed fee lifts the block | Implements C-017 on the screen |
+| C-111 | 2026-11-04 | Sending a delivery prints the receipt for the bag at once, with the customer block and AMOUNT DUE / PAID | The driver knows where to go and what to collect |
+| C-112 | 2026-11-04 | "Phone" order mode renamed Collection; Delivery added | Clearer for staff |
+| C-113 | 2026-11-04 | Newest dialog or working cover is always on top | A manager PIN asked while the till is working stays usable, and buttons cannot be pressed twice while working |

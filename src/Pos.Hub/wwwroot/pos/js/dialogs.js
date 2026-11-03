@@ -1,6 +1,12 @@
 // Pop-up panels, number keypads, and the common questions (confirm, reason, manager PIN, amount).
 import { h, mount, penceText } from './dom.js';
 
+/** The next stacking level: whatever opens last (a dialog or the working cover) goes on top. */
+function nextLayer() {
+  const levels = [...document.querySelectorAll('.dialog-layer, .busy')].map(el => Number(el.style.zIndex) || 0);
+  return Math.max(10, ...levels) + 1;
+}
+
 /**
  * Opens a dialog. build(close) returns { title, body, actions?, wide? }. Returns a promise of the value passed to close().
  * Tapping outside or "Cancel" closes with null.
@@ -9,6 +15,7 @@ export function openDialog(build) {
   return new Promise(resolve => {
     const host = document.getElementById('dialogs');
     const layer = h('div', { class: 'dialog-layer' });
+    layer.style.zIndex = String(nextLayer());
     let done = false;
     const close = value => {
       if (done) return;
@@ -160,6 +167,7 @@ export function managerPinDialog(reason) {
 /** A screen-wide "working" cover while a request is in flight. */
 export async function busy(work) {
   const cover = h('div', { class: 'busy' }, h('div', { class: 'spinner', 'aria-label': 'Working' }));
+  cover.style.zIndex = String(nextLayer());
   document.body.appendChild(cover);
   try {
     return await work();

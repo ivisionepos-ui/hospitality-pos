@@ -149,6 +149,26 @@ public sealed class HubDatabase : IDisposable
                 at          TEXT NOT NULL
             );
             """),
+        (7, """
+            CREATE TABLE customers (
+                id             TEXT PRIMARY KEY,
+                phone          TEXT NOT NULL UNIQUE,
+                name           TEXT,
+                address_json   TEXT,
+                notes          TEXT,
+                created_at     TEXT NOT NULL,
+                updated_at     TEXT NOT NULL,
+                last_order_at  TEXT,
+                order_count    INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE postcode_cache (
+                postcode    TEXT PRIMARY KEY,
+                latitude    REAL NOT NULL,
+                longitude   REAL NOT NULL,
+                town        TEXT,
+                fetched_at  TEXT NOT NULL
+            );
+            """),
     ];
 
     private readonly SqliteConnection _connection;

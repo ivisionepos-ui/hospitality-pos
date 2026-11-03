@@ -5,7 +5,17 @@ You need: the .NET 10 runtime (ASP.NET Core Runtime 10.0) installed.
 Unzip this folder somewhere permanent, e.g. C:\PosHub (not inside a zip viewer).
 
 Start hub.bat
-  Runs the hub. Keep the window open while trading.
+  Runs the hub and opens the till screen. Keep the hub window open while trading.
+  First time: the till screen asks for your name and a PIN (you become the owner).
+  Then press "Load sample menu" to try it with a typical takeaway menu.
+
+Open till (full screen).bat
+  Opens the till screen full screen in Microsoft Edge, best on a touch screen.
+  Alt+F4 leaves full screen.
+
+Another PC or tablet as a till (later)
+  It needs the shop certificate installed once (see the main README), then open
+  https://<hub PC address>:5443 and enter the code from More > Add a till.
 
 1 - Print test (PDF files).bat
   Saves a sample receipt and kitchen ticket as PDF files in data\prints.

@@ -159,3 +159,55 @@ public sealed class PrintLayoutTests : IDisposable
         return dark / (double)(image.Width * image.Height / 4);
     }
 }
+
+/// <summary>The --print-test command.</summary>
+public sealed class PrintTestCommandTests : IDisposable
+{
+    private readonly string _folder = Path.Combine(Path.GetTempPath(), "pos-print-test", Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        try
+        {
+            Directory.Delete(_folder, recursive: true);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // Nothing was written.
+        }
+    }
+
+    [Fact]
+    public void Prints_both_samples_and_reports_where_they_went()
+    {
+        using var renderer = new Renderer("Printing/Fonts/DejaVuSans.ttf", "Printing/Fonts/DejaVuSans-Bold.ttf");
+        var settings = new PrintSettings
+        {
+            Receipt = { Output = PrintOutputType.Pdf, Folder = _folder },
+            Kitchen = { Output = PrintOutputType.Png, Folder = _folder },
+        };
+        using var console = new StringWriter();
+
+        var result = PrintTest.Run(new PrintOutputs(renderer, TimeProvider.System), settings, console);
+
+        Assert.Equal(0, result);
+        Assert.Contains("Receipt printer: OK (Pdf)", console.ToString(), StringComparison.Ordinal);
+        Assert.Single(Directory.GetFiles(_folder, "*.pdf"));
+        Assert.Single(Directory.GetFiles(_folder, "*.png"));
+    }
+
+    [Fact]
+    public void Reports_a_printer_that_cannot_print()
+    {
+        using var renderer = new Renderer("Printing/Fonts/DejaVuSans.ttf", "Printing/Fonts/DejaVuSans-Bold.ttf");
+        var settings = new PrintSettings
+        {
+            Receipt = { Output = PrintOutputType.Windows, PrinterName = "No Such Printer 123", Folder = _folder },
+            Kitchen = { Output = PrintOutputType.None },
+        };
+        using var console = new StringWriter();
+
+        Assert.Equal(1, PrintTest.Run(new PrintOutputs(renderer, TimeProvider.System), settings, console));
+        Assert.Contains("Receipt printer: FAILED", console.ToString(), StringComparison.Ordinal);
+    }
+}

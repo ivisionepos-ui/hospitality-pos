@@ -51,6 +51,12 @@ builder.Services.AddSignalR().AddJsonProtocol(o => PosJson.Configure(o.PayloadSe
 
 var app = builder.Build();
 
+// "Pos.Hub --print-test": print a sample receipt and kitchen ticket on the configured printers, then stop.
+if (args.Contains("--print-test", StringComparer.OrdinalIgnoreCase))
+{
+    return PrintTest.Run(app.Services.GetRequiredService<PrintOutputs>(), app.Services.GetRequiredService<PrintSettings>(), Console.Out);
+}
+
 // Check the settings and open the database (upgrading it if needed) before taking any requests.
 _ = app.Services.GetRequiredService<OrderService>();
 _ = app.Services.GetRequiredService<Pos.Hub.Security.AccessService>();
@@ -82,6 +88,7 @@ app.UseWhen(http => http.Request.Path.StartsWithSegments("/live"), live => live.
 }));
 app.MapHub<LiveHub>("/live", o => o.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets);
 app.Run();
+return 0;
 
 /// <summary>Entry point, visible to the automated tests.</summary>
 public partial class Program;

@@ -28,9 +28,9 @@
 | Payments: cash with change, card with tip and reference, part payments, split equally / by items, refunds with manager | 3 | Done 2026-11-03 | 14 rule tests + hub tests | Card amount keyed into the Worldpay terminal for now |
 | Shifts: float, paid in/out, blind close, expected vs counted cash, X report | 3 | Done 2026-11-03 | 5 rule tests + hub tests | |
 | Z report: sales, sources, payments by method, VAT after refunds, cancels, voids, refunds, open orders, cash over/short, tips by staff | 3 | Done 2026-11-03 | 3 rule tests + full-day hub test | Numbered and stored; accountant to review layout |
-| Printing: receipts (UK VAT details, food-group order, Arabic), kitchen tickets (new/additional/void), Z slip; PDF, PNG and Windows-printer outputs; print queue with retry and failure alerts; receipt preview | 3 | Done 2026-11-03 | 9 layout/drawing tests + 7 hub tests | Windows printer output (Microsoft Print to PDF) written but **not yet tested on Windows** |
+| Printing: receipts (UK VAT details, food-group order, Arabic), kitchen tickets (new/additional/void), Z slip; PDF, PNG and Windows-printer outputs; print queue with retry and failure alerts; receipt preview | 3 | Done 2026-11-03 | 11 layout/drawing tests + 7 hub tests | Windows printer output (Microsoft Print to PDF) written but **not yet tested on Windows** |
 
-Total: 318 automated tests passing (230 business-rule tests + 88 hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
+Total: 320 automated tests passing (230 business-rule tests + 90 hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
 - Test the Windows printer output (Microsoft Print to PDF) on the owner's Windows PC

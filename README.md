@@ -134,6 +134,10 @@ For a printer whose name contains "PDF", the hub tells Windows the file name in 
 `Folder` without a "Save as" window. The receipt prints at its real width (72 mm) at the top of an A4 page; long
 receipts continue on the next page.
 
+**Checking a printer:** `Pos.Hub --print-test` prints a sample receipt and kitchen ticket on the configured printers
+and says where they went (or why they failed), then stops. Settings can be given on the command line, e.g.
+`Pos.Hub --print-test --Printing:Receipt:Output=Windows --Printing:Receipt:PrinterName="Microsoft Print to PDF"`.
+
 When printing happens:
 - **Kitchen ticket** when items are sent to the kitchen ("NEW ORDER", then "ADDITIONAL ITEMS" for later items).
 - **Void slip** when an item already in the kitchen is removed.

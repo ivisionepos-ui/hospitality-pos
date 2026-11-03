@@ -1,6 +1,7 @@
 using Pos.Domain.Common;
 using Pos.Hub;
 using Pos.Hub.Api;
+using Pos.Hub.Backups;
 using Pos.Hub.Data;
 using Pos.Hub.Live;
 using Pos.Hub.Printing;
@@ -29,7 +30,15 @@ builder.Services.AddSingleton(sp =>
     return settings;
 });
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton(sp => new HubDatabase(sp.GetRequiredService<HubSettings>().DatabasePath));
+builder.Services.AddSingleton(sp => InstanceLock.Acquire(InstanceLock.FolderFor(sp.GetRequiredService<HubSettings>().DatabasePath)));
+builder.Services.AddSingleton(sp =>
+{
+    _ = sp.GetRequiredService<InstanceLock>(); // never open the database while another hub or a restore is using it
+    return new HubDatabase(sp.GetRequiredService<HubSettings>().DatabasePath);
+});
+builder.Services.AddSingleton(sp => sp.GetRequiredService<IConfiguration>().GetSection("Backup").Get<BackupSettings>() ?? new BackupSettings());
+builder.Services.AddSingleton<BackupService>();
+builder.Services.AddHostedService<BackupWorker>();
 builder.Services.AddSingleton<MenuService>();
 builder.Services.AddSingleton<OrderService>();
 builder.Services.AddSingleton<TillService>();
@@ -57,7 +66,24 @@ if (args.Contains("--print-test", StringComparer.OrdinalIgnoreCase))
     return PrintTest.Run(app.Services.GetRequiredService<PrintOutputs>(), app.Services.GetRequiredService<PrintSettings>(), Console.Out);
 }
 
+// "Pos.Hub --restore <backup.zip>": put a backup back, with the hub closed, then stop.
+var restoreAt = Array.FindIndex(args, a => string.Equals(a, "--restore", StringComparison.OrdinalIgnoreCase));
+if (restoreAt >= 0)
+{
+    return BackupService.Restore(restoreAt + 1 < args.Length ? args[restoreAt + 1] : string.Empty, app.Services.GetRequiredService<HubSettings>(), Console.Out);
+}
+
 // Check the settings and open the database (upgrading it if needed) before taking any requests.
+try
+{
+    _ = app.Services.GetRequiredService<InstanceLock>();
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    return 1;
+}
+
 _ = app.Services.GetRequiredService<OrderService>();
 _ = app.Services.GetRequiredService<Pos.Hub.Security.AccessService>();
 var certificates = app.Services.GetRequiredService<HubCertificates>();

@@ -28,19 +28,19 @@
 | Payments: cash with change, card with tip and reference, part payments, split equally / by items, refunds with manager | 3 | Done 2026-11-03 | 14 rule tests + hub tests | Card amount keyed into the Worldpay terminal for now |
 | Shifts: float, paid in/out, blind close, expected vs counted cash, X report | 3 | Done 2026-11-03 | 5 rule tests + hub tests | |
 | Z report: sales, sources, payments by method, VAT after refunds, cancels, voids, refunds, open orders, cash over/short, tips by staff | 3 | Done 2026-11-03 | 3 rule tests + full-day hub test | Numbered and stored; accountant to review layout |
-| Printing: receipts (UK VAT details, food-group order, English by default, Arabic optional), kitchen tickets (new/additional/void), Z slip; PDF, PNG and Windows-printer outputs; print queue with retry and failure alerts; receipt preview | 3 | Done 2026-11-03 | 11 layout/drawing tests + 7 hub tests | Windows printer output (Microsoft Print to PDF) written but **not yet tested on Windows** |
+| Printing: receipts (UK VAT details, food-group order, English by default, Arabic optional), kitchen tickets (new/additional/void), Z slip; PDF, PNG and Windows-printer outputs; print queue with retry and failure alerts; receipt preview | 3 | Done 2026-11-03 | 11 layout/drawing tests + 7 hub tests | Windows printer output (Microsoft Print to PDF) tested by the owner on Windows 2026-11-03 |
+| Backups: hourly / start-up / after Z report / on demand; checked zip of database snapshot, PIN key and certificates; second copy folder; keep 48 h then daily for 30 days; restore command; live warning on failure; one hub per data folder; copy before schema upgrades | 2 | Done 2026-11-03 | 13 passing, plus restore run on the real program | Owner to set a USB/second-disk copy folder |
 
-Total: 321 automated tests passing (230 business-rule tests + 91 hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
+Total: 334 automated tests passing (230 business-rule tests + 104 hub tests), including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
-- Test the Windows printer output (Microsoft Print to PDF) on the owner's Windows PC
 - ESC/POS thermal printers over USB and network, and the cash drawer kick (when printers are available)
 - Kitchen stations: routing tickets to different kitchen printers
 - Group headings on receipts ("STARTERS", "DRINKS")
 - Windows Device Agent installer that installs the shop CA automatically
 - Scheduled offers, delivery charge table and discount limits stored on the hub (offers currently not loaded)
 - Remaining Edit-menu operations over the API (add, move, edit panel save, extras, categories)
-- Automatic hourly local backups of the hub database
+- Encrypted off-site (cloud) backup copy
 - Syncing menu and order changes between tills, hub and cloud
 - Tip allocation between staff (tronc) and the written tipping policy record (tips by staff are already in the Z report)
 - Worldpay terminal integration (amount sent from the till)

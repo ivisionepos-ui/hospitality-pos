@@ -36,6 +36,9 @@ internal sealed class HubTestHost : WebApplicationFactory<Program>
 
     public string DatabasePath { get; }
 
+    /// <summary>Folder the test hub backs up into.</summary>
+    public string BackupFolder => Path.Combine(Path.GetDirectoryName(DatabasePath)!, "backups");
+
     public TestClock Clock { get; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -46,6 +49,7 @@ internal sealed class HubTestHost : WebApplicationFactory<Program>
         builder.UseSetting("Hub:StaffDiscountMaxPence", "500");
         builder.UseSetting("Printing:Receipt:Folder", Path.Combine(PrintFolder, "receipts"));
         builder.UseSetting("Printing:Kitchen:Folder", Path.Combine(PrintFolder, "kitchen"));
+        builder.UseSetting("Backup:Folder", BackupFolder);
         builder.UseSetting("Printing:RetrySeconds", "0.1");
         builder.UseSetting("Printing:MaxAttempts", "2");
         foreach (var (key, value) in Settings)

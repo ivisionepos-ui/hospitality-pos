@@ -5,6 +5,7 @@ using Pos.Domain.Orders;
 using Pos.Domain.Payments;
 using Pos.Domain.Pricing;
 using Pos.Domain.Staff;
+using Pos.Hub.Backups;
 using Pos.Hub.Printing;
 using Pos.Hub.Security;
 using static Pos.Hub.Security.AccessFilter;
@@ -196,9 +197,21 @@ public static class Endpoints
             .ForStaff(Permission.TakeOrders);
 
         // ----- End of day -----
-        api.MapPost("/reports/z", (HttpContext http, TillService tills, ZReportRequest? request) => Handle(() =>
-            Results.Ok(tills.ZReport(request?.BusinessDate, Caller(http).Staff!.Id))))
+        api.MapPost("/reports/z", (HttpContext http, TillService tills, BackupService backups, ZReportRequest? request) => Handle(() =>
+        {
+            var report = tills.ZReport(request?.BusinessDate, Caller(http).Staff!.Id);
+            backups.Request("Z report"); // end of the trading day: back up straight away
+            return Results.Ok(report);
+        })).ForStaff(Permission.ViewReports);
+
+        api.MapGet("/backups", (BackupService backups) => Results.Ok(backups.Status()))
             .ForStaff(Permission.ViewReports);
+
+        api.MapPost("/backups", (BackupService backups) =>
+        {
+            var result = backups.BackUp("Manual", force: true);
+            return result.Ok ? Results.Ok(result) : Results.Json(result, PosJson.Options, statusCode: StatusCodes.Status500InternalServerError);
+        }).ForStaff(Permission.ViewReports);
     }
 
     private static void MapPrinting(RouteGroupBuilder api)

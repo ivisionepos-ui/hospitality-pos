@@ -31,6 +31,9 @@ public static class LiveEventKinds
 
     /// <summary>Something could not be printed after several tries (tills only).</summary>
     public const string PrintFailed = "PrintFailed";
+
+    /// <summary>A backup, or its second copy, could not be made (tills only).</summary>
+    public const string BackupFailed = "BackupFailed";
 }
 
 /// <summary>
@@ -100,6 +103,10 @@ public sealed class LiveUpdates(HubDatabase db, IHubContext<LiveHub> hub, TimePr
     /// <summary>Tells the tills that a printout failed.</summary>
     public void PrintFailed(string summary) =>
         Record(LiveEventKinds.PrintFailed, null, null, summary, forKitchen: false, forDisplay: false);
+
+    /// <summary>Tells the tills that a backup failed.</summary>
+    public void BackupFailed(string summary) =>
+        Record(LiveEventKinds.BackupFailed, null, null, summary, forKitchen: false, forDisplay: false);
 
     /// <summary>Records a menu change. Call inside the transaction that saves the menu.</summary>
     public void MenuChanged(long version, string summary) =>

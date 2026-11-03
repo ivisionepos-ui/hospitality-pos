@@ -167,6 +167,61 @@ public sealed class HubDatabase : IDisposable
         Migrate();
     }
 
+    /// <summary>Number of rows changed since the database was opened; used to skip backups when nothing changed.</summary>
+    public long ChangeCount => Run(() => Convert.ToInt64(Scalar("SELECT total_changes();"), System.Globalization.CultureInfo.InvariantCulture));
+
+    /// <summary>Newest schema version this program knows.</summary>
+    public static int LatestSchemaVersion => Migrations.Max(m => m.Version);
+
+    /// <summary>
+    /// Writes a consistent copy of the whole database to <paramref name="path"/> (replacing it) using SQLite's backup,
+    /// waiting for any change in progress so the copy never holds half a change. The copy is a single file.
+    /// </summary>
+    public void BackupTo(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        lock (_gate)
+        {
+            CopyTo(_connection, path);
+        }
+    }
+
+    /// <summary>Checks a database file with SQLite's integrity check; returns its schema version.</summary>
+    public static int Check(string path)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+        connection.Open();
+        using var check = connection.CreateCommand();
+        check.CommandText = "PRAGMA integrity_check;";
+        var result = Convert.ToString(check.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
+        if (result != "ok")
+        {
+            throw new InvalidDataException($"Database check failed: {result}");
+        }
+
+        check.CommandText = "SELECT COALESCE(MAX(version), 0) FROM schema_version;";
+        return Convert.ToInt32(check.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static void CopyTo(SqliteConnection source, string path)
+    {
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+
+        using (var destination = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString()))
+        {
+            destination.Open();
+            source.BackupDatabase(destination);
+            using var single = destination.CreateCommand();
+            single.CommandText = "PRAGMA journal_mode = DELETE;";
+            single.ExecuteNonQuery();
+        }
+
+        _ = Check(path);
+    }
+
     /// <summary>Highest schema version applied.</summary>
     public int SchemaVersion { get; private set; }
 
@@ -284,6 +339,17 @@ public sealed class HubDatabase : IDisposable
     {
         Execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);");
         SchemaVersion = Convert.ToInt32(Scalar("SELECT COALESCE(MAX(version), 0) FROM schema_version;"), System.Globalization.CultureInfo.InvariantCulture);
+        if (SchemaVersion > LatestSchemaVersion)
+        {
+            throw new InvalidOperationException($"This database was made by a newer version of the hub (schema {SchemaVersion}); update the hub program.");
+        }
+
+        if (SchemaVersion > 0 && Migrations.Any(m => m.Version > SchemaVersion) && _connection.DataSource is { Length: > 0 } file)
+        {
+            // Keep a copy of the database as it was before the upgrade.
+            CopyTo(_connection, $"{file}.before-upgrade-v{SchemaVersion}-{DateTime.UtcNow:yyyyMMddHHmmss}.db");
+        }
+
         foreach (var (version, sql) in Migrations.Where(m => m.Version > SchemaVersion).OrderBy(m => m.Version))
         {
             RunInTransaction(() =>

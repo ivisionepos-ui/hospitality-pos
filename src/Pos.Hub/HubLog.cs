@@ -18,4 +18,16 @@ public static partial class HubLog
     /// <summary>A live event could not be sent; screens will fetch it on catch-up.</summary>
     [LoggerMessage(EventId = 4, Level = LogLevel.Warning, Message = "Live event {Seq} could not be sent; screens will catch up.")]
     public static partial void LiveSendFailed(ILogger logger, long seq, Exception exception);
+
+    /// <summary>A backup was made and checked.</summary>
+    [LoggerMessage(EventId = 20, Level = LogLevel.Information, Message = "Backup made: {File} ({Reason})")]
+    public static partial void BackupMade(ILogger logger, string file, string reason);
+
+    /// <summary>A backup could not be made.</summary>
+    [LoggerMessage(EventId = 21, Level = LogLevel.Error, Message = "Backup FAILED ({Reason}): {Error}")]
+    public static partial void BackupFailed(ILogger logger, string reason, string error);
+
+    /// <summary>The second copy of a backup could not be made.</summary>
+    [LoggerMessage(EventId = 22, Level = LogLevel.Warning, Message = "Backup copy to {Folder} FAILED: {Error}")]
+    public static partial void BackupCopyFailed(ILogger logger, string folder, string error);
 }

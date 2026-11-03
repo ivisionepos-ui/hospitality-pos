@@ -19,12 +19,15 @@ src/
     Menus/               Menu, Edit-menu rules, change log, undo, checking order choices
     Orders/              Orders, statuses, numbers, business day, duplicate-proof intake
   Pos.Hub/               Store Hub: runs on the shop PC, SQLite database, web API for tills and screens
-    Printing/            Receipt, kitchen ticket and Z layouts; drawing (Arabic); PDF/PNG/Windows outputs; print queue
+    Printing/            Receipt, kitchen ticket and Z layouts; drawing (Arabic optional); PDF/PNG/Windows outputs; print queue
+    Backups/             Automatic checked backups, second copy, tidy-up, restore; one-hub-per-data-folder lock
     Data/                Database (schema upgrades, WAL), order and menu storage
     Api/                 Web API routes and request/response formats
 tests/
   Pos.Domain.Tests/      Automated tests for Pos.Domain
   Pos.Hub.Tests/         End-to-end tests: real HTTP calls to a real hub with a real database
+tools/
+  windows/               Double-click launchers for the shop PC: start hub, print tests, restore a backup
 docs/
   DECISIONS.md           Decision log
   MODULES.md             Completed modules and their test status
@@ -93,7 +96,29 @@ ends, or when the PC's address changes; tills do not need anything new when that
 4. Give the hub PC a fixed address in the router (DHCP reservation), then point the till at https://<hub address>:5443.
 
 Files next to the database: `hub.db` (data), `hub.key` (protects PINs and certificate files), `hub-ca.pfx` and
-`hub-tls.pfx` (certificates). Back up all of them together, and keep backups safe: they hold the shop CA's private key.
+`hub-tls.pfx` (certificates). The hub backs all of them up together (see Backups); keep backups safe, as they hold
+the shop CA's private key.
+
+### Backups
+Each backup is one zip in `data/backups` named `hub-backup-<branch>-<yyyyMMdd-HHmmss>.zip` (shop time). It holds a
+consistent snapshot of the database taken with SQLite's backup (never half a change), the PIN key and both
+certificates, plus `backup.json` listing every file with its SHA-256 fingerprint. Each backup is integrity-checked
+and its fingerprints re-read before it is given its final name, so a half-written file never looks like a backup.
+
+- **When:** at start-up if the newest backup is older than the interval; every `IntervalMinutes` (60) if anything
+  changed; straight after each Z report; on demand (`POST /api/backups`).
+- **Second copy:** set `Backup:CopyFolder` to a USB stick, second disk or network folder. Each copy is checked too.
+  If the copy fails (stick unplugged) the main backup is still kept.
+- **Warnings:** a failed backup or copy is logged and sent live to the tills (`BackupFailed`).
+- **Kept:** every backup from the last 48 hours, then the last of each day for 30 days, never fewer than 3.
+  Files not named like backups are never touched.
+- **Upgrades:** before a new version upgrades the database, a copy is kept as `hub.db.before-upgrade-v<N>-<time>.db`.
+  A database from a newer version is refused rather than changed.
+- **Restore:** close the hub, then `Pos.Hub --restore data/backups/<file>.zip` (or drag the file onto
+  `3 - Restore a backup (drag a backup onto this).bat`). The backup is checked first; the files it replaces are
+  moved to `data/before-restore-<time>/`, never deleted. Refused while the hub is running.
+- **One hub per data folder:** the hub holds `data/hub.lock` while running, so a second copy (or a restore) cannot
+  use the same database at the same time.
 
 ### Live updates
 
@@ -188,7 +213,9 @@ under `Printing` → `ReceiptText`. UK VAT receipts must show the VAT number whe
 | POST | /api/orders/{id}/payments/{paymentId}/refund | manager (or manager PIN) | Refund all or part of a payment, same method |
 | GET | /api/orders/{id}/split?parts=N | cashier | Split the balance equally |
 | POST | /api/orders/{id}/split-by-items | cashier | Amount for chosen items |
-| POST | /api/reports/z | manager | End-of-day Z report (all shifts must be closed) |
+| POST | /api/reports/z | manager | End-of-day Z report (all shifts must be closed); starts a backup |
+| GET | /api/backups | manager | Backup status, last result, backups in both folders |
+| POST | /api/backups | manager | Make a backup now |
 | POST | /api/orders/{id}/print-receipt | cashier | Print the receipt (COPY if printed before) |
 | GET | /api/orders/{id}/receipt?format=png\|pdf | cashier | Receipt preview, not printed |
 | POST | /api/reports/z/print | manager | Print the Z report slip |

@@ -668,10 +668,18 @@ test('owner enters the shop name and address in Shop details; mistakes are expla
   await login(owner, '4826');
   await owner.getByRole('button', { name: 'More', exact: true }).click();
   await top(owner).getByRole('button', { name: 'Shop details' }).click();
-  await top(owner).getByLabel('Shop name (top of the receipt)').fill('Olive Grill');
-  await top(owner).getByLabel('Address line 1').fill('12 High Street');
-  await top(owner).getByLabel('Town').fill('Leeds');
+  await top(owner).getByLabel('Shop name (top of the receipt)').fill('Sample Cafe');
+  // Find the shop's address from the postcode (the local file loaded earlier has it).
+  await top(owner).getByLabel('Find address').fill('ls29jt cafe');
+  await top(owner).getByLabel('Find address').press('Enter');
+  await top(owner).getByText('✓ LS2 9JT found (Leeds). Delivery distances will be measured from here.').waitFor();
+  assert.equal(await top(owner).getByLabel('Address line 1').inputValue(), '25-27 Test Road');
+  assert.equal(await top(owner).getByLabel('Address line 2 (optional)').inputValue(), ''); // the shop's own name is not repeated
+  assert.equal(await top(owner).getByLabel('Town').inputValue(), 'Leeds');
+  // A typed postcode is checked too.
   await top(owner).getByLabel('Postcode (delivery distances are measured from here)').fill('ls14ap');
+  await top(owner).getByRole('button', { name: 'Check postcode' }).click();
+  await top(owner).getByText('✓ LS1 4AP found (Leeds).', { exact: false }).waitFor();
   await top(owner).getByLabel('Phone number').fill('0113 4960000');
   await top(owner).getByLabel('VAT number (if VAT registered)').fill('12345');
   await top(owner).getByRole('button', { name: 'Save' }).click();
@@ -679,9 +687,9 @@ test('owner enters the shop name and address in Shop details; mistakes are expla
   await top(owner).getByLabel('VAT number (if VAT registered)').fill('123456789');
   await shot(owner, 'ui-shop-details');
   await top(owner).getByRole('button', { name: 'Save' }).click();
-  await owner.getByText('Shop details saved for Olive Grill. New receipts use them.').waitFor();
+  await owner.getByText('Shop details saved for Sample Cafe. New receipts use them.').waitFor();
   const saved = await call('GET', '/api/settings/shop', { device: shop.owner.device, token: shop.owner.token });
-  assert.deepEqual([saved.businessName, saved.postcode, saved.phone, saved.vatNumber], ['Olive Grill', 'LS1 4AP', '01134 960000', 'GB 123 4567 89']);
+  assert.deepEqual([saved.businessName, saved.addressLine1, saved.postcode, saved.phone, saved.vatNumber], ['Sample Cafe', '25-27 Test Road', 'LS1 4AP', '01134 960000', 'GB 123 4567 89']);
   assert.deepEqual(owner.errors, []);
   await owner.context().close();
 });

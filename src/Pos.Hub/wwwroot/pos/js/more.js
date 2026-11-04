@@ -5,6 +5,7 @@ import { alertDialog, amountDialog, busy, confirmDialog, openDialog, textDialog 
 import { ensureShift } from './pay.js';
 import { withApproval } from './till.js';
 import { soldOutDialog } from './editmenu.js';
+import { addressFinder } from './address-finder.js';
 
 function table(rows) {
   return h('table', { class: 'report' }, h('tbody', {}, rows.filter(Boolean).map(([label, value, strong]) =>
@@ -155,15 +156,48 @@ async function shopDetails() {
     const vat = field('VAT number (if VAT registered)', d.vatNumber, { maxlength: 20, placeholder: 'e.g. GB 123 4567 89' });
     const message = field('Message at the bottom of receipts', d.receiptMessage, { maxlength: 120, placeholder: 'e.g. Thank you for your order' });
     const problem = h('p', { class: 'form-problem', role: 'alert' });
+    const located = h('p', { class: 'check-result', role: 'status' });
+
+    // Is the postcode real? Delivery distances are measured from it, so check it before saving.
+    const checkPostcode = async () => {
+      if (!postcode.el.value.trim()) { located.textContent = ''; return; }
+      located.className = 'check-result';
+      located.textContent = 'Checking…';
+      try {
+        const place = await api.get(`/api/delivery/locate?postcode=${encodeURIComponent(postcode.el.value)}`);
+        postcode.el.value = place.postcode;
+        if (!town.el.value.trim() && place.town) town.el.value = place.town;
+        located.className = 'check-result check-ok';
+        located.textContent = `✓ ${place.postcode} found${place.town ? ` (${place.town})` : ''}. Delivery distances will be measured from here.`;
+      } catch (e) {
+        located.className = 'check-result check-bad';
+        located.textContent = e.code === 'LookupUnavailable'
+          ? 'The postcode cannot be checked without internet. It will be checked the first time a delivery is priced.'
+          : e.message;
+      }
+    };
+    postcode.el.addEventListener('keydown', e => { if (e.key === 'Enter') checkPostcode(); });
+
+    // Find the shop's address with the chosen address service; the shop's own name is not repeated in the address.
+    const finder = addressFinder(address => {
+      const shopName = name.el.value.trim().toLowerCase();
+      const rest = (address.line2 ?? '').split(',').map(p => p.trim()).filter(p => p && p.toLowerCase() !== shopName);
+      line1.el.value = address.line1;
+      line2.el.value = rest.join(', ');
+      town.el.value = address.town ?? '';
+      postcode.el.value = address.postcode;
+      return checkPostcode();
+    });
     return {
       title: 'Shop details',
       wide: true,
       focus: name.el,
       body: h('div', { class: 'customer-form' },
-        h('div', { class: 'customer-col' }, name.field, line1.field, line2.field, town.field, postcode.field),
-        h('div', { class: 'customer-col' }, phone.field, vat.field, message.field,
-          h('p', { class: 'field-hint', text: 'These print on every receipt. UK VAT receipts must show the VAT number if the business is VAT registered.' })),
-        problem),
+        h('div', { class: 'customer-col' }, name.field, finder.field, finder.list, line1.field, line2.field, problem),
+        h('div', { class: 'customer-col' }, town.field,
+          h('div', { class: 'postcode-row' }, postcode.field, h('button', { class: 'btn btn-kitchen', onclick: checkPostcode, text: 'Check postcode' })),
+          located, phone.field, vat.field, message.field,
+          h('p', { class: 'field-hint', text: 'These print on every receipt. UK VAT receipts must show the VAT number if the business is VAT registered.' }))),
       actions: [
         h('button', { class: 'btn', onclick: () => close(), text: 'Cancel' }),
         h('button', {

@@ -134,3 +134,4 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-128 | 2026-11-04 | Shop details (name, address, postcode, phone, VAT number, receipt message) entered by the owner on the till and stored in the hub database; applied at once to receipts and delivery distances | Owner asked how to add the shop address; editing JSON by hand is error-prone |
 | C-129 | 2026-11-04 | Shop details are checked and tidied: UK postcode, phone written "01134 960000", VAT number written "GB 123 4567 89" (9 or 12 digits) | Receipts look right and VAT numbers are valid in shape |
 | C-130 | 2026-11-04 | Example address removed from the default settings | It would have printed on real receipts |
+| C-131 | 2026-11-04 | Shop details has the same Find address box as the delivery panel (one shared component), and Check postcode confirms the shop's postcode is a real location | Owner report: "postcode lookup is not working in shop details" (there was none) |

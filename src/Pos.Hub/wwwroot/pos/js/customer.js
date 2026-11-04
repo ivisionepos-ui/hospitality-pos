@@ -1,7 +1,8 @@
 // Customer details for phone and delivery orders: find a past customer by phone number,
 // or type name and address; check the postcode to get the distance from the shop.
 import { api, ApiError } from './api.js';
-import { h, mount, newId, timeText } from './dom.js';
+import { addressFinder } from './address-finder.js';
+import { h, mount, timeText } from './dom.js';
 import { openDialog } from './dialogs.js';
 
 function input(label, value, attrs = {}) {
@@ -50,13 +51,6 @@ export function customerDialog({ delivery, initial }) {
     };
     if (distance !== null) showDistance();
 
-    // "Find address": the service chosen in More → Address lookup (Google, Royal Mail online or the shop's files).
-    const session = newId(); // groups Google's searches for one customer into one billing session
-    const finder = h('input', { class: 'text-input', type: 'search', placeholder: 'Postcode or part of the address', 'aria-label': 'Find address', autocomplete: 'off' });
-    const found = h('div', { class: 'pick', 'aria-live': 'polite' });
-    let findSeq = 0;
-    let findTimer;
-
     const check = async () => {
       problem.textContent = '';
       checked.className = 'check-result';
@@ -85,26 +79,12 @@ export function customerDialog({ delivery, initial }) {
       }
     };
 
-    const choose = async suggestion => {
-      if (suggestion.isGroup) { await find(finder.value, suggestion.id); return; } // a postcode or street: list its addresses
-      let address = suggestion.address;
-      let resolvedMiles = null;
-      if (!address) {
-        try {
-          const resolved = await api.get(`/api/addresses/resolve?id=${encodeURIComponent(suggestion.id)}&session=${session}`);
-          address = resolved.address;
-          resolvedMiles = resolved.distanceMiles;
-        } catch (e) {
-          mount(found, h('p', { class: 'check-result check-bad', text: `${e.message} Type the address in the boxes below.` }));
-          return;
-        }
-      }
-
+    // "Find address" (Google, Royal Mail online or the shop's files, as chosen in More → Address lookup).
+    const finder = addressFinder(async (address, resolvedMiles) => {
       line1.el.value = address.line1;
       line2.el.value = address.line2 ?? '';
       town.el.value = address.town ?? '';
       postcode.el.value = address.postcode;
-      mount(found, h('button', { class: 'pick-chosen', onclick: () => { finder.focus(); find(finder.value); }, text: `✓ ${suggestion.label} — change` }));
       if (resolvedMiles !== null && resolvedMiles !== undefined) {
         distance = resolvedMiles;
         checkedPostcode = address.postcode;
@@ -113,36 +93,8 @@ export function customerDialog({ delivery, initial }) {
       } else {
         await check();
       }
-    };
-
-    const find = async (text, group, pickSingle = false) => {
-      const seq = ++findSeq;
-      if (!group && text.trim().length < 3) { mount(found); return; }
-      mount(found, h('p', { class: 'field-hint', text: 'Searching…' }));
-      try {
-        const result = await api.get(`/api/addresses/search?q=${encodeURIComponent(text)}&session=${session}${group ? `&group=${encodeURIComponent(group)}` : ''}`);
-        if (seq !== findSeq) return;
-        mount(found,
-          result.problem ? h('p', { class: 'check-result check-bad', text: result.problem }) : null,
-          h('div', { class: 'pick-list', role: 'list' }, result.suggestions.map(sg => h('button', {
-            class: `pick-item ${sg.isGroup ? 'pick-group' : ''}`, role: 'listitem', onclick: () => choose(sg), text: sg.isGroup ? `${sg.label} ›` : sg.label,
-          }))),
-          result.suggestions.length ? null : h('p', { class: 'field-hint', text: 'Nothing found. Type the address in the boxes below.' }),
-          result.attribution ? h('p', { class: 'attribution', text: result.attribution }) : null);
-        const only = result.suggestions.length === 1 ? result.suggestions[0] : null;
-        if (pickSingle && only && !only.isGroup) await choose(only);
-      } catch (e) {
-        if (seq === findSeq) mount(found, h('p', { class: 'check-result check-bad', text: `${e.message} Type the address in the boxes below.` }));
-      }
-    };
-
-    finder.addEventListener('input', () => { clearTimeout(findTimer); findTimer = setTimeout(() => find(finder.value), 350); });
-    // Enter searches now (not with the list from before) and picks the address if only one matches.
-    finder.addEventListener('keydown', e => {
-      if (e.key !== 'Enter') return;
-      clearTimeout(findTimer);
-      find(finder.value, null, true);
     });
+
 
     // Typing a different postcode cancels the old distance.
     postcode.el.addEventListener('input', () => {
@@ -219,8 +171,8 @@ export function customerDialog({ delivery, initial }) {
       body: h('div', { class: 'customer-form' },
         h('div', { class: 'customer-col' }, phone.field, matches, name.field, notes.field),
         delivery ? h('div', { class: 'customer-col' },
-          h('label', { class: 'field' }, h('span', { class: 'field-label', text: 'Find address' }), finder),
-          found,
+          finder.field,
+          finder.list,
           line1.field, line2.field, town.field,
           h('div', { class: 'postcode-row' }, postcode.field, h('button', { class: 'btn btn-kitchen', onclick: check, text: 'Check postcode' })),
           checked,

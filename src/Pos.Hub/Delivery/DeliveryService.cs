@@ -140,6 +140,22 @@ public sealed class DeliveryService(HubDatabase db, DeliverySettings settings, I
     }
 
     /// <summary>
+    /// Checks that a postcode exists and finds where it is (used when the owner sets the shop's postcode).
+    /// Throws <see cref="ArgumentException"/> (not a postcode), <see cref="KeyNotFoundException"/> (no such postcode)
+    /// or <see cref="PostcodeServiceUnavailableException"/> (no internet).
+    /// </summary>
+    public async Task<PostcodeLocation> LocatePostcodeAsync(string postcode, CancellationToken cancellationToken)
+    {
+        if (!UkPostcode.TryNormalise(postcode, out var normalised))
+        {
+            throw new ArgumentException($"\"{postcode}\" is not a UK postcode.");
+        }
+
+        return await LocateAsync(normalised, cancellationToken).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"Postcode {normalised} was not found. Check it.");
+    }
+
+    /// <summary>
     /// Distance from the shop to a point (e.g. from Google or Royal Mail), or null when the shop's own location
     /// cannot be found right now.
     /// </summary>

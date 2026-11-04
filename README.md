@@ -313,6 +313,7 @@ are used. Language `en` (default), `ar` or `both` stays in appsettings.json. UK 
 | GET | /api/addresses/search?q=&group=&session= | cashier | "Find address" with the chosen service (falls back to the local file) |
 | GET | /api/addresses/resolve?id=&session= | cashier | Full address (and distance) for a Google or Royal Mail suggestion |
 | GET / PUT | /api/settings/shop | staff / owner | Shop name, address, postcode, phone, VAT number, receipt message |
+| GET | /api/delivery/locate?postcode= | owner | Is this a real postcode, and where (Shop details) |
 | GET / PUT | /api/settings/address-lookup | owner | Chosen service, keys (write-only), fallback |
 | POST | /api/settings/address-lookup/test?provider=&q= | owner | Try a service with the saved key (no fallback) |
 | GET / POST | /api/addresses/files[?name=B12.csv] | owner | Address files loaded / upload one (body = the CSV) |

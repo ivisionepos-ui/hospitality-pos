@@ -80,4 +80,19 @@ public sealed class ShopDetailsTests : HubTestBase
         Assert.Equal(HttpStatusCode.Forbidden, (await Manager.Put("/api/settings/shop", Olive)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await Cashier.GetAsync(new Uri("/api/settings/shop", UriKind.Relative))).StatusCode);
     }
+
+    [Fact]
+    public async Task Shop_postcode_can_be_checked_before_saving()
+    {
+        var found = await Owner.GetJson<PostcodeLocation>("/api/delivery/locate?postcode=ls29jt");
+        var unknown = await Owner.GetAsync(new Uri("/api/delivery/locate?postcode=LS99 9ZZ", UriKind.Relative));
+        Host.Postcodes.Down = true;
+        var offline = await Owner.GetAsync(new Uri("/api/delivery/locate?postcode=LS7 3AA", UriKind.Relative));
+
+        Assert.Equal("LS2 9JT", found.Postcode);
+        Assert.Equal("Leeds", found.Town);
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, offline.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Cashier.GetAsync(new Uri("/api/delivery/locate?postcode=LS2 9JT", UriKind.Relative))).StatusCode);
+    }
 }

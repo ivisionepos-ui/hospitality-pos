@@ -411,6 +411,11 @@ public static class Endpoints
             HandleAsync(async () => Results.Ok(await delivery.CheckAsync(postcode ?? string.Empty, cancel).ConfigureAwait(false))))
             .ForStaff(Permission.TakeOrders);
 
+        // Is this a real postcode, and where is it? (Shop details: the shop's own postcode.)
+        api.MapGet("/delivery/locate", (DeliveryService delivery, string? postcode, CancellationToken cancel) =>
+            HandleAsync(async () => Results.Ok(await delivery.LocatePostcodeAsync(postcode ?? string.Empty, cancel).ConfigureAwait(false))))
+            .ForStaff(Permission.ManageDevices);
+
         api.MapGet("/delivery/settings", (DeliveryService delivery) => Handle(() =>
         {
             var s = delivery.Settings;

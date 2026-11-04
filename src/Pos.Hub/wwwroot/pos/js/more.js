@@ -83,7 +83,7 @@ async function zReport() {
 
 async function addTill() {
   const code = await busy(() => api.post('/api/devices/pairing-code'));
-  await alertDialog('Add a till', `On the new till, open this page and enter the code ${code.code}. It works for a few minutes (until ${timeText(code.expiresAt)}).`);
+  await alertDialog('Add a till or kitchen screen', `On the new device, open this page and enter the code ${code.code}, then choose Till or Kitchen screen. The code works until ${timeText(code.expiresAt)}.`);
 }
 
 async function failedPrints() {
@@ -348,7 +348,7 @@ export function moreDialog(till) {
             can('ViewReports') ? item('End of day (Z report)', zReport) : null,
             item('Failed printouts', failedPrints),
             can('ViewReports') ? item('Back up now', backupNow) : null,
-            can('ManageDevices') ? item('Add a till', addTill) : null,
+            can('ManageDevices') ? item('Add a till or screen', addTill) : null,
             can('ManageDevices') ? item('Address lookup', addressLookup) : null,
             can('ManageDevices') ? item('Address files', addressFiles) : null)),
         h('p', { class: 'version', text: `Version ${window.posVersion ?? ''} · ${till.ctx.me.staff.name} (${till.ctx.me.staff.role})` }),

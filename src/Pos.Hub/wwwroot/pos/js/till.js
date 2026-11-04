@@ -122,6 +122,11 @@ export class Till {
       case 'OrderCreated':
       case 'OrderUpdated':
       case 'PaymentChanged':
+        if (event.order?.status === 'Ready' && !this.announced?.has(event.order.id)) {
+          (this.announced ??= new Set()).add(event.order.id);
+          toast(`Order ${event.order.number} is ready${event.order.contact?.name ? ` (${event.order.contact.name})` : ''}.`, 'ok', 8000);
+        }
+
         if (this.saved && event.order?.id === this.saved.id) {
           const id = this.saved.id;
           const fresh = await api.get(`/api/orders/${id}`);

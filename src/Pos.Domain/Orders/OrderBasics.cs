@@ -67,7 +67,7 @@ public static class OrderStatusRules
         [OrderStatus.Received] = [OrderStatus.Accepted, OrderStatus.Rejected, OrderStatus.Cancelled],
         [OrderStatus.Accepted] = [OrderStatus.Preparing, OrderStatus.Ready, OrderStatus.Completed, OrderStatus.Cancelled],
         [OrderStatus.Preparing] = [OrderStatus.Ready, OrderStatus.Cancelled],
-        [OrderStatus.Ready] = [OrderStatus.Completed, OrderStatus.Cancelled],
+        [OrderStatus.Ready] = [OrderStatus.Completed, OrderStatus.Preparing, OrderStatus.Cancelled], // Preparing = recalled by the kitchen
         [OrderStatus.Completed] = [],
         [OrderStatus.Cancelled] = [],
         [OrderStatus.Rejected] = [],

@@ -135,3 +135,9 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-129 | 2026-11-04 | Shop details are checked and tidied: UK postcode, phone written "01134 960000", VAT number written "GB 123 4567 89" (9 or 12 digits) | Receipts look right and VAT numbers are valid in shape |
 | C-130 | 2026-11-04 | Example address removed from the default settings | It would have printed on real receipts |
 | C-131 | 2026-11-04 | Shop details has the same Find address box as the delivery panel (one shared component), and Check postcode confirms the shop's postcode is a real location | Owner report: "postcode lookup is not working in shop details" (there was none) |
+| C-132 | 2026-11-04 | Kitchen screen is part of the same web app: chosen by device type (Kitchen screen) or by a kitchen-only role | One thing to install and update; any browser device works |
+| C-133 | 2026-11-04 | Kitchen screens need a staff PIN login (Kitchen role) | Every Start/Ready/Recall is recorded against a person |
+| C-134 | 2026-11-04 | Ready → Preparing allowed ("Recall"), recorded in the order history | Mistaken taps happen in a busy kitchen; the record shows who and when |
+| C-135 | 2026-11-04 | Timers amber at 10 minutes, red at 20; NEW marks items added to an order already on the board, counted from when they are sent | Common kitchen practice; new orders are not all "NEW" |
+| C-136 | 2026-11-04 | Ticking items off is per screen only (not saved) | A cook's working aid, not part of the order record |
+| C-137 | 2026-11-04 | Tills show "Order X is ready" when the kitchen marks it | The counter knows when to call the customer |

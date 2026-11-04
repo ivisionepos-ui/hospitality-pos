@@ -3,6 +3,7 @@ import { api, ApiError, credentials, onAuthLost } from './api.js';
 import { h, mount, toast } from './dom.js';
 import { LiveConnection } from './live.js';
 import { loginScreen, pairScreen, setupScreen } from './screens.js';
+import { Kitchen } from './kitchen.js';
 import { Till } from './till.js';
 
 const root = document.getElementById('app');
@@ -54,10 +55,19 @@ async function boot() {
     return;
   }
 
+  // Kitchen screens (and kitchen staff on any device) get the kitchen board.
+  if (me.device?.type === 'KitchenScreen' || (!me.permissions.includes('TakeOrders') && me.permissions.includes('KitchenDisplay'))) {
+    till = new Kitchen(root, { me, device: credentials.device, logout });
+    await till.start();
+    live = new LiveConnection(event => till?.onEvent(event), connected => till?.setLive(connected));
+    live.start();
+    return;
+  }
+
   if (!me.permissions.includes('TakeOrders')) {
     mount(root, h('div', { class: 'gate' }, h('div', { class: 'gate-card' },
       h('h1', { class: 'gate-title', text: `Hello ${me.staff.name}` }),
-      h('p', { class: 'gate-sub', text: 'Your role cannot take orders on a till. The kitchen screen is coming in a later update.' }),
+      h('p', { class: 'gate-sub', text: 'Your role cannot use this screen.' }),
       h('button', { class: 'btn btn-big', onclick: logout, text: 'Log out' }))));
     return;
   }

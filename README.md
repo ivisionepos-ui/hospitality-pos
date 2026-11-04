@@ -36,7 +36,7 @@ docs/
   CODING-STANDARDS.md    Naming and coding rules
 ```
 
-Projects still to come: `Pos.Cloud.Api`, `Pos.Sync`, the kitchen display, customer display, back office and ordering website.
+Projects still to come: `Pos.Cloud.Api`, `Pos.Sync`, customer display, back office and ordering website.
 
 ## Requirements
 
@@ -142,6 +142,18 @@ install on tills, no internet needed, and a hub update reaches every till on the
 
 Till screen tests: after a Release build, `npm install --prefix tests/ui`, `npx --prefix tests/ui playwright install chromium`,
 then `node --test --test-concurrency=1 tests/ui/till.test.cjs`. They start their own hub on a temporary folder.
+
+### Kitchen screen
+Any PC, tablet or Android box with a browser. Register it like a till (More → Add a till or screen gives the code;
+choose **Kitchen screen**), then a kitchen staff member logs in with their PIN. Kitchen staff logging in on any
+device also get the kitchen board.
+- Orders appear the moment the till sends them (live), oldest first, with order number, type, customer name for
+  phone orders, every item with size, extras, deal choices and notes highlighted. A beep sounds for each new order.
+- The timer turns amber after 10 minutes and red after 20. Items added later are marked NEW for 3 minutes; removed
+  items are crossed out "REMOVED – DO NOT MAKE". Tapping an item ticks it off (this screen only).
+- **Start** (amber card = preparing) and **Ready** (off the board, into the Ready bar; the tills are told
+  "Order 012 is ready"). **Recall** puts an order marked ready by mistake back on the board (recorded in its history).
+- **Sold out** is on the kitchen screen too.
 
 ### Delivery settings
 In `appsettings.json` → `Delivery` (the shop postcode is set in More → Shop details): `MaximumMiles`,
@@ -338,7 +350,7 @@ are used. Language `en` (default), `ar` or `both` stays in appsettings.json. UK 
 | GET | /api/orders?date=&status=, /api/orders/{id} | any device | Orders for a trading day, one order (with paid and balance) |
 | GET | /api/orders/{id}/history | manager | Everything that happened to it |
 | POST | /api/orders/{id}/lines | cashier, waiter | Add items to an open order; with a requestId, safe to resend |
-| POST | /api/orders/{id}/status | depends on status | Accept/reject (cashier), preparing/ready (kitchen), complete, cancel (manager) |
+| POST | /api/orders/{id}/status | depends on status | Accept/reject (cashier), preparing/ready/recall (kitchen), complete, cancel (manager) |
 | POST | /api/orders/{id}/send-to-kitchen | cashier, waiter | Send new items to the kitchen |
 | POST | /api/orders/{id}/lines/{lineId}/void | cashier; manager if in the kitchen | Remove an item |
 

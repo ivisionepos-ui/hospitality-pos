@@ -52,11 +52,23 @@ export function pairScreen(root, done, note) {
   const code = h('input', { class: 'text-input code-input', type: 'text', inputmode: 'numeric', maxlength: 6, autocomplete: 'one-time-code' });
   const name = h('input', { class: 'text-input', type: 'text', maxlength: 40, value: 'Till 2' });
   const problem = h('p', { class: 'form-problem', role: 'alert', text: note ?? '' });
+  let type = 'Till';
+  const kinds = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'This device is a' });
+  const renderKinds = () => mount(kinds, [['Till', 'Till'], ['KitchenScreen', 'Kitchen screen']].map(([id, label]) => h('button', {
+    type: 'button', class: `seg-btn ${type === id ? 'seg-on' : ''}`, role: 'radio', 'aria-checked': String(type === id),
+    onclick: () => {
+      if (name.value === (type === 'Till' ? 'Till 2' : 'Kitchen 1')) name.value = id === 'Till' ? 'Till 2' : 'Kitchen 1';
+      type = id;
+      renderKinds();
+    },
+    text: label,
+  })));
+  renderKinds();
   const submit = async e => {
     e.preventDefault();
     if (!/^\d{6}$/.test(code.value.trim())) { problem.textContent = 'The code has 6 digits.'; return; }
     try {
-      const device = await busy(() => api.post('/api/devices/pair', { code: code.value.trim(), name: name.value.trim() || 'Till', type: 'Till' }, { noSession: true }));
+      const device = await busy(() => api.post('/api/devices/pair', { code: code.value.trim(), name: name.value.trim() || 'Till', type }, { noSession: true }));
       credentials.device = { ...device, name: name.value.trim() || 'Till' };
       credentials.session = null;
       done();
@@ -64,10 +76,11 @@ export function pairScreen(root, done, note) {
       problem.textContent = err instanceof ApiError ? err.message : 'Could not register.';
     }
   };
-  mount(root, card('Register this till', 'On the owner’s till, open More → Add a till to get a 6-digit code.',
+  mount(root, card('Register this device', 'On the owner’s till, open More → Add a till or screen to get a 6-digit code.',
     h('form', { class: 'form', onsubmit: submit },
       field('Code', code),
-      field('Name for this till', name),
+      h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'This device is a' }), kinds),
+      field('Name', name),
       problem,
       h('button', { class: 'btn btn-primary btn-big', type: 'submit', text: 'Register' }))));
   code.focus();

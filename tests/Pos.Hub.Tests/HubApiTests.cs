@@ -206,7 +206,8 @@ public sealed class HubApiTests : HubTestBase
 
         Assert.Equal(OrderStatus.Preparing, (await (await Kitchen.Post(url, To(OrderStatus.Preparing))).Read<OrderView>()).Status);
         Assert.Equal(OrderStatus.Ready, (await (await Kitchen.Post(url, To(OrderStatus.Ready))).Read<OrderView>()).Status);
-        Assert.Equal(HttpStatusCode.Conflict, (await Cashier.Post(url, To(OrderStatus.Preparing))).StatusCode); // no going back
+        Assert.Equal(OrderStatus.Preparing, (await (await Kitchen.Post(url, To(OrderStatus.Preparing))).Read<OrderView>()).Status); // recalled by mistake
+        Assert.Equal(OrderStatus.Ready, (await (await Kitchen.Post(url, To(OrderStatus.Ready))).Read<OrderView>()).Status);
         Assert.Equal(HttpStatusCode.Forbidden, (await Kitchen.Post(url, To(OrderStatus.Completed))).StatusCode); // kitchen cannot hand over
         Assert.Equal(HttpStatusCode.Conflict, (await Cashier.Post(url, To(OrderStatus.Completed))).StatusCode);  // not paid yet
         await Cashier.Post("/api/shifts/open", new OpenShiftRequest(0));
@@ -214,7 +215,7 @@ public sealed class HubApiTests : HubTestBase
         Assert.Equal(OrderStatus.Completed, (await (await Cashier.Post(url, To(OrderStatus.Completed))).Read<OrderView>()).Status);
 
         var history = await Manager.GetJson<List<OrderEvent>>($"/api/orders/{order.Id}/history");
-        Assert.Equal(3, history.Count(e => e.Kind == OrderEventKind.StatusChanged));
+        Assert.Equal(5, history.Count(e => e.Kind == OrderEventKind.StatusChanged)); // the recall is in the history too
     }
 
     [Fact]

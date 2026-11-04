@@ -182,7 +182,7 @@ test('first-time set-up screen appears only on a fresh hub, on the hub PC', asyn
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(`${base}/pos/`);
-  await page.getByText('Register this till').waitFor();
+  await page.getByText('Register this device').waitFor();
   await page.getByLabel('Code').fill('000000');
   await page.getByRole('button', { name: 'Register' }).click();
   await page.getByText('That code is wrong or has expired.').waitFor();
@@ -692,6 +692,77 @@ test('owner enters the shop name and address in Shop details; mistakes are expla
   assert.deepEqual([saved.businessName, saved.addressLine1, saved.postcode, saved.phone, saved.vatNumber], ['Sample Cafe', '25-27 Test Road', 'LS1 4AP', '01134 960000', 'GB 123 4567 89']);
   assert.deepEqual(owner.errors, []);
   await owner.context().close();
+});
+
+test('kitchen screen: register it, orders appear live, Start, new items marked, Ready tells the till, Recall', async () => {
+  const owner = { device: shop.owner.device, token: shop.owner.token };
+  await call('POST', '/api/staff', owner, { name: 'Kofi Kitchen', role: 'Kitchen', pin: '3185' });
+  const { code } = await call('POST', '/api/devices/pairing-code', owner);
+
+  // A new device registers itself as a kitchen screen.
+  const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+  const kitchen = await context.newPage();
+  kitchen.errors = [];
+  kitchen.on('pageerror', e => kitchen.errors.push(e.message));
+  open.add(kitchen);
+  await kitchen.goto(`${base}/pos/`);
+  await kitchen.getByText('Register this device').waitFor();
+  await kitchen.getByRole('radio', { name: 'Kitchen screen' }).click();
+  assert.equal(await kitchen.getByLabel('Name').inputValue(), 'Kitchen 1');
+  await kitchen.getByLabel('Code').fill(code);
+  await kitchen.getByRole('button', { name: 'Register' }).click();
+  await kitchen.getByText('Enter your PIN').waitFor();
+  await pin(kitchen, '3185');
+  await kitchen.getByRole('button', { name: 'Log in' }).click();
+  await kitchen.locator('.kds-board').waitFor(); // kitchen staff get the kitchen board, not the till
+  await kitchen.locator('.live-on').waitFor();
+
+  // The till sends an order with a note.
+  const till = await tillPage(shop.till1);
+  await login(till, '5931');
+  await pick(till, 'Kebabs', 'Doner kebab');
+  await top(till).getByRole('button', { name: /Large/ }).click();
+  await top(till).getByRole('button', { name: /Chilli/ }).click();
+  await top(till).getByLabel('Note for the kitchen').fill('Well done');
+  await top(till).getByRole('button', { name: /^Add/ }).click();
+  await till.getByRole('button', { name: 'Send', exact: true }).click();
+  await till.locator('.lines-empty').waitFor();
+  const order = (await call('GET', '/api/orders', owner)).at(-1);
+  const card = kitchen.locator('.kds-card', { has: kitchen.locator('.kds-number', { hasText: new RegExp(`^${order.number}$`) }) });
+  await card.waitFor();
+  await card.getByText('Large Doner kebab').waitFor();
+  await card.getByText('+ Chilli').waitFor();
+  await card.getByText('Well done').waitFor();
+
+  // Start: the card turns amber and the order is "Preparing".
+  await card.getByRole('button', { name: 'Start' }).click();
+  await kitchen.locator('.kds-card.kds-preparing', { hasText: order.number }).waitFor();
+  assert.equal((await call('GET', `/api/orders/${order.id}`, owner)).status, 'Preparing');
+
+  // More items from the till show as NEW on the same card.
+  await till.getByRole('button', { name: /^Orders/ }).click();
+  await top(till).getByRole('button', { name: new RegExp(`^${order.number}`) }).click();
+  await pick(till, 'Drinks', 'Can 330ml');
+  await till.getByRole('button', { name: 'Send new' }).click();
+  await card.locator('.kds-line', { hasText: 'Can 330ml' }).getByText('NEW').waitFor();
+  assert.equal(await card.locator('.kds-line', { hasText: 'Large Doner kebab' }).locator('.kds-flag-new').count(), 0); // part of the original order
+  await shot(kitchen, 'ui-kitchen');
+
+  // Ready: off the board, into the Ready bar, and the till is told.
+  await card.getByRole('button', { name: 'Ready' }).click();
+  await card.waitFor({ state: 'detached' });
+  await kitchen.locator('.kds-ready-chip', { hasText: order.number }).waitFor();
+  await till.getByText(`Order ${order.number} is ready.`).waitFor();
+
+  // Recall: back on the board.
+  await kitchen.locator('.kds-ready-chip', { hasText: order.number }).click();
+  await top(kitchen).getByRole('button', { name: 'Recall' }).click();
+  await kitchen.locator('.kds-card.kds-preparing', { hasText: order.number }).waitFor();
+  assert.equal((await call('GET', `/api/orders/${order.id}`, owner)).status, 'Preparing');
+  await kitchen.locator('.kds-card', { hasText: order.number }).getByRole('button', { name: 'Ready' }).click();
+  assert.deepEqual([...kitchen.errors, ...till.errors], []);
+  await till.context().close();
+  await context.close();
 });
 
 test('every printout was made: kitchen tickets, additions, the void slip and receipts', async () => {

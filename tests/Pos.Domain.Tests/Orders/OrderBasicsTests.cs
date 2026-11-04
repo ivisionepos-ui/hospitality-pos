@@ -15,7 +15,8 @@ public class OrderBasicsTests
     [InlineData(OrderStatus.Accepted, OrderStatus.Preparing, true)]
     [InlineData(OrderStatus.Accepted, OrderStatus.Completed, true)] // counter sale paid and handed over
     [InlineData(OrderStatus.Preparing, OrderStatus.Ready, true)]
-    [InlineData(OrderStatus.Ready, OrderStatus.Preparing, false)]
+    [InlineData(OrderStatus.Ready, OrderStatus.Preparing, true)]   // the kitchen recalls an order marked ready by mistake
+    [InlineData(OrderStatus.Completed, OrderStatus.Ready, false)]
     [InlineData(OrderStatus.Ready, OrderStatus.Completed, true)]
     [InlineData(OrderStatus.Completed, OrderStatus.Cancelled, false)] // refunds handle completed orders
     [InlineData(OrderStatus.Cancelled, OrderStatus.Accepted, false)]

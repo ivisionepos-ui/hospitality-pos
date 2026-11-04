@@ -144,7 +144,7 @@ Till screen tests: after a Release build, `npm install --prefix tests/ui`, `npx 
 then `node --test --test-concurrency=1 tests/ui/till.test.cjs`. They start their own hub on a temporary folder.
 
 ### Delivery settings
-In `appsettings.json` → `Delivery`: `ShopPostcode` (required for the postcode check), `MaximumMiles`,
+In `appsettings.json` → `Delivery` (the shop postcode is set in More → Shop details): `MaximumMiles`,
 `MinimumOrderPence`, `FreeOverPence`, and either `Bands` (from/to miles, fee, optional minimum order per band) or
 `RatePerMilePence` + `MinimumFeePence`. Distances are straight-line × `RoadFactor` (1.3) until a road-distance
 service is added.
@@ -249,8 +249,10 @@ tries again (`MaxAttempts`, `RetrySeconds`), then marks it failed, tells the til
 staff can retry it. Printer problems never hold up taking orders. The cash drawer opens only on a real receipt
 printer (to come). The `Pdf` output embeds the font, so each file is about 0.7 MB; clear the folder now and then.
 
-Receipt text (shop name, address, phone, VAT number, footer, language `en` (default), `ar` or `both`) is
-under `Printing` → `ReceiptText`. UK VAT receipts must show the VAT number when the business is VAT registered.
+Shop name, address, postcode, phone, VAT number and receipt message are entered by the owner on the till in
+**More → Shop details** (stored in the hub database; used at once for receipts, and the postcode for delivery
+distances). Until then the values under `Printing` → `ReceiptText` and `Delivery:ShopPostcode` in appsettings.json
+are used. Language `en` (default), `ar` or `both` stays in appsettings.json. UK VAT receipts must show the VAT number when the business is VAT registered.
 
 ### Money rules
 
@@ -310,6 +312,7 @@ under `Printing` → `ReceiptText`. UK VAT receipts must show the VAT number whe
 | GET | /api/addresses?postcode= | cashier | Every address in a postcode, from the shop's address files |
 | GET | /api/addresses/search?q=&group=&session= | cashier | "Find address" with the chosen service (falls back to the local file) |
 | GET | /api/addresses/resolve?id=&session= | cashier | Full address (and distance) for a Google or Royal Mail suggestion |
+| GET / PUT | /api/settings/shop | staff / owner | Shop name, address, postcode, phone, VAT number, receipt message |
 | GET / PUT | /api/settings/address-lookup | owner | Chosen service, keys (write-only), fallback |
 | POST | /api/settings/address-lookup/test?provider=&q= | owner | Try a service with the saved key (no fallback) |
 | GET / POST | /api/addresses/files[?name=B12.csv] | owner | Address files loaded / upload one (body = the CSV) |

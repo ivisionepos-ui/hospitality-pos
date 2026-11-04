@@ -663,6 +663,29 @@ test('owner chooses Google, then Royal Mail online, testing each key; the till f
   await owner.context().close();
 });
 
+test('owner enters the shop name and address in Shop details; mistakes are explained', async () => {
+  const owner = await tillPage(shop.till2);
+  await login(owner, '4826');
+  await owner.getByRole('button', { name: 'More', exact: true }).click();
+  await top(owner).getByRole('button', { name: 'Shop details' }).click();
+  await top(owner).getByLabel('Shop name (top of the receipt)').fill('Olive Grill');
+  await top(owner).getByLabel('Address line 1').fill('12 High Street');
+  await top(owner).getByLabel('Town').fill('Leeds');
+  await top(owner).getByLabel('Postcode (delivery distances are measured from here)').fill('ls14ap');
+  await top(owner).getByLabel('Phone number').fill('0113 4960000');
+  await top(owner).getByLabel('VAT number (if VAT registered)').fill('12345');
+  await top(owner).getByRole('button', { name: 'Save' }).click();
+  await top(owner).getByText('"12345" is not a UK VAT number (9 digits, e.g. GB 123 4567 89).').waitFor();
+  await top(owner).getByLabel('VAT number (if VAT registered)').fill('123456789');
+  await shot(owner, 'ui-shop-details');
+  await top(owner).getByRole('button', { name: 'Save' }).click();
+  await owner.getByText('Shop details saved for Olive Grill. New receipts use them.').waitFor();
+  const saved = await call('GET', '/api/settings/shop', { device: shop.owner.device, token: shop.owner.token });
+  assert.deepEqual([saved.businessName, saved.postcode, saved.phone, saved.vatNumber], ['Olive Grill', 'LS1 4AP', '01134 960000', 'GB 123 4567 89']);
+  assert.deepEqual(owner.errors, []);
+  await owner.context().close();
+});
+
 test('every printout was made: kitchen tickets, additions, the void slip and receipts', async () => {
   const jobs = await call('GET', '/api/print-jobs', { device: shop.owner.device, token: shop.owner.token });
   const kinds = new Set(jobs.map(j => j.job.kind));

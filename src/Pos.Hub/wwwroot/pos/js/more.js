@@ -138,6 +138,55 @@ async function addressFiles() {
   });
 }
 
+/** Owner: shop name and address for receipts, and the postcode delivery distances are measured from. */
+async function shopDetails() {
+  const d = await busy(() => api.get('/api/settings/shop'));
+  await openDialog(close => {
+    const field = (label, value, attrs = {}) => {
+      const el = h('input', { class: 'text-input', type: 'text', value: value ?? '', autocomplete: 'off', ...attrs });
+      return { el, field: h('label', { class: 'field' }, h('span', { class: 'field-label', text: label }), el) };
+    };
+    const name = field('Shop name (top of the receipt)', d.businessName, { maxlength: 60 });
+    const line1 = field('Address line 1', d.addressLine1, { maxlength: 80, placeholder: 'e.g. 12 High Street' });
+    const line2 = field('Address line 2 (optional)', d.addressLine2, { maxlength: 80 });
+    const town = field('Town', d.town, { maxlength: 60 });
+    const postcode = field('Postcode (delivery distances are measured from here)', d.postcode, { maxlength: 9, class: 'text-input postcode-input' });
+    const phone = field('Phone number', d.phone, { type: 'tel', maxlength: 20 });
+    const vat = field('VAT number (if VAT registered)', d.vatNumber, { maxlength: 20, placeholder: 'e.g. GB 123 4567 89' });
+    const message = field('Message at the bottom of receipts', d.receiptMessage, { maxlength: 120, placeholder: 'e.g. Thank you for your order' });
+    const problem = h('p', { class: 'form-problem', role: 'alert' });
+    return {
+      title: 'Shop details',
+      wide: true,
+      focus: name.el,
+      body: h('div', { class: 'customer-form' },
+        h('div', { class: 'customer-col' }, name.field, line1.field, line2.field, town.field, postcode.field),
+        h('div', { class: 'customer-col' }, phone.field, vat.field, message.field,
+          h('p', { class: 'field-hint', text: 'These print on every receipt. UK VAT receipts must show the VAT number if the business is VAT registered.' })),
+        problem),
+      actions: [
+        h('button', { class: 'btn', onclick: () => close(), text: 'Cancel' }),
+        h('button', {
+          class: 'btn btn-primary', text: 'Save',
+          onclick: async () => {
+            problem.textContent = '';
+            try {
+              const saved = await busy(() => api.put('/api/settings/shop', {
+                businessName: name.el.value, addressLine1: line1.el.value, addressLine2: line2.el.value, town: town.el.value,
+                postcode: postcode.el.value, phone: phone.el.value, vatNumber: vat.el.value, receiptMessage: message.el.value,
+              }));
+              toast(`Shop details saved for ${saved.businessName}. New receipts use them.`, 'ok');
+              close();
+            } catch (e) {
+              problem.textContent = e.message;
+            }
+          },
+        }),
+      ],
+    };
+  });
+}
+
 const PROVIDERS = [
   { id: 'Google', title: 'Google', text: 'Find any address by typing part of it. Needs internet and a Google Maps Platform key (Places API (New)); free up to Google’s monthly allowance, then paid per search.', key: 'googleApiKey', keySet: 'googleKeySet', ending: 'googleKeyEnding', keyLabel: 'Google API key' },
   { id: 'RoyalMail', title: 'Royal Mail online', text: 'Official Royal Mail addresses: type a postcode and pick the house. Needs internet and a Royal Mail AddressNow (Loqate) key; paid per address chosen.', key: 'royalMailApiKey', keySet: 'royalMailKeySet', ending: 'royalMailKeyEnding', keyLabel: 'Royal Mail AddressNow key' },
@@ -260,6 +309,7 @@ export function moreDialog(till) {
             item('Paid in', () => cashMovement('paid-in')),
             item('Paid out', () => cashMovement('paid-out'))),
           section('Reports and shop',
+            can('ManageDevices') ? item('Shop details', shopDetails) : null,
             can('ViewReports') ? item('X report (this till)', xReport) : null,
             can('ViewReports') ? item('End of day (Z report)', zReport) : null,
             item('Failed printouts', failedPrints),

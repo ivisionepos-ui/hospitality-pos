@@ -438,6 +438,14 @@ public static class Endpoints
             HandleAsync(async () => Results.Ok(await lookup.ResolveAsync(id ?? string.Empty, session, cancel).ConfigureAwait(false))))
             .ForStaff(Permission.TakeOrders);
 
+        // Shop name, address, phone, VAT number and receipt message (More → Shop details).
+        api.MapGet("/settings/shop", (ShopDetailsService shop) => Handle(() => Results.Ok(shop.Get())))
+            .ForStaff();
+
+        api.MapPut("/settings/shop", (HttpContext http, ShopDetailsService shop, ShopDetails details) => Handle(() =>
+            Results.Ok(shop.Save(details, Caller(http).Staff!.Id))))
+            .ForStaff(Permission.ManageDevices);
+
         api.MapGet("/settings/address-lookup", (AddressLookupService lookup) => Handle(() => Results.Ok(lookup.View())))
             .ForStaff(Permission.ManageDevices);
 

@@ -131,3 +131,6 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-125 | 2026-11-04 | One "Find address" box for all services; Enter searches afresh and picks a single match; postcodes/streets from Royal Mail open into their addresses | Same habit for staff whatever the service |
 | C-126 | 2026-11-04 | Database closes only after work in progress; the data-folder lock is released on stop even if shutdown fails elsewhere | Found by tests: a restart could be refused because the old hub kept the folder |
 | C-127 | 2026-11-04 | Google and Royal Mail code tested against stand-ins in their documented formats; a live test with real keys is needed in the shop | No internet access to those services from the build environment |
+| C-128 | 2026-11-04 | Shop details (name, address, postcode, phone, VAT number, receipt message) entered by the owner on the till and stored in the hub database; applied at once to receipts and delivery distances | Owner asked how to add the shop address; editing JSON by hand is error-prone |
+| C-129 | 2026-11-04 | Shop details are checked and tidied: UK postcode, phone written "01134 960000", VAT number written "GB 123 4567 89" (9 or 12 digits) | Receipts look right and VAT numbers are valid in shape |
+| C-130 | 2026-11-04 | Example address removed from the default settings | It would have printed on real receipts |

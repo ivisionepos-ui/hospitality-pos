@@ -114,14 +114,14 @@ public sealed class DeliveryService(HubDatabase db, DeliverySettings settings, I
 
         if (!UkPostcode.TryNormalise(settings.ShopPostcode, out var shopPostcode))
         {
-            throw new InvalidOperationException("The shop's postcode is not set. Add it as ShopPostcode in the Delivery settings.");
+            throw new InvalidOperationException("The shop's postcode is not set. The owner can add it in More → Shop details.");
         }
 
         var houses = addresses.Find(normalised);
         try
         {
             var shop = await LocateAsync(shopPostcode, cancellationToken).ConfigureAwait(false)
-                ?? throw new InvalidOperationException($"The shop's postcode {shopPostcode} was not found. Check ShopPostcode in the Delivery settings.");
+                ?? throw new InvalidOperationException($"The shop's postcode {shopPostcode} was not found. Check it in More → Shop details.");
             var place = await LocateAsync(normalised, cancellationToken).ConfigureAwait(false);
             if (place is null)
             {

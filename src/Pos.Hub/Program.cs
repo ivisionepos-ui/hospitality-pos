@@ -51,6 +51,7 @@ builder.Services.AddSingleton(sp => new Pos.Hub.Delivery.AddressLookupService(
 builder.Services.AddHostedService<Pos.Hub.Delivery.AddressFolderWorker>();
 builder.Services.AddSingleton<Pos.Hub.Delivery.DeliveryService>();
 builder.Services.AddSingleton<Pos.Hub.Delivery.CustomerService>();
+builder.Services.AddSingleton<ShopDetailsService>();
 builder.Services.AddSingleton<OrderService>();
 builder.Services.AddSingleton<TillService>();
 builder.Services.AddSingleton<Pos.Hub.Security.AccessService>();
@@ -101,6 +102,7 @@ catch (InvalidOperationException ex)
 
 _ = app.Services.GetRequiredService<OrderService>();
 _ = app.Services.GetRequiredService<Pos.Hub.Security.AccessService>();
+app.Services.GetRequiredService<ShopDetailsService>().Apply(); // the owner's saved shop name and address
 var certificates = app.Services.GetRequiredService<HubCertificates>();
 HubLog.CertificatesLoaded(app.Logger, certificates);
 

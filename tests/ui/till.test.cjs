@@ -694,6 +694,21 @@ test('owner enters the shop name and address in Shop details; mistakes are expla
   await owner.context().close();
 });
 
+test('owner opens Add a till or screen: the code and the steps for another PC are shown', async () => {
+  const owner = await tillPage(shop.till2);
+  await login(owner, '4826');
+  await owner.getByRole('button', { name: 'More', exact: true }).click();
+  await top(owner).getByRole('button', { name: 'Add a till or screen' }).click();
+  await top(owner).getByText('Add a till or kitchen screen').waitFor();
+  assert.match(await top(owner).locator('.pair-code').innerText(), /^\d{6}$/);
+  await top(owner).getByText('Connect this PC to the hub', { exact: false }).waitFor();
+  await top(owner).getByText(/Certificate check code: [0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}/).waitFor();
+  await shot(owner, 'ui-add-till');
+  await top(owner).getByRole('button', { name: 'Done' }).click();
+  assert.deepEqual(owner.errors, []);
+  await owner.context().close();
+});
+
 test('kitchen screen: register it, orders appear live, Start, new items marked, Ready tells the till, Recall', async () => {
   const owner = { device: shop.owner.device, token: shop.owner.token };
   await call('POST', '/api/staff', owner, { name: 'Kofi Kitchen', role: 'Kitchen', pin: '3185' });

@@ -87,7 +87,14 @@ The hub creates its own small certificate authority (the "shop CA") the first ti
 HTTPS certificate for this PC's name and network addresses. It renews that certificate automatically a month before it
 ends, or when the PC's address changes; tills do not need anything new when that happens.
 
-**Setting up a till to trust the hub (once per till):**
+**Another Windows PC as a till or kitchen screen (the easy way):** never open `localhost` on it (that means "this PC",
+where no hub runs). On the hub PC run `Allow tills to connect (hub PC, once).bat` (Windows firewall rule for port 5443,
+local network only). On the hub's till, More → Add a till or screen shows the hub's network address(es)
+(`networkAddresses` in `/api/health`), the certificate check code and a 6-digit code. On the other PC run
+`Connect this PC to the hub (other tills).bat`: it downloads `/ca.crt`, shows its check code to compare, installs it for
+the Windows user, saves the address in `hub-address.txt` (used by `Open till (full screen).bat`) and opens the till.
+
+**Setting up a till to trust the hub by hand (tablets, once per till):**
 
 1. On the hub PC, open http://localhost:5080/api/health and note the `caCheckCode` (e.g. `A5F1-0592-6B9D-AB91`).
 2. Copy http://localhost:5080/ca.crt to the till (USB stick or shared folder) and install it as a trusted root certificate:

@@ -220,6 +220,18 @@ public sealed class HttpsConnectionTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Health_lists_the_network_addresses_other_tills_must_use()
+    {
+        using var local = new HttpClient();
+        using var doc = System.Text.Json.JsonDocument.Parse(await local.GetStringAsync(new Uri($"http://localhost:{_httpPort}/api/health")));
+        var addresses = doc.RootElement.GetProperty("networkAddresses").EnumerateArray().Select(a => a.GetString()!).ToList();
+
+        // Never "localhost" (that means "this PC" on the other till), always the HTTPS port.
+        Assert.All(addresses, a => Assert.Matches($@"^https://\d+\.\d+\.\d+\.\d+:{_httpsPort}$", a));
+        Assert.DoesNotContain(addresses, a => a.Contains("127.0.0.1", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Device_without_the_shop_ca_refuses_the_connection()
     {
         using var stranger = new HttpClient();

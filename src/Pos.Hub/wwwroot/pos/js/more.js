@@ -82,8 +82,26 @@ async function zReport() {
 }
 
 async function addTill() {
-  const code = await busy(() => api.post('/api/devices/pairing-code'));
-  await alertDialog('Add a till or kitchen screen', `On the new device, open this page and enter the code ${code.code}, then choose Till or Kitchen screen. The code works until ${timeText(code.expiresAt)}.`);
+  const [code, health] = await busy(() => Promise.all([api.post('/api/devices/pairing-code'), api.get('/api/health')]));
+  const addresses = health.networkAddresses ?? [];
+  await openDialog(close => ({
+    title: 'Add a till or kitchen screen',
+    wide: true,
+    body: h('div', { class: 'add-device' },
+      h('ol', { class: 'steps' },
+        h('li', {},
+          h('strong', { text: 'Windows PC: ' }),
+          'copy the hub folder to it and double-click "Connect this PC to the hub". When asked, type this address:',
+          addresses.length ? h('ul', { class: 'addresses' }, addresses.map(a => h('li', { class: 'address', text: a }))) : h('p', { class: 'check-result check-bad', text: 'This PC has no network address: check its network cable or Wi-Fi.' })),
+        h('li', {},
+          h('strong', { text: 'Tablet or Android box: ' }),
+          `install the shop certificate once (see the README), then open the address above in the browser.`),
+        h('li', {}, 'On the new device choose Till or Kitchen screen and enter this code:',
+          h('p', { class: 'pair-code', text: code.code }),
+          h('p', { class: 'field-hint', text: `The code works until ${timeText(code.expiresAt)}. Certificate check code: ${health.caCheckCode}` }))),
+      h('p', { class: 'field-hint', text: 'If the new device cannot connect: on THIS PC (the hub), double-click "Allow tills to connect" once, and make sure both are on the same network.' })),
+    actions: [h('button', { class: 'btn btn-primary', onclick: () => close(), text: 'Done' })],
+  }));
 }
 
 async function failedPrints() {

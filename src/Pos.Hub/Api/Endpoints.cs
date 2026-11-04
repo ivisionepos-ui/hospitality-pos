@@ -23,7 +23,12 @@ public static class Endpoints
         var api = app.MapGroup("/api");
 
         api.MapGet("/health", (HubSettings s, TimeProvider clock, HubCertificates certificates) =>
-            Results.Ok(new { status = "ok", version = HubVersion.Text, branch = s.BranchCode, time = clock.GetUtcNow(), caCheckCode = certificates.CaCheckCode }));
+            Results.Ok(new
+            {
+                status = "ok", version = HubVersion.Text, branch = s.BranchCode, time = clock.GetUtcNow(), caCheckCode = certificates.CaCheckCode,
+                // Where other tills and screens on the shop network reach this hub.
+                networkAddresses = s.NetworkHttpsPort > 0 ? NetworkAddresses().Select(a => $"https://{a}:{s.NetworkHttpsPort}").ToArray() : [],
+            }));
 
         // The shop CA's public certificate, for installing on tills (not secret). Compare its check code with the hub screen.
         app.MapGet("/ca.crt", (HubCertificates certificates) =>
@@ -598,6 +603,18 @@ public static class Endpoints
 
     /// <summary>Turns refusals into clear answers for the till instead of server errors.</summary>
     private static OrderView WithMoney(OrderView view, OrderPayments ledger) => view with { Paid = ledger.Paid, Balance = ledger.Balance };
+
+    /// <summary>This PC's IPv4 addresses on its working network connections (not loopback or virtual adapters' link-local ones).</summary>
+    private static IEnumerable<string> NetworkAddresses() =>
+        System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+            .Where(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up
+                && n.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
+            .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+            .Select(a => a.Address)
+            .Where(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !System.Net.IPAddress.IsLoopback(a) && !a.ToString().StartsWith("169.254.", StringComparison.Ordinal))
+            .Select(a => a.ToString())
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal);
 
     /// <summary>Prints the receipt automatically the moment an order becomes fully paid (once).</summary>
     private static void ReceiptWhenPaid(PrintService print, Guid orderId, OrderPayments ledger, bool duplicate)

@@ -41,7 +41,7 @@
 | Hub additions for the till: order quote, sample menu, paid/balance on orders, receipt printed when fully paid | 3 | Done 2026-11-03 | 4 hub tests | |
 | Backups: hourly / start-up / after Z report / on demand; checked zip of database snapshot, PIN key and certificates; second copy folder; keep 48 h then daily for 30 days; restore command; live warning on failure; one hub per data folder; copy before schema upgrades | 2 | Done 2026-11-03 | 13 passing, plus restore run on the real program | Owner to set a USB/second-disk copy folder |
 
-Total: 408 automated tests passing (254 business-rule tests + 142 hub tests + 12 till-screen browser tests), including 1,000 random orders checking that totals and VAT always reconcile.
+Total: 410 automated tests passing (254 business-rule tests + 143 hub tests + 13 till-screen browser tests), including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
 - ESC/POS thermal printers over USB and network, and the cash drawer kick (when printers are available)

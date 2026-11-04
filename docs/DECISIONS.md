@@ -141,3 +141,6 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-135 | 2026-11-04 | Timers amber at 10 minutes, red at 20; NEW marks items added to an order already on the board, counted from when they are sent | Common kitchen practice; new orders are not all "NEW" |
 | C-136 | 2026-11-04 | Ticking items off is per screen only (not saved) | A cook's working aid, not part of the order record |
 | C-137 | 2026-11-04 | Tills show "Order X is ready" when the kitchen marks it | The counter knows when to call the customer |
+| C-138 | 2026-11-04 | Other PCs connect to the hub's network address (https://<address>:5443), never localhost; the till shows the address under More → Add a till or screen | "localhost refused to connect" on a second PC: localhost means that PC itself |
+| C-139 | 2026-11-04 | Double-click files for the firewall rule (hub PC, local subnet only, port 5443) and for connecting another PC (certificate check code compared by the person before installing) | Shop staff can set up a till without typing commands; the check code stops a wrong certificate being trusted |
+| C-140 | 2026-11-04 | The Windows package is self-contained (no .NET install needed), without debug files | A PC without .NET could not start the hub |

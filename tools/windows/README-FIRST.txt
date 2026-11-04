@@ -1,7 +1,7 @@
 POS Hub for Windows
 ===================
 
-You need: the .NET 10 runtime (ASP.NET Core Runtime 10.0) installed.
+Nothing else needs installing: everything the hub needs is in this folder.
 Unzip this folder somewhere permanent, e.g. C:\PosHub (not inside a zip viewer).
 
 Start hub.bat
@@ -13,9 +13,25 @@ Open till (full screen).bat
   Opens the till screen full screen in Microsoft Edge, best on a touch screen.
   Alt+F4 leaves full screen.
 
-Another PC or tablet as a till (later)
-  It needs the shop certificate installed once (see the main README), then open
-  https://<hub PC address>:5443 and enter the code from More > Add a till.
+ONE PC IS THE HUB. Run "Start hub" only on that PC.
+
+Allow tills to connect (hub PC, once).bat
+  Run once on the hub PC (Windows asks for permission). Lets the other tills and
+  kitchen screens on the shop network reach the hub.
+
+Another Windows PC as a till or kitchen screen
+  1. Copy this whole folder to that PC (do NOT run "Start hub" there).
+  2. On the hub's till: More > Add a till or screen. It shows the hub address
+     (e.g. https://192.168.1.20:5443), a check code and a 6-digit code.
+  3. On the other PC double-click "Connect this PC to the hub (other tills)",
+     type the address, compare the check code, and click Yes to install the
+     shop certificate.
+  4. The till opens: choose Till or Kitchen screen, enter the 6-digit code.
+  5. From then on use "Open till (full screen)" on that PC.
+  Give the hub PC a fixed address in the router, so the address never changes.
+
+Tablet or Android box: install the shop certificate (see the main README), then
+open the hub address in the browser.
 
 1 - Print test (PDF files).bat
   Saves a sample receipt and kitchen ticket as PDF files in data\prints.

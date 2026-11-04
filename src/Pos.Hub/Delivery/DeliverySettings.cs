@@ -55,6 +55,12 @@ public sealed class DeliverySettings
     /// </summary>
     public string AddressFolder { get; set; } = "addresses";
 
+    /// <summary>Google Places (New) address (changed only for testing).</summary>
+    public string GoogleEndpoint { get; set; } = "https://places.googleapis.com";
+
+    /// <summary>Royal Mail AddressNow / Loqate address (changed only for testing, or if Royal Mail gives another).</summary>
+    public string RoyalMailEndpoint { get; set; } = "https://api.addressy.com";
+
     /// <summary>Postcode lookup service (free, UK open data, no account).</summary>
     public string PostcodeService { get; set; } = "https://api.postcodes.io";
 

@@ -33,5 +33,5 @@ public sealed class InstanceLock : IDisposable
     public static string FolderFor(string databasePath) => Path.GetDirectoryName(Path.GetFullPath(databasePath)) ?? ".";
 
     /// <inheritdoc />
-    public void Dispose() => _stream.Dispose();
+    public void Dispose() => _stream.Dispose(); // safe to call more than once
 }

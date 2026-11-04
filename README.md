@@ -149,6 +149,20 @@ In `appsettings.json` → `Delivery`: `ShopPostcode` (required for the postcode 
 `RatePerMilePence` + `MinimumFeePence`. Distances are straight-line × `RoadFactor` (1.3) until a road-distance
 service is added.
 
+### Address lookup: Google, Royal Mail online, or the local Royal Mail file
+The owner chooses in More → Address lookup (stored in the hub database, table `settings`):
+1. **Google** — Places API (New) autocomplete + place details; any text; needs a Google Maps Platform key with
+   Places API (New) enabled. Gives the location, so the distance comes straight from it. "Results from Google" is
+   shown with the results.
+2. **Royal Mail online** — AddressNow (Loqate Capture: Find v1.10 / Retrieve v1.20, json3); a postcode opens into its
+   addresses; needs an AddressNow / Loqate key; latitude/longitude requested so the distance comes from it.
+3. **Local Royal Mail file** (default) — the PAF files below; postcode, postcode + words, or words alone; no
+   internet, no cost per search.
+Keys are kept on the hub only (never sent back to a till; the screen shows the last 4 characters) and each service has
+a **Test** button. If the chosen online service fails (no internet, wrong key, out of credit), the till falls back to
+the local file and says why (switchable). Endpoints and settings `Delivery:GoogleEndpoint` /
+`Delivery:RoyalMailEndpoint` exist so tests can use stand-ins; they never need changing in a shop.
+
 ### Address files (house-by-house addresses)
 Royal Mail Postcode Address File (PAF) CSV files, one per postcode district (e.g. `B12.csv`), 14 columns without a
 header: organisation, department, PO box, building name, sub-building, building number, dependent thoroughfare,
@@ -294,6 +308,10 @@ under `Printing` → `ReceiptText`. UK VAT receipts must show the VAT number whe
 | GET | /api/delivery/settings | any device | Delivery bands, minimum order, maximum distance |
 | GET | /api/customers?phone= | cashier | Past customers whose phone contains these digits (4+) |
 | GET | /api/addresses?postcode= | cashier | Every address in a postcode, from the shop's address files |
+| GET | /api/addresses/search?q=&group=&session= | cashier | "Find address" with the chosen service (falls back to the local file) |
+| GET | /api/addresses/resolve?id=&session= | cashier | Full address (and distance) for a Google or Royal Mail suggestion |
+| GET / PUT | /api/settings/address-lookup | owner | Chosen service, keys (write-only), fallback |
+| POST | /api/settings/address-lookup/test?provider=&q= | owner | Try a service with the saved key (no fallback) |
 | GET / POST | /api/addresses/files[?name=B12.csv] | owner | Address files loaded / upload one (body = the CSV) |
 | POST | /api/addresses/files/reload | owner | Load new or changed files from the addresses folder |
 | POST | /api/orders/{id}/contact | cashier | Change the customer's details on an open order |

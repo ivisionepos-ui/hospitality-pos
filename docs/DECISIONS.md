@@ -124,3 +124,10 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-118 | 2026-11-04 | Files load from the hub's addresses folder at start-up (only new or changed ones) or by upload from the till (owner); each load replaces that file in one transaction | Easy to update a district; a bad file never wipes good data |
 | C-119 | 2026-11-04 | Postcode check still lists addresses when the distance service is unreachable, and opens "type the miles" itself | The counter keeps working without internet |
 | C-120 | 2026-11-04 | Royal Mail files are never committed to the repository (licensed data); tests use made-up addresses in the same layout | Licence compliance |
+| C-121 | 2026-11-04 | Three address services, chosen by the owner on the till, in this order: Google, Royal Mail online (AddressNow/Loqate), local Royal Mail file (default) | Owner's requirement |
+| C-122 | 2026-11-04 | Online services are called by the hub, not the till; keys stored in the hub database and never returned (last 4 shown) | Keys are not exposed to browsers; one place to change them |
+| C-123 | 2026-11-04 | Automatic fallback to the local file when the online service fails (on by default), with the reason shown | The counter keeps taking deliveries without internet or with an expired key |
+| C-124 | 2026-11-04 | Distance from the online service's location when it gives one; otherwise the postcode check | Fewer outside calls; works for Google places without a postcode lookup |
+| C-125 | 2026-11-04 | One "Find address" box for all services; Enter searches afresh and picks a single match; postcodes/streets from Royal Mail open into their addresses | Same habit for staff whatever the service |
+| C-126 | 2026-11-04 | Database closes only after work in progress; the data-folder lock is released on stop even if shutdown fails elsewhere | Found by tests: a restart could be refused because the old hub kept the folder |
+| C-127 | 2026-11-04 | Google and Royal Mail code tested against stand-ins in their documented formats; a live test with real keys is needed in the shop | No internet access to those services from the build environment |

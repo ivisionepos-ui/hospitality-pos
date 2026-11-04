@@ -44,6 +44,10 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<IConfiguration>().GetS
 builder.Services.AddSingleton<Pos.Hub.Delivery.IPostcodeLookup>(sp =>
     new Pos.Hub.Delivery.PostcodesIoLookup(new HttpClient { Timeout = TimeSpan.FromSeconds(6) }, sp.GetRequiredService<Pos.Hub.Delivery.DeliverySettings>()));
 builder.Services.AddSingleton<Pos.Hub.Delivery.AddressBook>();
+builder.Services.AddSingleton<Pos.Hub.Delivery.AddressLookupSettings>();
+builder.Services.AddSingleton(sp => new Pos.Hub.Delivery.AddressLookupService(
+    sp.GetRequiredService<Pos.Hub.Delivery.AddressLookupSettings>(), sp.GetRequiredService<Pos.Hub.Delivery.AddressBook>(),
+    sp.GetRequiredService<Pos.Hub.Delivery.DeliveryService>(), new HttpClient { Timeout = TimeSpan.FromSeconds(8) }));
 builder.Services.AddHostedService<Pos.Hub.Delivery.AddressFolderWorker>();
 builder.Services.AddSingleton<Pos.Hub.Delivery.DeliveryService>();
 builder.Services.AddSingleton<Pos.Hub.Delivery.CustomerService>();
@@ -83,7 +87,9 @@ if (restoreAt >= 0)
 // Check the settings and open the database (upgrading it if needed) before taking any requests.
 try
 {
-    _ = app.Services.GetRequiredService<InstanceLock>();
+    // Always let go of the data folder when the hub stops, even if something else fails while shutting down.
+    var instanceLock = app.Services.GetRequiredService<InstanceLock>();
+    app.Lifetime.ApplicationStopped.Register(instanceLock.Dispose);
 }
 catch (InvalidOperationException ex)
 {

@@ -138,6 +138,93 @@ async function addressFiles() {
   });
 }
 
+const PROVIDERS = [
+  { id: 'Google', title: 'Google', text: 'Find any address by typing part of it. Needs internet and a Google Maps Platform key (Places API (New)); free up to Google’s monthly allowance, then paid per search.', key: 'googleApiKey', keySet: 'googleKeySet', ending: 'googleKeyEnding', keyLabel: 'Google API key' },
+  { id: 'RoyalMail', title: 'Royal Mail online', text: 'Official Royal Mail addresses: type a postcode and pick the house. Needs internet and a Royal Mail AddressNow (Loqate) key; paid per address chosen.', key: 'royalMailApiKey', keySet: 'royalMailKeySet', ending: 'royalMailKeyEnding', keyLabel: 'Royal Mail AddressNow key' },
+  { id: 'LocalFile', title: 'Local Royal Mail file', text: 'The Royal Mail address files bought for your area, kept on the hub (More → Address files). No internet, no cost per search.' },
+];
+
+/** Owner: choose where "Find address" looks, with keys for the online services and a test. */
+async function addressLookup() {
+  let view = await busy(() => api.get('/api/settings/address-lookup'));
+  await openDialog(close => {
+    let chosen = view.provider;
+    let fallback = view.fallbackToLocalFile;
+    const keys = {};
+    const body = h('div', { class: 'lookup-settings' });
+    const testText = h('input', { class: 'text-input', type: 'search', placeholder: 'e.g. a postcode near the shop', 'aria-label': 'Test search', autocomplete: 'off' });
+    const testResult = h('div', { class: 'test-result', 'aria-live': 'polite' });
+    const problem = h('p', { class: 'form-problem', role: 'alert' });
+
+    const render = () => mount(body,
+      h('div', { class: 'provider-cards', role: 'radiogroup', 'aria-label': 'Address lookup' }, PROVIDERS.map((p, i) => {
+        const on = chosen === p.id;
+        const keyInput = p.key ? h('input', {
+          class: 'text-input', type: 'password', autocomplete: 'off', 'aria-label': p.keyLabel,
+          placeholder: view[p.keySet] ? `Saved: …${view[p.ending]} (type a new one to change)` : `Paste the key here`,
+        }) : null;
+        if (keyInput) {
+          keyInput.value = keys[p.key] ?? '';
+          keyInput.addEventListener('input', () => { keys[p.key] = keyInput.value; });
+        }
+        return h('div', { class: `provider ${on ? 'provider-on' : ''}` },
+          h('button', { class: 'provider-pick', role: 'radio', 'aria-checked': String(on), onclick: () => { chosen = p.id; render(); } },
+            h('span', { class: 'provider-number', text: String(i + 1) }),
+            h('span', { class: 'provider-title', text: p.title }),
+            p.id === 'LocalFile' ? h('span', { class: 'provider-note', text: `${view.localAddresses.toLocaleString('en-GB')} addresses loaded` })
+              : view[p.keySet] ? h('span', { class: 'provider-note', text: 'Key saved' }) : h('span', { class: 'provider-note provider-missing', text: 'No key yet' })),
+          h('p', { class: 'field-hint', text: p.text }),
+          keyInput,
+          h('button', {
+            class: 'btn btn-small', text: `Test ${p.title}`,
+            onclick: async () => {
+              if (p.key && keys[p.key]) { problem.textContent = 'Save the new key first, then test it.'; return; }
+              mount(testResult, h('p', { class: 'field-hint', text: 'Testing…' }));
+              try {
+                const r = await api.post(`/api/settings/address-lookup/test?provider=${p.id}&q=${encodeURIComponent(testText.value || 'B12 0YR')}`);
+                mount(testResult, h('p', { class: 'check-result check-ok', text: `${p.title} works: ${r.suggestions.length} found${r.suggestions[0] ? `, e.g. ${r.suggestions[0].label}` : ''}.` }));
+              } catch (e) {
+                mount(testResult, h('p', { class: 'check-result check-bad', text: `${p.title}: ${e.message}` }));
+              }
+            },
+          }));
+      })),
+      h('label', { class: 'field' }, h('span', { class: 'field-label', text: 'Test search (postcode or address)' }), testText),
+      testResult,
+      h('button', {
+        class: `switch ${fallback ? 'switch-on-good' : ''}`, role: 'switch', 'aria-checked': String(fallback),
+        onclick: () => { fallback = !fallback; render(); },
+      }, h('span', { class: 'switch-knob' }), 'If the online service fails, use the local file'),
+      problem);
+
+    render();
+    return {
+      title: 'Address lookup',
+      wide: true,
+      body,
+      actions: [
+        h('button', { class: 'btn', onclick: () => close(), text: 'Cancel' }),
+        h('button', {
+          class: 'btn btn-primary', text: 'Save',
+          onclick: async () => {
+            problem.textContent = '';
+            try {
+              view = await busy(() => api.put('/api/settings/address-lookup', {
+                provider: chosen, googleApiKey: keys.googleApiKey || null, royalMailApiKey: keys.royalMailApiKey || null, fallbackToLocalFile: fallback,
+              }));
+              for (const k of Object.keys(keys)) delete keys[k];
+              toast(`Find address now uses: ${PROVIDERS.find(p => p.id === view.provider).title}.`, 'ok');
+              render();
+            } catch (e) {
+              problem.textContent = e.message;
+            }
+          },
+        }),
+      ],
+    };
+  });
+}
+
 async function backupNow() {
   const result = await busy(() => api.post('/api/backups'));
   toast(result.copyError ? `Backup made, but the copy failed: ${result.copyError}` : `Backup made: ${result.file}`, result.copyError ? 'error' : 'ok', 6000);
@@ -178,6 +265,7 @@ export function moreDialog(till) {
             item('Failed printouts', failedPrints),
             can('ViewReports') ? item('Back up now', backupNow) : null,
             can('ManageDevices') ? item('Add a till', addTill) : null,
+            can('ManageDevices') ? item('Address lookup', addressLookup) : null,
             can('ManageDevices') ? item('Address files', addressFiles) : null)),
         h('p', { class: 'version', text: `Version ${window.posVersion ?? ''} · ${till.ctx.me.staff.name} (${till.ctx.me.staff.role})` }),
       ],

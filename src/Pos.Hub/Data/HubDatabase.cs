@@ -191,6 +191,14 @@ public sealed class HubDatabase : IDisposable
             CREATE INDEX ix_addresses_postcode ON addresses (postcode, sort_key);
             CREATE INDEX ix_addresses_source ON addresses (source);
             """),
+        (9, """
+            CREATE TABLE settings (
+                key         TEXT PRIMARY KEY,
+                value       TEXT NOT NULL,
+                updated_at  TEXT NOT NULL,
+                updated_by  TEXT NOT NULL
+            );
+            """),
     ];
 
     private readonly SqliteConnection _connection;
@@ -380,8 +388,12 @@ public sealed class HubDatabase : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        _transaction?.Dispose();
-        _connection.Dispose();
+        // Wait for any work in progress (e.g. a background job) before closing, so shutdown never breaks a write.
+        lock (_gate)
+        {
+            _transaction?.Dispose();
+            _connection.Dispose();
+        }
     }
 
     private void Migrate()

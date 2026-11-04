@@ -429,6 +429,29 @@ public static class Endpoints
         api.MapGet("/addresses", (AddressBook book, string? postcode) => Handle(() => Results.Ok(book.Find(postcode ?? string.Empty))))
             .ForStaff(Permission.TakeOrders);
 
+        // "Find address" on the till: the service chosen in More → Address lookup (Google, Royal Mail online or local files).
+        api.MapGet("/addresses/search", (AddressLookupService lookup, string? q, string? group, string? session, CancellationToken cancel) =>
+            HandleAsync(async () => Results.Ok(await lookup.SearchAsync(q ?? string.Empty, group, session, cancel).ConfigureAwait(false))))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapGet("/addresses/resolve", (AddressLookupService lookup, string? id, string? session, CancellationToken cancel) =>
+            HandleAsync(async () => Results.Ok(await lookup.ResolveAsync(id ?? string.Empty, session, cancel).ConfigureAwait(false))))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapGet("/settings/address-lookup", (AddressLookupService lookup) => Handle(() => Results.Ok(lookup.View())))
+            .ForStaff(Permission.ManageDevices);
+
+        api.MapPut("/settings/address-lookup", (HttpContext http, AddressLookupSettings settings, AddressLookupService lookup, AddressLookupUpdate update) => Handle(() =>
+        {
+            settings.Save(update, Caller(http).Staff!.Id);
+            return Results.Ok(lookup.View());
+        })).ForStaff(Permission.ManageDevices);
+
+        // Try a service with the saved key before (or after) choosing it; no fallback, so a wrong key shows.
+        api.MapPost("/settings/address-lookup/test", (AddressLookupService lookup, AddressProvider provider, string? q, CancellationToken cancel) =>
+            HandleAsync(async () => Results.Ok(await lookup.SearchAsync(q ?? string.Empty, null, Guid.NewGuid().ToString(), cancel, only: provider).ConfigureAwait(false))))
+            .ForStaff(Permission.ManageDevices);
+
         api.MapGet("/addresses/files", (AddressBook book) => Handle(() => Results.Ok(book.Sources())))
             .ForStaff(Permission.ManageDevices);
 
@@ -605,6 +628,7 @@ public static class Endpoints
         IdempotencyConflictException ex => Error("DuplicateKey", ex.Message, StatusCodes.Status409Conflict),
         DiscountApprovalRequiredException ex => Error("ApprovalRequired", ex.Message, StatusCodes.Status403Forbidden),
         Delivery.PostcodeServiceUnavailableException ex => Error("LookupUnavailable", ex.Message, StatusCodes.Status503ServiceUnavailable),
+        Delivery.AddressServiceException ex => Error("AddressServiceFailed", ex.Message, StatusCodes.Status502BadGateway),
         KeyNotFoundException ex => Error("NotFound", ex.Message, StatusCodes.Status404NotFound),
         InvalidOperationException ex => Error("NotAllowed", ex.Message, StatusCodes.Status409Conflict),
         ArgumentException ex => Error("Invalid", ex.Message, StatusCodes.Status400BadRequest),

@@ -139,6 +139,28 @@ public sealed class DeliveryService(HubDatabase db, DeliverySettings settings, I
         }
     }
 
+    /// <summary>
+    /// Distance from the shop to a point (e.g. from Google or Royal Mail), or null when the shop's own location
+    /// cannot be found right now.
+    /// </summary>
+    public async Task<decimal?> MilesFromShopAsync(double latitude, double longitude, CancellationToken cancellationToken)
+    {
+        if (!UkPostcode.TryNormalise(settings.ShopPostcode, out var shopPostcode))
+        {
+            return null;
+        }
+
+        try
+        {
+            var shop = await LocateAsync(shopPostcode, cancellationToken).ConfigureAwait(false);
+            return shop is null ? null : Miles(shop, new PostcodeLocation(string.Empty, latitude, longitude, null));
+        }
+        catch (PostcodeServiceUnavailableException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Estimated road distance in miles, to one decimal.</summary>
     public decimal Miles(PostcodeLocation from, PostcodeLocation to)
     {

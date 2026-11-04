@@ -161,6 +161,73 @@ public sealed class AddressBook(HubDatabase db, DeliverySettings settings, TimeP
         });
     }
 
+    /// <summary>
+    /// Searches the address files: a postcode anywhere in the text lists that postcode's addresses, and any other
+    /// words narrow them ("B12 0YY flat 10"); without a postcode, every word must start a word of the address
+    /// ("12 horton"). At most <paramref name="limit"/> results.
+    /// </summary>
+    public IReadOnlyList<AddressOption> Search(string text, int limit = 60)
+    {
+        var words = (text ?? string.Empty).ToUpperInvariant().Split([' ', ','], StringSplitOptions.RemoveEmptyEntries).ToList();
+        string? postcode = null;
+        for (var i = 0; i < words.Count && postcode is null; i++)
+        {
+            // Postcodes are typed with or without the space: try one word, then two words together.
+            if (UkPostcode.TryNormalise(words[i], out var one) && words[i].Length >= 5)
+            {
+                postcode = one;
+                words.RemoveAt(i);
+            }
+            else if (i + 1 < words.Count && UkPostcode.TryNormalise(words[i] + words[i + 1], out var two))
+            {
+                postcode = two;
+                words.RemoveRange(i, 2);
+            }
+        }
+
+        static bool Matches(AddressOption o, List<string> wanted)
+        {
+            var parts = o.Label.ToUpperInvariant().Split([' ', ','], StringSplitOptions.RemoveEmptyEntries);
+            return wanted.All(w => parts.Any(p => p.StartsWith(w, StringComparison.Ordinal)));
+        }
+
+        if (postcode is not null)
+        {
+            return [.. Find(postcode).Where(o => Matches(o, words)).Take(limit)];
+        }
+
+        if (words.Count == 0 || words.All(w => w.Length < 2))
+        {
+            return [];
+        }
+
+        // No postcode: find candidates by the longest word, then check every word.
+        var key = words.OrderByDescending(w => w.Length).First();
+        return db.Run(() =>
+        {
+            using var command = db.Command(
+                "SELECT label, line1, line2, town, postcode FROM addresses WHERE instr(upper(label), $k) > 0 ORDER BY postcode, sort_key LIMIT 2000;", ("$k", key));
+            using var reader = command.ExecuteReader();
+            var found = new List<AddressOption>();
+            while (reader.Read() && found.Count < limit)
+            {
+                var option = new AddressOption(reader.GetString(0), new DeliveryAddress(reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetString(3), reader.GetString(4)));
+                if (Matches(option, words))
+                {
+                    found.Add(option with { Label = $"{option.Label}, {option.Address.Postcode}" });
+                }
+            }
+
+            return found;
+        });
+    }
+
+    /// <summary>Number of addresses loaded.</summary>
+    public int Count() => db.Run(() => Convert.ToInt32(db.Scalar("SELECT COUNT(*) FROM addresses;"), CultureInfo.InvariantCulture));
+
+    /// <summary>Whether any address file is loaded.</summary>
+    public bool HasAddresses => db.Run(() => db.Scalar("SELECT 1 FROM addresses LIMIT 1;") is not null);
+
     /// <summary>Files loaded so far.</summary>
     public IReadOnlyList<AddressSource> Sources() => db.Run(() =>
     {

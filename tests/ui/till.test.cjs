@@ -28,11 +28,39 @@ const PLACES = {
   'LS1 4AP': [53.8, -1.55, 'Leeds'],
   'LS2 9JT': [53.8 + 1 / 69.05, -1.55, 'Leeds'],
 };
+// Stand-ins for Google Places (New) and Royal Mail AddressNow (Loqate), in their documented answer formats.
+const GOOGLE_KEY = 'google-good-key-1234';
+const ROYAL_MAIL_KEY = 'AA11-BB22-CC33-DD44';
+function fakeAddressService(req, res, url) {
+  res.setHeader('Content-Type', 'application/json');
+  const send = (status, body) => { res.statusCode = status; res.end(JSON.stringify(body)); };
+  const north = 53.8 + 1 / 69.05;
+  if (url.pathname.startsWith('/v1/places')) {
+    if (req.headers['x-goog-api-key'] !== GOOGLE_KEY) return send(403, { error: { code: 403, message: 'API key not valid. Please pass a valid API key.' } });
+    if (url.pathname === '/v1/places:autocomplete') {
+      return send(200, { suggestions: [{ placePrediction: { placeId: 'place-shop', text: { text: 'Corner Shop, 7 Test Road, Leeds LS2 9JT, UK' } } }] });
+    }
+    const c = (longText, ...types) => ({ longText, shortText: longText, types });
+    return send(200, {
+      types: ['store', 'establishment'], displayName: { text: 'Corner Shop' }, location: { latitude: north, longitude: -1.55 },
+      addressComponents: [c('7', 'street_number'), c('Test Road', 'route'), c('Leeds', 'postal_town'), c('LS2 9JT', 'postal_code')],
+    });
+  }
+  if (url.searchParams.get('Key') !== ROYAL_MAIL_KEY) return send(200, { Items: [{ Error: '2', Description: 'Unknown key', Cause: 'Key not found.', Resolution: 'Please check that the key is correct.' }] });
+  if (url.pathname.includes('/Find/')) {
+    return url.searchParams.get('Container')
+      ? send(200, { Items: [{ Id: 'GB|RM|A|9', Type: 'Address', Text: '9 Test Road', Highlight: '', Description: 'Leeds, LS2 9JT' }] })
+      : send(200, { Items: [{ Id: 'GB|RM|ENG|9JT-LS2', Type: 'Postcode', Text: 'LS2 9JT', Highlight: '0-7', Description: 'Test Road, Leeds - 1 Address' }] });
+  }
+  return send(200, { Items: [{ BuildingNumber: '9', Street: 'Test Road', City: 'Leeds', PostalCode: 'LS2 9JT', Field1: String(north), Field2: '-1.55' }] });
+}
 let postcodeServer;
 let postcodeBase;
 
 function startPostcodeService() {
   postcodeServer = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://x');
+    if (url.pathname.startsWith('/v1/places') || url.pathname.startsWith('/Capture/')) { fakeAddressService(req, res, url); return; }
     const code = decodeURIComponent(req.url.split('/postcodes/')[1] ?? '').toUpperCase();
     res.setHeader('Content-Type', 'application/json');
     if (code === 'LS9 9XX') { res.statusCode = 500; res.end('{"status":500}'); return; }
@@ -58,6 +86,7 @@ async function startHub() {
     `--Printing:Receipt:Folder=${path.join(data, 'prints', 'receipts')}`,
     `--Printing:Kitchen:Folder=${path.join(data, 'prints', 'kitchen')}`,
     '--Delivery:ShopPostcode=LS1 4AP', `--Delivery:PostcodeService=${postcodeBase}`,
+    `--Delivery:GoogleEndpoint=${postcodeBase}`, `--Delivery:RoyalMailEndpoint=${postcodeBase}`,
   ], { cwd: hubDir, stdio: 'ignore' });
   for (let i = 0; i < 60; i++) {
     try { if ((await fetch(`${base}/api/health`)).ok) return; } catch { /* starting */ }
@@ -541,22 +570,97 @@ test('owner adds a Royal Mail address file; the cashier picks the flat from the 
   await login(page, '5931');
   await page.getByRole('button', { name: 'Delivery', exact: true }).click();
   await top(page).getByLabel('Phone number').fill('07700 900789');
-  await top(page).getByLabel('Postcode').fill('ls29jt');
-  await top(page).getByRole('button', { name: 'Check postcode' }).click();
-  await top(page).getByText('Choose the address (5 in LS2 9JT)').waitFor();
+  await top(page).getByLabel('Find address').fill('ls29jt');
+  await top(page).locator('.pick-item').first().waitFor();
   assert.deepEqual(await top(page).locator('.pick-item').allTextContents(),
     ['2 Test Road', '10 Test Road', 'Sample Cafe, 25-27 Test Road', 'Flat 2, Example Tower, Test Road', 'Flat 10, Example Tower, Test Road']);
-  await top(page).getByLabel('Find the address').fill('flat 10');
+  await top(page).getByLabel('Find address').fill('ls2 9jt flat 10');
+  await top(page).locator('.pick-item', { hasText: 'Flat 10' }).waitFor();
   await shot(page, 'ui-address-pick');
-  await top(page).locator('.pick-item').click();
+  await top(page).getByLabel('Find address').press('Enter'); // one match: Enter picks it
+  await top(page).getByText('✓ Flat 10, Example Tower, Test Road — change').waitFor();
   assert.equal(await top(page).getByLabel('House number and street').inputValue(), 'Test Road');
   assert.equal(await top(page).getByLabel('Flat or building (optional)').inputValue(), 'Flat 10, Example Tower');
   assert.equal(await top(page).getByLabel('Town (optional)').inputValue(), 'Leeds');
-  await top(page).getByText('✓ Flat 10, Example Tower, Test Road — change').waitFor();
+  await top(page).getByText('1.3 miles from the shop').waitFor(); // distance worked out by itself
   await top(page).getByRole('button', { name: 'Use these details' }).click();
   await page.locator('.customer-btn', { hasText: 'Test Road, LS2 9JT' }).waitFor();
   assert.deepEqual(page.errors, []);
   await page.context().close();
+});
+
+test('owner chooses Google, then Royal Mail online, testing each key; the till finds addresses with each, and falls back to the file', async () => {
+  const owner = await tillPage(shop.till2);
+  await login(owner, '4826');
+  const open = async () => {
+    await owner.getByRole('button', { name: 'More', exact: true }).click();
+    await top(owner).getByRole('button', { name: 'Address lookup' }).click();
+  };
+  await open();
+  assert.deepEqual(await top(owner).locator('.provider-title').allTextContents(), ['Google', 'Royal Mail online', 'Local Royal Mail file']);
+  assert.equal(await top(owner).getByRole('radio', { name: /Local Royal Mail file/ }).getAttribute('aria-checked'), 'true');
+
+  // Google with a wrong key: Test explains; then the right key.
+  await top(owner).getByRole('radio', { name: /Google/ }).click();
+  await top(owner).getByLabel('Google API key').fill('wrong-key');
+  await top(owner).getByRole('button', { name: 'Save' }).click();
+  await owner.getByText('Find address now uses: Google.').waitFor();
+  await top(owner).getByRole('button', { name: 'Test Google' }).click();
+  await top(owner).getByText(/Google: Google refused the key \(403\)/).waitFor();
+  await top(owner).getByLabel('Google API key').fill(GOOGLE_KEY);
+  await top(owner).getByRole('button', { name: 'Save' }).click();
+  await top(owner).getByText('Key saved').first().waitFor();
+  await top(owner).getByRole('button', { name: 'Test Google' }).click();
+  await top(owner).getByText(/Google works: 1 found, e.g. Corner Shop/).waitFor();
+  await shot(owner, 'ui-address-lookup');
+  await top(owner).getByRole('button', { name: 'Cancel' }).click();
+
+  const page = await tillPage(shop.till1);
+  await login(page, '5931');
+  await page.getByRole('button', { name: 'Delivery', exact: true }).click();
+  await top(page).getByLabel('Phone number').fill('07700 900321');
+  await top(page).getByLabel('Find address').fill('corner shop test road');
+  await top(page).getByText('Results from Google').waitFor();
+  await top(page).locator('.pick-item', { hasText: 'Corner Shop' }).click();
+  await top(page).getByText('1.3 miles from the shop').waitFor();
+  assert.equal(await top(page).getByLabel('House number and street').inputValue(), '7 Test Road');
+  assert.equal(await top(page).getByLabel('Flat or building (optional)').inputValue(), 'Corner Shop');
+  await top(page).getByRole('button', { name: 'Cancel' }).click();
+
+  // Royal Mail online: a postcode opens into its addresses.
+  await open();
+  await top(owner).getByRole('radio', { name: /Royal Mail online/ }).click();
+  await top(owner).getByLabel('Royal Mail AddressNow key').fill(ROYAL_MAIL_KEY);
+  await top(owner).getByRole('button', { name: 'Save' }).click();
+  await owner.getByText('Find address now uses: Royal Mail online.').waitFor();
+  await top(owner).getByRole('button', { name: 'Cancel' }).click();
+  await page.getByRole('button', { name: 'Delivery', exact: true }).click();
+  await top(page).getByLabel('Find address').fill('LS2 9JT');
+  await top(page).locator('.pick-group', { hasText: 'LS2 9JT, Test Road, Leeds - 1 Address ›' }).click();
+  await top(page).locator('.pick-item', { hasText: '9 Test Road, Leeds, LS2 9JT' }).click();
+  await top(page).getByText('1.3 miles from the shop').waitFor();
+  assert.equal(await top(page).getByLabel('House number and street').inputValue(), '9 Test Road');
+  await top(page).getByRole('button', { name: 'Cancel' }).click();
+
+  // A broken key: the till carries on with the local file, and says why.
+  await open();
+  await top(owner).getByLabel('Royal Mail AddressNow key').fill('expired-key');
+  await top(owner).getByRole('button', { name: 'Save' }).click();
+  await top(owner).getByRole('button', { name: 'Cancel' }).click();
+  await page.getByRole('button', { name: 'Delivery', exact: true }).click();
+  await top(page).getByLabel('Find address').fill('LS2 9JT flat 2');
+  await top(page).getByText(/Showing the shop's own address file instead/).waitFor();
+  await top(page).locator('.pick-item', { hasText: 'Flat 2, Example Tower, Test Road' }).waitFor();
+  await top(page).getByRole('button', { name: 'Cancel' }).click();
+
+  // Back to the local file for the tests that follow.
+  await open();
+  await top(owner).getByRole('radio', { name: /Local Royal Mail file/ }).click();
+  await top(owner).getByRole('button', { name: 'Save' }).click();
+  await owner.getByText('Find address now uses: Local Royal Mail file.').waitFor();
+  assert.deepEqual([...page.errors, ...owner.errors], []);
+  await page.context().close();
+  await owner.context().close();
 });
 
 test('every printout was made: kitchen tickets, additions, the void slip and receipts', async () => {

@@ -37,6 +37,7 @@ export function customerDialog({ delivery, initial }) {
     const postcode = input('Postcode', a.postcode, { maxlength: 9, placeholder: 'e.g. LS2 9JT', class: 'text-input postcode-input' });
     const miles = input('Distance in miles', initial?.distanceMiles ?? '', { inputmode: 'decimal', maxlength: 5 });
     const notes = input(delivery ? 'Notes for the driver (optional)' : 'Notes (optional)', c.notes, { maxlength: 200, placeholder: delivery ? 'e.g. Ring the side door' : '' });
+    const manual = h('details', { class: 'manual-miles' }, h('summary', { text: 'No internet? Type the miles' }), miles.field);
     const matches = h('div', { class: 'matches', 'aria-live': 'polite' });
     const checked = h('p', { class: 'check-result', role: 'status' });
     const problem = h('p', { class: 'form-problem', role: 'alert' });
@@ -49,6 +50,34 @@ export function customerDialog({ delivery, initial }) {
     };
     if (distance !== null) showDistance();
 
+    // The shop's address files: every address in the postcode, narrowed by what is typed in the filter.
+    const pick = h('div', { class: 'pick' });
+    let houses = [];
+    const choose = option => {
+      line1.el.value = option.address.line1;
+      line2.el.value = option.address.line2 ?? '';
+      town.el.value = option.address.town ?? '';
+      postcode.el.value = option.address.postcode;
+      mount(pick, h('button', { class: 'pick-chosen', onclick: () => showPick(), text: `✓ ${option.label} — change` }));
+    };
+    const showPick = () => {
+      if (!houses.length) { mount(pick); return; }
+      const filter = h('input', { class: 'text-input', type: 'search', placeholder: 'Type house number, flat or name', 'aria-label': 'Find the address', autocomplete: 'off' });
+      const list = h('div', { class: 'pick-list', role: 'list' });
+      const render = () => {
+        const words = filter.value.toLowerCase().split(/[\s,]+/).filter(Boolean);
+        const shown = houses.filter(o => words.every(w => o.label.toLowerCase().split(/[\s,]+/).some(part => part.startsWith(w))));
+        mount(list, shown.slice(0, 60).map(o => h('button', { class: 'pick-item', role: 'listitem', onclick: () => choose(o), text: o.label })),
+          shown.length > 60 ? h('p', { class: 'field-hint', text: `${shown.length - 60} more: type to narrow the list.` }) : null,
+          shown.length ? null : h('p', { class: 'field-hint', text: 'No address matches. Type it in the boxes below.' }));
+      };
+      filter.addEventListener('input', render);
+      filter.addEventListener('keydown', e => { if (e.key === 'Enter') list.querySelector('.pick-item')?.click(); });
+      mount(pick, h('span', { class: 'field-label', text: `Choose the address (${houses.length} in ${postcode.el.value})` }), filter, list);
+      render();
+      filter.focus();
+    };
+
     const check = async () => {
       problem.textContent = '';
       checked.className = 'check-result';
@@ -57,16 +86,31 @@ export function customerDialog({ delivery, initial }) {
         const result = await api.get(`/api/delivery/check?postcode=${encodeURIComponent(postcode.el.value)}`);
         postcode.el.value = result.postcode;
         if (!town.el.value.trim() && result.town) town.el.value = result.town;
-        distance = result.distanceMiles;
         checkedPostcode = result.postcode;
-        miles.el.value = String(distance);
-        checked.textContent = `${distance} miles from the shop${result.town ? ` · ${result.town}` : ''}`;
-        checked.className = 'check-result check-ok';
+        houses = result.addresses ?? [];
+        if (result.distanceMiles === null || result.distanceMiles === undefined) {
+          distance = null;
+          checked.className = 'check-result check-bad';
+          checked.textContent = result.problem ?? 'The distance is not known: type the miles.';
+          manual.open = true;
+        } else {
+          distance = result.distanceMiles;
+          miles.el.value = String(distance);
+          checked.textContent = `${distance} miles from the shop${result.town ? ` · ${result.town}` : ''}`;
+          checked.className = 'check-result check-ok';
+        }
+
+        // Already chosen (e.g. a returning customer)? Keep it; otherwise offer the list.
+        const current = houses.find(o => o.address.line1 === line1.el.value.trim() && (o.address.line2 ?? '') === line2.el.value.trim());
+        if (current) choose(current);
+        else showPick();
       } catch (e) {
         distance = null;
+        houses = [];
+        mount(pick);
         checked.className = 'check-result check-bad';
         checked.textContent = e instanceof ApiError ? e.message : 'Could not check the postcode.';
-        if (e instanceof ApiError && e.code === 'LookupUnavailable') miles.el.focus();
+        if (e instanceof ApiError && e.code === 'LookupUnavailable') { manual.open = true; miles.el.focus(); }
       }
     };
 
@@ -77,6 +121,8 @@ export function customerDialog({ delivery, initial }) {
         checkedPostcode = null;
         miles.el.value = '';
         checked.textContent = '';
+        houses = [];
+        mount(pick);
       }
     });
     postcode.el.addEventListener('keydown', e => { if (e.key === 'Enter') check(); });
@@ -145,10 +191,11 @@ export function customerDialog({ delivery, initial }) {
       body: h('div', { class: 'customer-form' },
         h('div', { class: 'customer-col' }, phone.field, matches, name.field, notes.field),
         delivery ? h('div', { class: 'customer-col' },
-          line1.field, line2.field, town.field,
           h('div', { class: 'postcode-row' }, postcode.field, h('button', { class: 'btn btn-kitchen', onclick: check, text: 'Check postcode' })),
           checked,
-          h('details', { class: 'manual-miles' }, h('summary', { text: 'No internet? Type the miles' }), miles.field)) : null,
+          pick,
+          line1.field, line2.field, town.field,
+          manual) : null,
         problem),
       actions: [
         h('button', { class: 'btn', onclick: () => close(null), text: 'Cancel' }),

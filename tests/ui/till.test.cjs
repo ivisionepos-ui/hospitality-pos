@@ -501,8 +501,7 @@ test('phone delivery: postcode check, minimum order, remembered customer, manage
   await top(page).getByLabel('Postcode').fill('LS9 9XX');
   await top(page).getByRole('button', { name: 'Check postcode' }).click();
   await top(page).getByText(/Type the distance in miles instead/).waitFor();
-  await top(page).getByText('No internet? Type the miles').click();
-  await top(page).getByLabel('Distance in miles').fill('9');
+  await top(page).getByLabel('Distance in miles').fill('9'); // the miles box opens by itself
   await top(page).getByRole('button', { name: 'Use these details' }).click();
   await pick(page, 'Pizzas', 'Meat feast');
   await top(page).getByRole('button', { name: /^14"/ }).click();
@@ -514,6 +513,48 @@ test('phone delivery: postcode check, minimum order, remembered customer, manage
   await top(page).getByLabel('Distance in miles').fill('3.5');
   await top(page).getByRole('button', { name: 'Use these details' }).click();
   await page.locator('.total-row', { hasText: 'Delivery (3.5 mi)' }).getByText('£3.00').waitFor();
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
+test('owner adds a Royal Mail address file; the cashier picks the flat from the postcode', async () => {
+  const owner = await tillPage(shop.till2);
+  await login(owner, '4826');
+  await owner.getByRole('button', { name: 'More', exact: true }).click();
+  await top(owner).getByRole('button', { name: 'Address files' }).click();
+  await top(owner).getByText('No address files yet.').waitFor();
+  // Made-up addresses in the same 14-column layout as Royal Mail's files.
+  const csv = [
+    ',,,,,10,,Test Road,,,LEEDS,LS2 9JT,S,1A',
+    ',,,,,2,,Test Road,,,LEEDS,LS2 9JT,S,1B',
+    ',,,Example Tower,Flat 10,,,Test Road,,,LEEDS,LS2 9JT,S,1C',
+    ',,,Example Tower,Flat 2,,,Test Road,,,LEEDS,LS2 9JT,S,1D',
+    'Sample Cafe,,,25-27,,,,Test Road,,,LEEDS,LS2 9JT,S,1E',
+  ].join('\n');
+  await top(owner).getByLabel('Choose address files').setInputFiles({ name: 'LS2.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+  await owner.getByText('LS2.csv: 5 addresses loaded.').waitFor();
+  await top(owner).locator('tr', { hasText: 'LS2.csv' }).getByText(/5 addresses · 1 postcodes/).waitFor();
+  await top(owner).getByRole('button', { name: 'Done' }).click();
+  await owner.context().close();
+
+  const page = await tillPage(shop.till1);
+  await login(page, '5931');
+  await page.getByRole('button', { name: 'Delivery', exact: true }).click();
+  await top(page).getByLabel('Phone number').fill('07700 900789');
+  await top(page).getByLabel('Postcode').fill('ls29jt');
+  await top(page).getByRole('button', { name: 'Check postcode' }).click();
+  await top(page).getByText('Choose the address (5 in LS2 9JT)').waitFor();
+  assert.deepEqual(await top(page).locator('.pick-item').allTextContents(),
+    ['2 Test Road', '10 Test Road', 'Sample Cafe, 25-27 Test Road', 'Flat 2, Example Tower, Test Road', 'Flat 10, Example Tower, Test Road']);
+  await top(page).getByLabel('Find the address').fill('flat 10');
+  await shot(page, 'ui-address-pick');
+  await top(page).locator('.pick-item').click();
+  assert.equal(await top(page).getByLabel('House number and street').inputValue(), 'Test Road');
+  assert.equal(await top(page).getByLabel('Flat or building (optional)').inputValue(), 'Flat 10, Example Tower');
+  assert.equal(await top(page).getByLabel('Town (optional)').inputValue(), 'Leeds');
+  await top(page).getByText('✓ Flat 10, Example Tower, Test Road — change').waitFor();
+  await top(page).getByRole('button', { name: 'Use these details' }).click();
+  await page.locator('.customer-btn', { hasText: 'Test Road, LS2 9JT' }).waitFor();
   assert.deepEqual(page.errors, []);
   await page.context().close();
 });

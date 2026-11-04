@@ -117,3 +117,10 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-111 | 2026-11-04 | Sending a delivery prints the receipt for the bag at once, with the customer block and AMOUNT DUE / PAID | The driver knows where to go and what to collect |
 | C-112 | 2026-11-04 | "Phone" order mode renamed Collection; Delivery added | Clearer for staff |
 | C-113 | 2026-11-04 | Newest dialog or working cover is always on top | A manager PIN asked while the till is working stays usable, and buttons cannot be pressed twice while working |
+| C-114 | 2026-11-04 | House-by-house addresses from the owner's own Royal Mail PAF CSV files, loaded into the hub database (schema 8) | Owner's choice; works offline, no per-search cost; replaces the paid lookup idea for addresses (C-104) |
+| C-115 | 2026-11-04 | PAF column order taken from the owner's B12 file (14 columns, no header); rows with a bad postcode or PO box only are skipped | Matches the files the owner has; nothing undeliverable in the list |
+| C-116 | 2026-11-04 | Address lines follow Royal Mail's layout: number-like building names (25-27, 11a) go with the street; business, flat and building names and areas go on line 2; town in title case | Reads the way addresses are written and keeps business names for the driver |
+| C-117 | 2026-11-04 | Pick list in street / house-number / flat order with natural number sorting; typing filters by the start of each word | 2 before 10, Flat 2 before Flat 10; "flat 10" finds it at once |
+| C-118 | 2026-11-04 | Files load from the hub's addresses folder at start-up (only new or changed ones) or by upload from the till (owner); each load replaces that file in one transaction | Easy to update a district; a bad file never wipes good data |
+| C-119 | 2026-11-04 | Postcode check still lists addresses when the distance service is unreachable, and opens "type the miles" itself | The counter keeps working without internet |
+| C-120 | 2026-11-04 | Royal Mail files are never committed to the repository (licensed data); tests use made-up addresses in the same layout | Licence compliance |

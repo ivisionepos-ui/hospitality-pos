@@ -30,4 +30,12 @@ public static partial class HubLog
     /// <summary>The second copy of a backup could not be made.</summary>
     [LoggerMessage(EventId = 22, Level = LogLevel.Warning, Message = "Backup copy to {Folder} FAILED: {Error}")]
     public static partial void BackupCopyFailed(ILogger logger, string folder, string error);
+
+    /// <summary>An address file was loaded.</summary>
+    [LoggerMessage(EventId = 30, Level = LogLevel.Information, Message = "Address file {File} loaded: {Addresses} addresses in {Postcodes} postcodes")]
+    public static partial void AddressFileLoaded(ILogger logger, string file, int addresses, int postcodes);
+
+    /// <summary>An address file could not be loaded.</summary>
+    [LoggerMessage(EventId = 31, Level = LogLevel.Warning, Message = "Address file {File} could not be loaded: {Error}")]
+    public static partial void AddressFileFailed(ILogger logger, string file, string error);
 }

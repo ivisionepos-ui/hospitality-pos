@@ -17,9 +17,10 @@ public sealed record PostcodeLocation(string Postcode, double Latitude, double L
 /// <summary>A checked delivery postcode with its distance from the shop.</summary>
 /// <param name="Postcode">Postcode in standard form.</param>
 /// <param name="Town">Town or district, if known.</param>
-/// <param name="DistanceMiles">Estimated road distance from the shop, in miles (one decimal).</param>
-/// <param name="Addresses">House-by-house addresses, when an address service is set up (empty otherwise).</param>
-public sealed record PostcodeCheck(string Postcode, string? Town, decimal DistanceMiles, IReadOnlyList<string> Addresses);
+/// <param name="DistanceMiles">Estimated road distance from the shop, in miles (one decimal); empty when it could not be worked out.</param>
+/// <param name="Addresses">Every address in the postcode, from the shop's address files (empty if none loaded for it).</param>
+/// <param name="Problem">Why the distance is missing (e.g. no internet), for the till to show.</param>
+public sealed record PostcodeCheck(string Postcode, string? Town, decimal? DistanceMiles, IReadOnlyList<AddressOption> Addresses, string? Problem = null);
 
 /// <summary>Finds where a postcode is.</summary>
 public interface IPostcodeLookup
@@ -96,7 +97,7 @@ public sealed class PostcodesIoLookup(HttpClient http, DeliverySettings settings
 /// Checks delivery postcodes and works out the distance from the shop. Every postcode looked up is
 /// remembered in the hub database, so repeat customers work without internet and nothing is paid twice.
 /// </summary>
-public sealed class DeliveryService(HubDatabase db, DeliverySettings settings, IPostcodeLookup lookup, TimeProvider clock)
+public sealed class DeliveryService(HubDatabase db, DeliverySettings settings, IPostcodeLookup lookup, TimeProvider clock, AddressBook addresses)
 {
     private const double EarthRadiusMiles = 3958.8;
 
@@ -116,11 +117,26 @@ public sealed class DeliveryService(HubDatabase db, DeliverySettings settings, I
             throw new InvalidOperationException("The shop's postcode is not set. Add it as ShopPostcode in the Delivery settings.");
         }
 
-        var shop = await LocateAsync(shopPostcode, cancellationToken).ConfigureAwait(false)
-            ?? throw new InvalidOperationException($"The shop's postcode {shopPostcode} was not found. Check ShopPostcode in the Delivery settings.");
-        var place = await LocateAsync(normalised, cancellationToken).ConfigureAwait(false)
-            ?? throw new KeyNotFoundException($"Postcode {normalised} was not found. Check it with the customer.");
-        return new PostcodeCheck(place.Postcode, place.Town, Miles(shop, place), []);
+        var houses = addresses.Find(normalised);
+        try
+        {
+            var shop = await LocateAsync(shopPostcode, cancellationToken).ConfigureAwait(false)
+                ?? throw new InvalidOperationException($"The shop's postcode {shopPostcode} was not found. Check ShopPostcode in the Delivery settings.");
+            var place = await LocateAsync(normalised, cancellationToken).ConfigureAwait(false);
+            if (place is null)
+            {
+                return houses.Count > 0
+                    ? new PostcodeCheck(normalised, houses[0].Address.Town, null, houses, "The distance for this postcode is not known yet. Type the miles.")
+                    : throw new KeyNotFoundException($"Postcode {normalised} was not found. Check it with the customer.");
+            }
+
+            return new PostcodeCheck(place.Postcode, place.Town ?? (houses.Count > 0 ? houses[0].Address.Town : null), Miles(shop, place), houses);
+        }
+        catch (PostcodeServiceUnavailableException ex) when (houses.Count > 0)
+        {
+            // No internet: the address list still works from the shop's own files; the miles are typed in.
+            return new PostcodeCheck(normalised, houses[0].Address.Town, null, houses, ex.Message);
+        }
     }
 
     /// <summary>Estimated road distance in miles, to one decimal.</summary>

@@ -425,6 +425,29 @@ public static class Endpoints
             });
         })).ForDevices();
 
+        // ----- Address files (Royal Mail PAF CSV) -----
+        api.MapGet("/addresses", (AddressBook book, string? postcode) => Handle(() => Results.Ok(book.Find(postcode ?? string.Empty))))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapGet("/addresses/files", (AddressBook book) => Handle(() => Results.Ok(book.Sources())))
+            .ForStaff(Permission.ManageDevices);
+
+        // Upload one file from the till: the body is the CSV itself; ?name=B12.csv.
+        api.MapPost("/addresses/files", (HttpContext http, AddressBook book, string? name) => HandleAsync(async () =>
+        {
+            if (string.IsNullOrWhiteSpace(name) || !name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("Choose a .csv address file.");
+            }
+
+            using var reader = new StreamReader(http.Request.Body, System.Text.Encoding.Latin1);
+            var text = await reader.ReadToEndAsync(http.RequestAborted).ConfigureAwait(false);
+            return Results.Ok(book.Import(name, new StringReader(text)));
+        })).ForStaff(Permission.ManageDevices);
+
+        api.MapPost("/addresses/files/reload", (AddressBook book) => Handle(() => Results.Ok(book.LoadFolder())))
+            .ForStaff(Permission.ManageDevices);
+
         api.MapGet("/customers", (CustomerService customers, string? phone) => Handle(() => Results.Ok(customers.Search(phone ?? string.Empty))))
             .ForStaff(Permission.TakeOrders);
 

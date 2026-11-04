@@ -43,6 +43,8 @@ builder.Services.AddSingleton<MenuService>();
 builder.Services.AddSingleton(sp => sp.GetRequiredService<IConfiguration>().GetSection("Delivery").Get<Pos.Hub.Delivery.DeliverySettings>() ?? new Pos.Hub.Delivery.DeliverySettings());
 builder.Services.AddSingleton<Pos.Hub.Delivery.IPostcodeLookup>(sp =>
     new Pos.Hub.Delivery.PostcodesIoLookup(new HttpClient { Timeout = TimeSpan.FromSeconds(6) }, sp.GetRequiredService<Pos.Hub.Delivery.DeliverySettings>()));
+builder.Services.AddSingleton<Pos.Hub.Delivery.AddressBook>();
+builder.Services.AddHostedService<Pos.Hub.Delivery.AddressFolderWorker>();
 builder.Services.AddSingleton<Pos.Hub.Delivery.DeliveryService>();
 builder.Services.AddSingleton<Pos.Hub.Delivery.CustomerService>();
 builder.Services.AddSingleton<OrderService>();

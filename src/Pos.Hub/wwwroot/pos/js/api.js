@@ -41,11 +41,12 @@ async function request(method, path, body, options = {}) {
   const session = credentials.session;
   if (session && !options.noSession) headers.Authorization = `Bearer ${session.token}`;
   if (options.managerPin) headers['X-Manager-Pin'] = options.managerPin;
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const isFile = body instanceof Blob;
+  if (body !== undefined) headers['Content-Type'] = isFile ? 'text/csv' : 'application/json';
 
   let response;
   try {
-    response = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store' });
+    response = await fetch(path, { method, headers, body: body === undefined || isFile ? body : JSON.stringify(body), cache: 'no-store' });
   } catch {
     throw new ApiError(0, 'Offline', 'Cannot reach the hub. Check the network and that the hub PC is on.');
   }
@@ -67,6 +68,8 @@ export const api = {
   post: (path, body = {}, options) => request('POST', path, body, options),
   put: (path, body, options) => request('PUT', path, body, options),
   del: (path, options) => request('DELETE', path, undefined, options),
+  /** Sends a file (e.g. an address file) as the request body. */
+  upload: (path, file) => request('POST', path, file),
   /** Fetches a file (e.g. a receipt preview) as a blob. */
   async blob(path) {
     const response = await request('GET', path, undefined, { raw: true });

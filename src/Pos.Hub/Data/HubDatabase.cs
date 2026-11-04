@@ -169,6 +169,28 @@ public sealed class HubDatabase : IDisposable
                 fetched_at  TEXT NOT NULL
             );
             """),
+        (8, """
+            CREATE TABLE address_sources (
+                name         TEXT PRIMARY KEY,
+                fingerprint  TEXT NOT NULL,
+                addresses    INTEGER NOT NULL,
+                postcodes    INTEGER NOT NULL,
+                skipped      INTEGER NOT NULL,
+                imported_at  TEXT NOT NULL
+            );
+            CREATE TABLE addresses (
+                id        INTEGER PRIMARY KEY,
+                source    TEXT NOT NULL,
+                postcode  TEXT NOT NULL,
+                line1     TEXT NOT NULL,
+                line2     TEXT,
+                town      TEXT NOT NULL,
+                label     TEXT NOT NULL,
+                sort_key  TEXT NOT NULL
+            );
+            CREATE INDEX ix_addresses_postcode ON addresses (postcode, sort_key);
+            CREATE INDEX ix_addresses_source ON addresses (source);
+            """),
     ];
 
     private readonly SqliteConnection _connection;

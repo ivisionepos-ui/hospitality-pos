@@ -49,6 +49,12 @@ public sealed class DeliverySettings
     /// <summary>Free delivery when the food comes to at least this, in pence (optional).</summary>
     public long? FreeOverPence { get; set; }
 
+    /// <summary>
+    /// Folder of Royal Mail address files (PAF CSV, e.g. B12.csv). New or changed files are loaded when the hub starts,
+    /// or from the till (More → Address files).
+    /// </summary>
+    public string AddressFolder { get; set; } = "addresses";
+
     /// <summary>Postcode lookup service (free, UK open data, no account).</summary>
     public string PostcodeService { get; set; } = "https://api.postcodes.io";
 

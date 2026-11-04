@@ -147,8 +147,18 @@ then `node --test --test-concurrency=1 tests/ui/till.test.cjs`. They start their
 In `appsettings.json` → `Delivery`: `ShopPostcode` (required for the postcode check), `MaximumMiles`,
 `MinimumOrderPence`, `FreeOverPence`, and either `Bands` (from/to miles, fee, optional minimum order per band) or
 `RatePerMilePence` + `MinimumFeePence`. Distances are straight-line × `RoadFactor` (1.3) until a road-distance
-service is added. House-by-house address lists need a paid Royal Mail PAF service; the hub is ready for one
-(`PostcodeCheck.Addresses`) but none is connected.
+service is added.
+
+### Address files (house-by-house addresses)
+Royal Mail Postcode Address File (PAF) CSV files, one per postcode district (e.g. `B12.csv`), 14 columns without a
+header: organisation, department, PO box, building name, sub-building, building number, dependent thoroughfare,
+thoroughfare, double dependent locality, dependent locality, post town, postcode, postcode type, delivery point
+suffix. Put them in the `addresses` folder next to the hub (setting `Delivery:AddressFolder`): new or changed files
+load when the hub starts. Or upload them from the till: More → Address files (owner). A reload replaces that file's
+addresses in one transaction; a bad file changes nothing. PO-box-only rows are skipped (nowhere to deliver).
+On the till, Check postcode lists every address in the postcode (works without internet); typing narrows the list;
+tapping fills street, flat/building/business and town. The files are licensed Royal Mail data and are never
+committed to the repository.
 
 ### Backups
 Each backup is one zip in `data/backups` named `hub-backup-<branch>-<yyyyMMdd-HHmmss>.zip` (shop time). It holds a
@@ -280,9 +290,12 @@ under `Printing` → `ReceiptText`. UK VAT receipts must show the VAT number whe
 | POST | /api/auth/login, /api/auth/logout | device / staff | PIN login, logout |
 | GET | /api/auth/me | staff | Who is logged in and what they may do |
 | GET / POST / DELETE | /api/staff[/{id}] | manager, owner | List, add, remove staff |
-| GET | /api/delivery/check?postcode= | cashier | Postcode check: tidy postcode, town, distance from the shop (503 LookupUnavailable when offline) |
+| GET | /api/delivery/check?postcode= | cashier | Postcode check: tidy postcode, town, distance from the shop, and the addresses in it (offline: addresses without distance; 503 only if neither is known) |
 | GET | /api/delivery/settings | any device | Delivery bands, minimum order, maximum distance |
 | GET | /api/customers?phone= | cashier | Past customers whose phone contains these digits (4+) |
+| GET | /api/addresses?postcode= | cashier | Every address in a postcode, from the shop's address files |
+| GET / POST | /api/addresses/files[?name=B12.csv] | owner | Address files loaded / upload one (body = the CSV) |
+| POST | /api/addresses/files/reload | owner | Load new or changed files from the addresses folder |
 | POST | /api/orders/{id}/contact | cashier | Change the customer's details on an open order |
 | POST | /api/orders/{id}/delivery | cashier (manager for a changed fee) | Change the distance or fee on an open delivery order |
 | POST | /api/staff/{id}/pin | self, manager | Change a PIN |

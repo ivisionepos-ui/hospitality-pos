@@ -32,11 +32,12 @@
 | Till screen (POS order screen): set-up, register a till, PIN login, categories and item buttons, sizes/extras with required choices, meal deals, live totals, send to kitchen, cash/card/part payments with change, open orders, add items, remove with manager PIN, cancel, reprint, collected, open/close till with blind count, paid in/out, X/Z reports, failed prints, backup now, add a till, live updates between tills | 3 | Done 2026-11-03 | 6 browser tests (real Chromium, real hub) + 4 hub tests | Edit menu mode is next |
 | Edit menu mode on the till: items (name, button name, sizes and prices, VAT, extras, sold out, hidden, move), categories (name, colour, food type, hidden, move), new items and categories, extras groups and choices with prices, undo, change log, clash protection; quick Sold out screen for cashiers | 3 | Done 2026-11-03 | 1 browser test (full editing session with a second till watching) + 5 hub tests | Deal choices come with the back office |
 | Phone and delivery orders: customer panel with phone search of past customers, address entry, postcode check and distance (postcodes.io, cached), manual miles offline, delivery charge by bands, minimum order and maximum distance blocking, manager-approved fee change, customer remembered, contact on order with history, corrections on saved orders, receipt for the bag with AMOUNT DUE, customer block on kitchen ticket | 3 | Done 2026-11-04 | 9 hub tests + 8 contact rule tests + 1 layout test + 1 browser test (with a local postcode service) | Live postcodes.io check to be confirmed on the shop PC with internet; shop postcode to be set |
+| Address files: Royal Mail PAF CSV loaded into the hub (folder at start-up or upload from the till), postcode → every address pick list with filter, fills street/flat/business/town, offline-capable | 3 | Done 2026-11-04 | 5 hub tests + 1 browser test; owner's real B12 file loaded: 7,844 addresses in 443 postcodes (13 PO-box rows skipped) | One full-suite run had a load-related failure in a printing test; 10/10 repeat runs passed — watch |
 | Adding items to a saved order is safe to resend (request id) | 3 | Done 2026-11-03 | 1 hub test | |
 | Hub additions for the till: order quote, sample menu, paid/balance on orders, receipt printed when fully paid | 3 | Done 2026-11-03 | 4 hub tests | |
 | Backups: hourly / start-up / after Z report / on demand; checked zip of database snapshot, PIN key and certificates; second copy folder; keep 48 h then daily for 30 days; restore command; live warning on failure; one hub per data folder; copy before schema upgrades | 2 | Done 2026-11-03 | 13 passing, plus restore run on the real program | Owner to set a USB/second-disk copy folder |
 
-Total: 383 automated tests passing (253 business-rule tests + 122 hub tests + 8 till-screen browser tests), including 1,000 random orders checking that totals and VAT always reconcile.
+Total: 389 automated tests passing (253 business-rule tests + 127 hub tests + 9 till-screen browser tests), including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
 - ESC/POS thermal printers over USB and network, and the cash drawer kick (when printers are available)
@@ -45,7 +46,7 @@ Total: 383 automated tests passing (253 business-rule tests + 122 hub tests + 8 
 - Windows Device Agent installer that installs the shop CA automatically
 - Scheduled offers, delivery charge table and discount limits stored on the hub (offers currently not loaded)
 - Editing meal-deal choices; drag and drop of buttons
-- House-by-house address lists (paid PAF service) and road distances (OSRM)
+- Road distances (OSRM) or offline postcode locations (Code-Point Open)
 - Discounts and refunds on screen, split bill screen
 - Driver screen: assign deliveries to drivers, cash returned by drivers
 - Encrypted off-site (cloud) backup copy

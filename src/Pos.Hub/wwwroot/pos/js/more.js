@@ -1,6 +1,6 @@
 // The "More" menu: till shift, X and Z reports, adding a till, failed prints, backups.
 import { api } from './api.js';
-import { h, money, penceText, timeText, toast } from './dom.js';
+import { h, mount, money, penceText, timeText, toast } from './dom.js';
 import { alertDialog, amountDialog, busy, confirmDialog, openDialog, textDialog } from './dialogs.js';
 import { ensureShift } from './pay.js';
 import { withApproval } from './till.js';
@@ -96,6 +96,48 @@ async function failedPrints() {
   }));
 }
 
+/** The shop's Royal Mail address files: what is loaded, add a file, reload the folder (owner). */
+async function addressFiles() {
+  let files = await busy(() => api.get('/api/addresses/files'));
+  await openDialog(close => {
+    const body = h('div', { class: 'menu-list' });
+    const picker = h('input', { type: 'file', accept: '.csv,text/csv', multiple: true, class: 'file-input', 'aria-label': 'Choose address files' });
+    const render = () => mount(body,
+      h('p', { class: 'dialog-message', text: 'Royal Mail address files (one .csv per postcode area, e.g. B12.csv). Staff then pick the house from the postcode. Files in the hub’s "addresses" folder load by themselves when the hub starts.' }),
+      files.length
+        ? h('table', { class: 'report' }, h('tbody', {}, files.map(f => h('tr', {},
+          h('th', { scope: 'row', text: f.name }),
+          h('td', { text: `${f.addresses.toLocaleString('en-GB')} addresses · ${f.postcodes} postcodes · ${new Date(f.importedAt).toLocaleDateString('en-GB')}` })))))
+        : h('p', { class: 'empty-note', text: 'No address files yet.' }),
+      h('label', { class: 'btn btn-primary file-btn' }, 'Add address files…', picker),
+      h('button', {
+        class: 'btn', text: 'Reload the addresses folder',
+        onclick: async () => {
+          const loaded = await busy(() => api.post('/api/addresses/files/reload'));
+          files = await api.get('/api/addresses/files');
+          toast(loaded.length ? `Loaded ${loaded.map(f => f.name).join(', ')}.` : 'No new or changed files in the folder.', 'ok');
+          render();
+        },
+      }));
+    picker.addEventListener('change', async () => {
+      for (const file of picker.files) {
+        try {
+          const result = await busy(() => api.upload(`/api/addresses/files?name=${encodeURIComponent(file.name)}`, file));
+          toast(`${result.name}: ${result.addresses.toLocaleString('en-GB')} addresses loaded.`, 'ok');
+        } catch (e) {
+          toast(`${file.name}: ${e.message}`, 'error', 8000);
+        }
+      }
+
+      files = await api.get('/api/addresses/files');
+      picker.value = '';
+      render();
+    });
+    render();
+    return { title: 'Address files', wide: true, body, actions: [h('button', { class: 'btn btn-primary', onclick: () => close(), text: 'Done' })] };
+  });
+}
+
 async function backupNow() {
   const result = await busy(() => api.post('/api/backups'));
   toast(result.copyError ? `Backup made, but the copy failed: ${result.copyError}` : `Backup made: ${result.file}`, result.copyError ? 'error' : 'ok', 6000);
@@ -135,7 +177,8 @@ export function moreDialog(till) {
             can('ViewReports') ? item('End of day (Z report)', zReport) : null,
             item('Failed printouts', failedPrints),
             can('ViewReports') ? item('Back up now', backupNow) : null,
-            can('ManageDevices') ? item('Add a till', addTill) : null)),
+            can('ManageDevices') ? item('Add a till', addTill) : null,
+            can('ManageDevices') ? item('Address files', addressFiles) : null)),
         h('p', { class: 'version', text: `Version ${window.posVersion ?? ''} · ${till.ctx.me.staff.name} (${till.ctx.me.staff.role})` }),
       ],
     };

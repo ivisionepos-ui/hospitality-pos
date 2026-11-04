@@ -14,3 +14,7 @@ node_modules/
 appsettings.*.local.json
 *.pfx
 *.key
+
+# Royal Mail address files (licensed data): never committed
+addresses/
+*.paf.csv

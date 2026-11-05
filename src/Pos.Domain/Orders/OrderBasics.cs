@@ -56,6 +56,9 @@ public enum OrderStatus
 
     /// <summary>Refused by the shop (e.g. too busy, item unavailable).</summary>
     Rejected,
+
+    /// <summary>A delivery on its way with a driver (set only by sending it out with a driver).</summary>
+    OutForDelivery,
 }
 
 /// <summary>The allowed moves between statuses.</summary>
@@ -65,9 +68,10 @@ public static class OrderStatusRules
     {
         [OrderStatus.Pending] = [OrderStatus.Received, OrderStatus.Rejected, OrderStatus.Cancelled],
         [OrderStatus.Received] = [OrderStatus.Accepted, OrderStatus.Rejected, OrderStatus.Cancelled],
-        [OrderStatus.Accepted] = [OrderStatus.Preparing, OrderStatus.Ready, OrderStatus.Completed, OrderStatus.Cancelled],
-        [OrderStatus.Preparing] = [OrderStatus.Ready, OrderStatus.Cancelled],
-        [OrderStatus.Ready] = [OrderStatus.Completed, OrderStatus.Preparing, OrderStatus.Cancelled], // Preparing = recalled by the kitchen
+        [OrderStatus.Accepted] = [OrderStatus.Preparing, OrderStatus.Ready, OrderStatus.Completed, OrderStatus.Cancelled, OrderStatus.OutForDelivery],
+        [OrderStatus.Preparing] = [OrderStatus.Ready, OrderStatus.Cancelled, OrderStatus.OutForDelivery],
+        [OrderStatus.Ready] = [OrderStatus.Completed, OrderStatus.Preparing, OrderStatus.Cancelled, OrderStatus.OutForDelivery], // Preparing = recalled by the kitchen
+        [OrderStatus.OutForDelivery] = [OrderStatus.Completed, OrderStatus.Ready, OrderStatus.Cancelled], // Ready = brought back to the shop
         [OrderStatus.Completed] = [],
         [OrderStatus.Cancelled] = [],
         [OrderStatus.Rejected] = [],

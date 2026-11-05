@@ -1,7 +1,7 @@
 // The order screen: categories and item buttons on the right, the order on the left.
 // An order being built lives only on this till until it is sent or paid; the hub prices it live (quote).
 import { api, ApiError } from './api.js';
-import { h, mount, money, newId, penceText, text, timeText, toast } from './dom.js';
+import { h, mount, money, newId, penceText, statusText, text, timeText, toast } from './dom.js';
 import { alertDialog, amountDialog, busy, confirmDialog, managerPinDialog, openDialog, textDialog } from './dialogs.js';
 import { contactSummary, customerDialog } from './customer.js';
 import { dealDialog, itemOptionsDialog } from './item-dialogs.js';
@@ -10,6 +10,7 @@ import { MenuView } from './menu.js';
 import { moreDialog } from './more.js';
 import { payDialog } from './pay.js';
 import { discountDialog, refundDialog } from './discounts.js';
+import { driversDialog } from './drivers.js';
 
 const ORDER_MODES = [
   { id: 'counter', label: 'Takeaway', source: 'Counter', type: 'Takeaway' },
@@ -123,6 +124,8 @@ export class Till {
       case 'OrderCreated':
       case 'OrderUpdated':
       case 'PaymentChanged':
+        // "Ready" is news from the kitchen; a delivery brought back by its driver is ready again but is not announced.
+        if (event.order?.status === 'OutForDelivery') (this.announced ??= new Set()).add(event.order.id);
         if (event.order?.status === 'Ready' && !this.announced?.has(event.order.id)) {
           (this.announced ??= new Set()).add(event.order.id);
           toast(`Order ${event.order.number} is ready${event.order.contact?.name ? ` (${event.order.contact.name})` : ''}.`, 'ok', 8000);
@@ -196,6 +199,7 @@ export class Till {
         h('span', { class: `live ${this.live ? 'live-on' : 'live-off'}`, text: this.live ? 'Live' : 'Connecting…' }),
         h('div', { class: 'topbar-actions' },
           h('button', { class: 'top-btn', onclick: () => this.showOrders() }, 'Orders ', h('span', { class: 'orders-count', text: this.openCount ? String(this.openCount) : '' })),
+          h('button', { class: 'top-btn', onclick: async () => { await driversDialog(); this.refreshOpenCount(); }, text: 'Drivers' }),
           h('button', { class: 'top-btn', onclick: () => moreDialog(this) , text: 'More' }),
           h('span', { class: 'staff-name', text: this.ctx.me.staff.name }),
           h('button', { class: 'top-btn top-btn-quiet', onclick: () => this.ctx.logout(), text: 'Log out' }))),
@@ -331,7 +335,7 @@ export class Till {
         h('div', {}, h('span', { class: 'ticket-number', text: `Order ${saved.number}` }),
           h('span', { class: 'ticket-meta', text: `${modeLabel(saved.source, saved.type)} · ${timeText(saved.createdAt)}` }),
           saved.contact ? h('span', { class: 'ticket-customer', text: contactSummary(saved.contact) }) : null),
-        h('span', { class: `status status-${saved.status.toLowerCase()}`, text: saved.status }))
+        h('span', { class: `status status-${saved.status.toLowerCase()}`, text: statusText(saved.status) }))
       : h('div', { class: 'ticket-head' },
         h('span', { class: 'ticket-number', text: 'New order' }),
         h('div', { class: 'seg seg-small' }, ORDER_MODES.map(m => h('button', {
@@ -786,10 +790,10 @@ export class Till {
             h('button', { class: 'order-open', onclick: () => close({ open: o }) },
               h('span', { class: 'order-no', text: o.number }),
               h('span', { class: 'order-meta', text: [timeText(o.createdAt), modeLabel(o.source, o.type), o.contact?.name, o.contact?.address?.postcode].filter(Boolean).join(' · ') }),
-              h('span', { class: `status status-${o.status.toLowerCase()}`, text: o.status }),
+              h('span', { class: `status status-${o.status.toLowerCase()}`, text: statusText(o.status) }),
               h('span', { class: 'order-total', text: money(o.total) }),
               h('span', { class: `paid-badge ${due > 0 ? 'paid-due' : 'paid-ok'}`, text: due > 0 ? `Due ${penceText(due)}` : due < 0 ? `Refund ${penceText(-due)}` : 'Paid' })),
-            !CLOSED.includes(o.status) && due <= 0 ? h('button', { class: 'btn btn-small', onclick: () => close({ complete: o }), text: 'Collected' }) : null);
+            !CLOSED.includes(o.status) && due <= 0 ? h('button', { class: 'btn btn-small', onclick: () => close({ complete: o }), text: o.type === 'Delivery' ? 'Delivered' : 'Collected' }) : null);
         }) : h('p', { class: 'empty-note', text: all ? `No orders ${daysBack ? 'that day' : 'yet today'}.` : 'No open orders.' }));
       };
       render();

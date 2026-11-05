@@ -283,6 +283,22 @@ are used. Language `en` (default), `ar` or `both` stays in appsettings.json. UK 
 - Closing a shift is a blind count: the expected cash and over/short are shown only after the count is entered.
 - The Z report needs every shift of the day closed; it is kept, numbered, and taking it again returns the same one.
 
+### Deliveries and drivers
+
+Add drivers in More → Staff with the role **Driver**. On the till, **Drivers** shows:
+- **Ready to go out**: delivery orders sent to the kitchen and not yet out. Tap the orders, then the driver (drivers
+  first; "Someone else" lists other staff, as managers sometimes deliver). They become **Out with driver**.
+- **Out now**, by driver, with what to collect. When the driver is back: **Cash £x** (taken into this till's drawer,
+  so the cash count is right), **Card** (paid on the driver's card machine), **Delivered** (already paid), or **Back**
+  (not delivered, with a reason: it is ready in the shop again, with no driver).
+- **Today**, per driver: delivered, out, cash handed in and card taken (only money taken after the order went out, so
+  a phone payment taken before is not counted as the driver's).
+
+A driver who logs in with their PIN sees **My deliveries**: their orders with name, address, phone (tap to call),
+notes and what to collect, updated live. Drivers cannot change anything. An order goes out only after everything on it
+has gone to the kitchen; only delivery orders go out; a removed staff member cannot be given deliveries; an unpaid
+delivery cannot be marked delivered.
+
 ### Discounts and refunds
 
 **Discount** (button under the order, or ⋯ on a saved order): % off (quick 5–100%) or £ off, with a reason that
@@ -308,6 +324,7 @@ were never counted as sales).
 | Role | Can do |
 | --- | --- |
 | Kitchen | Kitchen screen: mark orders preparing and ready; mark items sold out |
+| Driver | My deliveries screen only (read only) |
 | Waiter | Take orders, remove items not yet in the kitchen |
 | Cashier | Waiter + accept/reject online orders |
 | Manager | Everything in the shop: approvals, cancels, menu, staff below manager, reports |
@@ -337,6 +354,10 @@ active staff cannot share a name; PINs are 4–8 digits, not easy (1111, 1234) a
 | GET | /api/orders/{id}/payments | cashier | Total, paid, balance, tips, payments |
 | POST | /api/orders/{id}/payments/cash, /card | cashier | Take cash (change worked out) or record a card payment; safe to resend |
 | POST | /api/orders/{id}/payments/{paymentId}/refund | manager (or manager PIN) | Refund all or part of a payment, same method |
+| GET | /api/drivers | staff taking orders | People who can take deliveries (drivers first) |
+| POST | /api/orders/{id}/send-out | staff taking orders | Send a delivery out with a driver (or hand to another) |
+| POST | /api/orders/{id}/back-to-shop | staff taking orders | Driver brought it back (reason) |
+| GET | /api/drivers/today | staff taking orders | Each driver's day |
 | POST / DELETE | /api/orders/{id}/discount | staff (manager above the limits) | Give or remove an order discount |
 | GET / PUT | /api/settings/discounts | staff / owner | Discount limits for staff |
 | GET | /api/orders/{id}/split?parts=N | cashier | Split the balance equally |

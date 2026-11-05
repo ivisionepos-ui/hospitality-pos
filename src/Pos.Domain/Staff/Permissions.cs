@@ -50,6 +50,9 @@ public enum StaffRole
     /// <summary>Kitchen staff: kitchen screen only.</summary>
     Kitchen,
 
+    /// <summary>Delivery driver: sees the deliveries they are taking; the shop sends orders out with them.</summary>
+    Driver,
+
     /// <summary>Waiter: takes table orders.</summary>
     Waiter,
 
@@ -69,6 +72,7 @@ public static class RolePermissions
     private static readonly Dictionary<StaffRole, HashSet<Permission>> Map = new()
     {
         [StaffRole.Kitchen] = [Permission.KitchenDisplay],
+        [StaffRole.Driver] = [],
         [StaffRole.Waiter] = [Permission.TakeOrders, Permission.VoidBeforeKitchen],
         [StaffRole.Cashier] = [Permission.TakeOrders, Permission.VoidBeforeKitchen, Permission.AcceptOnlineOrders],
         [StaffRole.Manager] =

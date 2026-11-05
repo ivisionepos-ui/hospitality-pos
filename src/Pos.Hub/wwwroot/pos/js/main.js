@@ -4,6 +4,7 @@ import { h, mount, toast } from './dom.js';
 import { LiveConnection } from './live.js';
 import { loginScreen, pairScreen, setupScreen } from './screens.js';
 import { Kitchen } from './kitchen.js';
+import { DriverScreen } from './drivers.js';
 import { Till } from './till.js';
 
 const root = document.getElementById('app');
@@ -58,6 +59,15 @@ async function boot() {
   // Kitchen screens (and kitchen staff on any device) get the kitchen board.
   if (me.device?.type === 'KitchenScreen' || (!me.permissions.includes('TakeOrders') && me.permissions.includes('KitchenDisplay'))) {
     till = new Kitchen(root, { me, device: credentials.device, logout });
+    await till.start();
+    live = new LiveConnection(event => till?.onEvent(event), connected => till?.setLive(connected));
+    live.start();
+    return;
+  }
+
+  // Drivers see the deliveries they are taking.
+  if (me.staff.role === 'Driver') {
+    till = new DriverScreen(root, { me, device: credentials.device, logout });
     await till.start();
     live = new LiveConnection(event => till?.onEvent(event), connected => till?.setLive(connected));
     live.start();

@@ -40,6 +40,7 @@ public static class Endpoints
         MapPrinting(api);
         MapMenu(api);
         MapOrders(api);
+        MapDrivers(api);
     }
 
     private static void MapSetupAndAccess(RouteGroupBuilder api)
@@ -377,6 +378,71 @@ public static class Endpoints
             .ForStaff(Permission.EditMenu);
     }
 
+    private static void MapDrivers(RouteGroupBuilder api)
+    {
+        // Who can take deliveries: drivers first, then everyone else on shift (managers sometimes deliver too).
+        api.MapGet("/drivers", (AccessService access) => Handle(() => Results.Ok(access.ListStaff()
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.Role == StaffRole.Driver ? 0 : 1).ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(s => new DriverView(s.Id, s.Name, s.Role)))))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapPost("/orders/{orderId:guid}/send-out", (HttpContext http, OrderService orders, TillService tills, AccessService access, Guid orderId, SendOutRequest request) =>
+            Handle(() =>
+            {
+                var driver = access.ListStaff().FirstOrDefault(s => s.Id == request.DriverId && s.IsActive)
+                    ?? throw new ArgumentException("Choose a driver who is on the staff list.");
+                var order = orders.Change(orderId, o =>
+                {
+                    o.SendOut(driver.Id, driver.Name, Actor(http));
+                    return o;
+                });
+                return Results.Ok(WithMoney(OrderView.From(order), tills.Ledger(order)));
+            }))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapPost("/orders/{orderId:guid}/back-to-shop", (HttpContext http, OrderService orders, TillService tills, Guid orderId, BackToShopRequest request) =>
+            Handle(() =>
+            {
+                var order = orders.Change(orderId, o =>
+                {
+                    o.BackToShop(request.Reason, Actor(http));
+                    return o;
+                });
+                return Results.Ok(WithMoney(OrderView.From(order), tills.Ledger(order)));
+            }))
+            .ForStaff(Permission.TakeOrders);
+
+        // Each driver's day: still out (and what to collect), delivered, and the money taken on their deliveries
+        // after they went out (cash they handed in, card on their machine).
+        api.MapGet("/drivers/today", (OrderService orders, TillService tills, AccessService access) => Handle(() =>
+        {
+            var zero = Money.Gbp(0);
+            Money Sum(IEnumerable<Money> values) => values.Aggregate(zero, (a, b) => a + b);
+            var result = orders.ForDay(null, null)
+                .Where(o => o.DriverId is not null && o.Status is OrderStatus.OutForDelivery or OrderStatus.Completed)
+                .GroupBy(o => o.DriverId!.Value)
+                .Select(g =>
+                {
+                    var taken = g.Where(o => o.Status == OrderStatus.Completed).SelectMany(o =>
+                    {
+                        var wentOut = o.History.LastOrDefault(h => h.Kind == OrderEventKind.DriverChanged)?.At ?? DateTimeOffset.MinValue;
+                        return tills.Ledger(o).Payments.Where(p => p.At > wentOut);
+                    }).ToList();
+                    var outNow = g.Where(o => o.Status == OrderStatus.OutForDelivery).ToList();
+                    return new DriverDayView(
+                        g.Key, access.StaffName(g.Key),
+                        outNow.Count, Sum(outNow.Select(o => Money.Max(zero, tills.Ledger(o).Balance))),
+                        g.Count(o => o.Status == OrderStatus.Completed),
+                        Sum(taken.Where(p => p.Method == PaymentMethod.Cash).Select(p => p.Amount)),
+                        Sum(taken.Where(p => p.Method == PaymentMethod.Card).Select(p => p.Amount)));
+                })
+                .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return Results.Ok(result);
+        })).ForStaff(Permission.TakeOrders);
+    }
+
     private static void MapOrders(RouteGroupBuilder api)
     {
         api.MapPost("/orders", (HttpContext http, OrderService orders, CreateOrderRequest request) => Handle(() =>
@@ -597,7 +663,7 @@ public static class Endpoints
                 {
                     throw new InvalidOperationException(ledger.Balance.IsNegative
                         ? $"{(Money.Zero(ledger.Total.Currency) - ledger.Balance).Display()} must be refunded before this order can be completed."
-                        : $"{ledger.Balance} is still to pay.");
+                        : $"{ledger.Balance.Display()} is still to pay.");
                 }
 
                 if (request.Status is OrderStatus.Cancelled or OrderStatus.Rejected && ledger.Paid.MinorUnits != 0)

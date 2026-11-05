@@ -81,6 +81,9 @@ public enum OrderEventKind
 
     /// <summary>The customer's name, phone, address or notes changed.</summary>
     ContactChanged,
+
+    /// <summary>The order went out with a driver, changed driver, or came back to the shop.</summary>
+    DriverChanged,
 }
 
 /// <summary>One entry in an order's history. Nothing is ever deleted from it.</summary>
@@ -184,6 +187,7 @@ public sealed class Order
             : null;
         ServiceCharge = state.ServiceCharge;
         Contact = state.Contact;
+        DriverId = state.DriverId;
         Totals = Recalculate(_lines, Discount, Delivery, ServiceCharge);
     }
 
@@ -218,6 +222,7 @@ public sealed class Order
         Delivery = Delivery is { } d ? new DeliveryState(d.DistanceMiles, d.Table.ToState(), d.Override) : null,
         ServiceCharge = ServiceCharge,
         Contact = Contact,
+        DriverId = DriverId,
     };
 
     /// <summary>Order id (made on the device that created it).</summary>
@@ -449,6 +454,62 @@ public sealed class Order
     /// <summary>Marks the order as ready.</summary>
     public void MarkReady(OrderActor actor) => MoveTo(OrderStatus.Ready, actor);
 
+    /// <summary>The driver taking (or who took) this delivery, if any.</summary>
+    public Guid? DriverId { get; private set; }
+
+    /// <summary>
+    /// Sends a delivery out with a driver, or hands it to another driver while it is out. Everything on it must have
+    /// gone to the kitchen first.
+    /// </summary>
+    public void SendOut(Guid driverId, string driverName, OrderActor actor)
+    {
+        if (Type != Tax.OrderType.Delivery)
+        {
+            throw new InvalidOperationException("Only delivery orders go out with a driver.");
+        }
+
+        if (_lines.Any(l => !l.IsVoided && !l.SentToKitchen))
+        {
+            throw new InvalidOperationException($"Order {Number.Display} has items not sent to the kitchen yet. Send it first.");
+        }
+
+        if (Status == OrderStatus.OutForDelivery)
+        {
+            if (DriverId == driverId)
+            {
+                return;
+            }
+
+            DriverId = driverId;
+            Record(actor, OrderEventKind.DriverChanged, $"Handed to driver {driverName}");
+            return;
+        }
+
+        if (!OrderStatusRules.CanMove(Status, OrderStatus.OutForDelivery))
+        {
+            throw new InvalidOperationException($"An order that is {Status} cannot go out for delivery.");
+        }
+
+        var from = Status;
+        Status = OrderStatus.OutForDelivery;
+        DriverId = driverId;
+        Record(actor, OrderEventKind.DriverChanged, $"Out with driver {driverName}", fromStatus: from, toStatus: Status);
+    }
+
+    /// <summary>The driver brought the order back (not delivered): it is ready in the shop again, with no driver.</summary>
+    public void BackToShop(string reason, OrderActor actor)
+    {
+        RequireReason(reason);
+        if (Status != OrderStatus.OutForDelivery)
+        {
+            throw new InvalidOperationException("This order is not out with a driver.");
+        }
+
+        Status = OrderStatus.Ready;
+        DriverId = null;
+        Record(actor, OrderEventKind.DriverChanged, "Back in the shop", fromStatus: OrderStatus.OutForDelivery, toStatus: Status, reason: reason.Trim());
+    }
+
     /// <summary>Marks the order as completed (handed over).</summary>
     public void Complete(OrderActor actor) => MoveTo(OrderStatus.Completed, actor);
 
@@ -479,6 +540,12 @@ public sealed class Order
         if (newStatus is OrderStatus.Cancelled or OrderStatus.Rejected)
         {
             RequireReason(reason);
+        }
+
+        // Going out needs a driver, and coming back clears it: those happen through SendOut and BackToShop.
+        if (newStatus == OrderStatus.OutForDelivery || (Status == OrderStatus.OutForDelivery && newStatus == OrderStatus.Ready))
+        {
+            throw new InvalidOperationException(newStatus == OrderStatus.OutForDelivery ? "Choose a driver to send this order out." : "Use \"Back to shop\" for an order brought back by the driver.");
         }
 
         var from = Status;
@@ -603,4 +670,7 @@ public sealed record OrderState
 
     /// <summary>Service charge.</summary>
     public ServiceChargeInput? ServiceCharge { get; init; }
+
+    /// <summary>Driver taking or who took the delivery.</summary>
+    public Guid? DriverId { get; init; }
 }

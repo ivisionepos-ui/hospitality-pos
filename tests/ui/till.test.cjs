@@ -802,7 +802,7 @@ test('owner adds, edits, removes and brings back staff; the new person changes t
   await top(page).getByRole('button', { name: 'Staff', exact: true }).click();
   assert.equal(await top(page).getByLabel('Olivia Owner', { exact: true }).getByRole('button', { name: 'Edit' }).count(), 0);
   await top(page).getByLabel('Wendy Waiter', { exact: true }).getByRole('button', { name: 'Edit' }).click();
-  assert.deepEqual(await top(page).getByRole('radio').allInnerTexts().then(t => t.map(x => x.split('\n')[0])), ['Cashier', 'Waiter', 'Kitchen']);
+  assert.deepEqual(await top(page).getByRole('radio').allInnerTexts().then(t => t.map(x => x.split('\n')[0])), ['Cashier', 'Waiter', 'Kitchen', 'Driver']);
   await top(page).getByRole('button', { name: 'Cancel' }).click();
 
   assert.deepEqual([...page.errors, ...owner.errors], []);
@@ -924,6 +924,85 @@ test('owner sets discount limits; cashier gives a discount (manager above the li
   const payments = await call('GET', `/api/orders/${order.id}/payments`, { device: shop.owner.device, token: shop.owner.token });
   assert.deepEqual(payments.payments.map(p => [p.method, p.amount.minorUnits, p.reason ?? null]), [['Card', 540, null], ['Card', -200, 'Wrong order']]);
   assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
+/** If the till's shift is closed, the "Open the till" question comes up first: open it with a £50 float. */
+async function openTillIfAsked(page) {
+  if (await top(page).getByText('Open the till').waitFor({ timeout: 1500 }).then(() => true, () => false)) {
+    await pin(page, '5000');
+    await top(page).getByRole('button', { name: 'Open till' }).click();
+  }
+}
+
+test('drivers: deliveries go out with a driver who sees them; cash and card taken on return; one brought back', async () => {
+  const owner = { device: shop.owner.device, token: shop.owner.token };
+  await call('POST', '/api/staff', owner, { name: 'Dan Driver', role: 'Driver', pin: '6181' });
+  const bottle = (await call('GET', '/api/menu', owner)).products.find(p => p.name.en === 'Bottle 1.5L');
+  const delivery = async (name, line1) => {
+    const id = crypto.randomUUID();
+    const order = await call('POST', '/api/orders', owner, {
+      orderId: id, idempotencyKey: id, source: 'Phone', type: 'Delivery',
+      lines: [{ productId: bottle.id, variantId: bottle.variants[0].id, quantity: 5 }], // 5 × £2.99 + £1.50 delivery = £16.45
+      contact: { name, phone: '07700 900123', address: { line1, line2: null, town: 'Leeds', postcode: 'LS2 9JT' }, notes: null },
+      delivery: { distanceMiles: 1.3 },
+    });
+    await call('POST', `/api/orders/${order.id}/send-to-kitchen`, owner, {});
+    return order;
+  };
+  const a = await delivery('Amy Cash', '1 Park Lane');
+  const b = await delivery('Bob Card', '2 Mill Road');
+  const c = await delivery('Cat Away', '3 Hill Street');
+
+  const page = await tillPage(shop.till1);
+  await login(page, '5931');
+  await page.getByRole('button', { name: 'Drivers' }).click();
+  await top(page).getByText('Tap the orders, then the driver:').waitFor();
+  for (const o of [a, b, c]) await top(page).getByRole('button', { name: `Order ${o.number}` }).click();
+  await top(page).getByText('Send 3 with:').waitFor();
+  await shot(page, 'ui-drivers-send');
+  await top(page).getByRole('button', { name: 'Dan Driver' }).click();
+  await page.getByText('3 deliveries out with Dan Driver.').waitFor();
+  const dan = top(page).getByLabel('Dan Driver', { exact: true });
+  await dan.getByText('3 out · collect £49.35').waitFor();
+
+  // Dan logs in on the other till and sees his deliveries, with what to collect.
+  const driver = await tillPage(shop.till2);
+  await driver.getByText('Enter your PIN').waitFor(); // (no order ticket on a driver's screen, so not login())
+  await pin(driver, '6181');
+  await driver.getByRole('button', { name: 'Log in' }).click();
+  await driver.getByText('My deliveries · Dan Driver').waitFor();
+  await driver.getByLabel(`Order ${a.number}`).getByText('1 Park Lane, Leeds, LS2 9JT').waitFor();
+  await driver.getByLabel(`Order ${a.number}`).getByText('COLLECT £16.45').waitFor();
+  assert.equal(await driver.locator('.driver-card').count(), 3);
+  await shot(driver, 'ui-driver-screen');
+
+  // Back at the shop: Amy paid cash, Bob paid by card on Dan's machine, Cat was not home.
+  await dan.getByLabel(`Order ${a.number}`).getByRole('button', { name: 'Cash £16.45' }).click();
+  await openTillIfAsked(page);
+  await page.getByText(`Order ${a.number} delivered: £16.45 cash from Dan Driver.`).waitFor();
+  await dan.getByLabel(`Order ${b.number}`).getByRole('button', { name: 'Card' }).click();
+  await page.getByText(`Order ${b.number} delivered: £16.45 card from Dan Driver.`).waitFor();
+  await dan.getByLabel(`Order ${c.number}`).getByRole('button', { name: 'Back' }).click();
+  await top(page).getByRole('button', { name: 'Nobody home' }).click();
+  await page.getByText(`Order ${c.number} is back in the shop.`).waitFor();
+  await top(page).getByRole('button', { name: `Order ${c.number}` }).waitFor(); // ready to go out again
+  await page.waitForTimeout(1500); // give the live update time to arrive
+  assert.equal(await page.getByText(`Order ${c.number} is ready`).count(), 0); // not announced as new from the kitchen
+
+  // The driver's screen empties by itself; the day shows what Dan handed in.
+  await driver.getByText('No deliveries with you.').waitFor();
+  const row = top(page).locator('.drivers-day tr', { hasText: 'Dan Driver' });
+  await row.getByRole('cell', { name: '£16.45' }).first().waitFor();
+  assert.deepEqual(await row.locator('td').allInnerTexts(), ['Dan Driver', '2', '0', '£16.45', '£16.45']);
+  await shot(page, 'ui-drivers-back');
+  await top(page).getByRole('button', { name: 'Done' }).click();
+
+  const today = await ordersToday();
+  assert.deepEqual([a, b, c].map(o => today.find(t => t.id === o.id)).map(o => [o.status, o.driverId !== null && o.driverId !== undefined]),
+    [['Completed', true], ['Completed', true], ['Ready', false]]);
+  assert.deepEqual([...page.errors, ...driver.errors], []);
+  await driver.context().close();
   await page.context().close();
 });
 

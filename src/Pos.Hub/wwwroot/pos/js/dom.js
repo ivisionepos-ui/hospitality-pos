@@ -97,6 +97,13 @@ export const store = {
 };
 
 /** Time as "18:42" in the browser's (shop's) time zone. */
+const STATUS_TEXT = { OutForDelivery: 'Out with driver', EatIn: 'Eat in' };
+
+/** An order status as staff read it ("Out with driver"). */
+export function statusText(status) {
+  return STATUS_TEXT[status] ?? status;
+}
+
 export function timeText(iso) {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;

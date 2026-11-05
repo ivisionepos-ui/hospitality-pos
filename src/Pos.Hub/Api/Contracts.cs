@@ -187,6 +187,9 @@ public sealed record OrderView(
     Money OutsideScopeOfVat,
     bool Duplicate)
 {
+    /// <summary>The driver taking or who took the delivery.</summary>
+    public Guid? DriverId { get; init; }
+
     /// <summary>Why the discount was given, when there is one.</summary>
     public string? DiscountReason { get; init; }
 
@@ -220,6 +223,7 @@ public sealed record OrderView(
         {
             Contact = order.Contact,
             DiscountReason = order.Discount?.Reason,
+            DriverId = order.DriverId,
             Delivery = t.Delivery is { } d
                 ? new DeliveryView(d.Quote.DistanceMiles, d.Override is null ? d.Quote.Status : Pos.Domain.Delivery.DeliveryQuoteStatus.Ok, d.Fee, d.Quote.MinimumOrder, d.Quote.IsFreeDelivery, d.Override is not null)
                 : null,
@@ -266,6 +270,30 @@ public sealed record CardPaymentRequest(long AmountPence, long? TipPence = null,
 /// <param name="Reason">Why.</param>
 /// <param name="RefundId">Id made on the till, reused on retries.</param>
 public sealed record RefundRequest(long AmountPence, string Reason, Guid? RefundId = null);
+
+/// <summary>Someone who can take deliveries.</summary>
+/// <param name="Id">Staff id.</param>
+/// <param name="Name">Name.</param>
+/// <param name="Role">Role (drivers are listed first).</param>
+public sealed record DriverView(Guid Id, string Name, Pos.Domain.Staff.StaffRole Role);
+
+/// <summary>Send a delivery out with a driver.</summary>
+/// <param name="DriverId">The driver.</param>
+public sealed record SendOutRequest(Guid DriverId);
+
+/// <summary>The driver brought the order back.</summary>
+/// <param name="Reason">Why (e.g. nobody home).</param>
+public sealed record BackToShopRequest(string Reason);
+
+/// <summary>A driver's day so far.</summary>
+/// <param name="DriverId">Driver.</param>
+/// <param name="Name">Name.</param>
+/// <param name="Out">Deliveries out now.</param>
+/// <param name="ToCollect">Still to collect on the deliveries out now.</param>
+/// <param name="Delivered">Deliveries done.</param>
+/// <param name="Cash">Cash taken on their deliveries after they went out (what they handed in).</param>
+/// <param name="Card">Card taken on their deliveries after they went out.</param>
+public sealed record DriverDayView(Guid DriverId, string Name, int Out, Money ToCollect, int Delivered, Money Cash, Money Card);
 
 /// <summary>A discount off the whole order.</summary>
 /// <param name="Type">Percent or Amount.</param>

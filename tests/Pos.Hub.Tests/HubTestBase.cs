@@ -31,7 +31,7 @@ public abstract class HubTestBase : IAsyncLifetime
     /// <summary>The till with nobody logged in (like a customer display).</summary>
     internal HttpClient TillOnly { get; private set; } = null!;
 
-    public async Task InitializeAsync()
+    public virtual async Task InitializeAsync()
     {
         Directory.CreateDirectory(_folder);
         Host = new HubTestHost(DbPath, Clock, ExtraSettings);

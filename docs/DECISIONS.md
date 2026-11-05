@@ -161,3 +161,11 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-155 | 2026-11-05 | Refunds of orders that end cancelled or rejected take nothing off the Z report's sales or VAT | Those orders were never counted as sales |
 | C-156 | 2026-11-05 | Card refunds are recorded on the till and done by hand on the card machine (until Worldpay is linked); app and online payments are refunded in the app | The till cannot move card or app money itself yet |
 | C-157 | 2026-11-05 | Money in staff messages shows as £12.50 (was "GBP 12.50") | Plain English for staff |
+| C-158 | 2026-11-05 | New order status Out with driver (OutForDelivery), set only by choosing a driver; coming back only through Back to shop (reason) | Every delivery out has a named driver, and the record shows who and why it came back |
+| C-159 | 2026-11-05 | Deliveries can go out straight from Accepted or Preparing, not only Ready | Shops without a kitchen screen never mark orders Ready |
+| C-160 | 2026-11-05 | An order goes out only when everything on it has gone to the kitchen | No driver leaves with food nobody was asked to make |
+| C-161 | 2026-11-05 | Any active staff member can take a delivery; drivers are listed first | Owners and managers deliver too in small shops |
+| C-162 | 2026-11-05 | Money from a driver is taken on the till they hand it to (cash into that drawer, card on their machine), then the order is delivered | Cash counts and the Z report stay right without a separate driver float |
+| C-163 | 2026-11-05 | A driver's day counts only payments taken after the order went out | A phone payment taken in the shop before is not the driver's money |
+| C-164 | 2026-11-05 | Drivers log in to a read-only My deliveries screen | Addresses and amounts at hand; changes stay with the shop staff |
+| C-165 | 2026-11-05 | Order statuses shown in plain words (Out with driver) | Staff-facing text |

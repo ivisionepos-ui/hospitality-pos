@@ -8,6 +8,7 @@ export const ROLES = [
   ['Cashier', 'Counter, phone and online orders'],
   ['Waiter', 'Takes table orders'],
   ['Kitchen', 'Kitchen screen only'],
+  ['Driver', 'Takes deliveries; sees their own on the till'],
   ['Manager', 'Approvals, menu, reports, cash, staff'],
   ['Owner', 'Everything, including tills and shop settings'],
 ];

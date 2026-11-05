@@ -310,7 +310,11 @@ public sealed record SplitByItemsRequest(IReadOnlyList<Guid> LineIds);
 public sealed record ZReportRequest(DateOnly? BusinessDate);
 
 /// <summary>An order's money.</summary>
-public sealed record PaymentsView(Money Total, Money Paid, Money Balance, Money Tips, IReadOnlyList<Pos.Domain.Payments.Payment> Payments);
+public sealed record PaymentsView(Money Total, Money Paid, Money Balance, Money Tips, IReadOnlyList<Pos.Domain.Payments.Payment> Payments)
+{
+    /// <summary>Items already paid for (split by items), so the till greys them out.</summary>
+    public IReadOnlyCollection<Guid> PaidLineIds { get; init; } = [];
+}
 
 /// <summary>Result of a payment or refund.</summary>
 /// <param name="Payment">The payment.</param>

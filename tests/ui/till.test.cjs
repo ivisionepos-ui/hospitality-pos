@@ -1006,6 +1006,53 @@ test('drivers: deliveries go out with a driver who sees them; cash and card take
   await page.context().close();
 });
 
+test('split bill at a table: one pays for their item, the rest is shared equally to the penny', async () => {
+  const page = await tillPage(shop.till1);
+  await login(page, '5931');
+  await page.getByRole('button', { name: 'Eat in', exact: true }).click();
+  await pick(page, 'Starters', 'Onion rings');           // £2.99
+  await pick(page, 'Desserts', 'Cheesecake');            // £3.99
+  await pick(page, 'Desserts', 'Chocolate fudge cake');  // £3.99
+  await pick(page, 'Desserts', 'Ice cream tub');         // £4.99
+  await page.locator('.total-total', { hasText: '£15.96' }).waitFor();
+  await page.getByRole('button', { name: 'Pay £15.96' }).click();
+  await openTillIfAsked(page);
+
+  // One guest pays for their cheesecake only.
+  await top(page).getByRole('radio', { name: 'By items' }).click();
+  await top(page).getByText('Choose the items first.').waitFor();
+  await top(page).getByRole('button', { name: '1 Cheesecake' }).click();
+  await top(page).getByText('These items: £3.99').waitFor();
+  await top(page).getByRole('button', { name: 'Card', exact: true }).click();
+  await shot(page, 'ui-split-items');
+  await top(page).getByRole('button', { name: 'Card approved £3.99' }).click();
+  await page.getByText('£3.99 taken. £11.97 still to pay.').waitFor();
+  assert.equal(await top(page).getByRole('button', { name: '1 Cheesecake' }).isDisabled(), true); // paid once only
+
+  // The other two share the rest: £11.97 → £5.99 and £5.98.
+  await top(page).getByRole('radio', { name: 'Equal shares' }).click();
+  await top(page).getByText('Person 1 of 2 pays £5.99').waitFor();
+  await top(page).getByText('Then: £5.98').waitFor();
+  await top(page).getByRole('button', { name: 'Cash', exact: true }).click();
+  await shot(page, 'ui-split-equal');
+  await top(page).getByRole('button', { name: '£10.00' }).click();
+  await page.locator('.change-amount', { hasText: '£4.01' }).waitFor();
+  await top(page).getByRole('button', { name: 'Done' }).click();
+  await top(page).getByText('Person 2 of 2 pays £5.98').waitFor();
+  await top(page).getByRole('button', { name: 'Card', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Card approved £5.98' }).click();
+  await page.getByText('Paid. Receipt printing.').waitFor();
+
+  const order = (await ordersToday()).at(-1);
+  assert.equal(order.total.minorUnits, 1596);
+  assert.equal(order.balance.minorUnits, 0);
+  const payments = await call('GET', `/api/orders/${order.id}/payments`, { device: shop.owner.device, token: shop.owner.token });
+  const cheesecake = order.lines.find(l => l.name.en === 'Cheesecake').id;
+  assert.deepEqual(payments.payments.map(p => [p.method, p.amount.minorUnits, p.forLineIds]), [['Card', 399, [cheesecake]], ['Cash', 599, []], ['Card', 598, []]]);
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
 test('kitchen screen: register it, orders appear live, Start, new items marked, Ready tells the till, Recall', async () => {
   const owner = { device: shop.owner.device, token: shop.owner.token };
   await call('POST', '/api/staff', owner, { name: 'Kofi Kitchen', role: 'Kitchen', pin: '3185' });

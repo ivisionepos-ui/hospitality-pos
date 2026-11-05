@@ -283,6 +283,17 @@ are used. Language `en` (default), `ar` or `both` stays in appsettings.json. UK 
 - Closing a shift is a blind count: the expected cash and over/short are shown only after the count is entered.
 - The Z report needs every shift of the day closed; it is kept, numbered, and taking it again returns the same one.
 
+### Split bill
+
+On the payment screen choose **Whole bill**, **Equal shares** or **By items**:
+- **Equal shares**: set how many people; the till shows what each pays, to the penny (the first shares take any odd
+  penny), and works the shares out again from what is left after each person pays.
+- **By items**: tap what this person had; the amount includes their fair share of any discount and delivery charge.
+  Each item can be paid for once only (the hub refuses a second payment for it, and the amount must be exactly the
+  items' share). An item payment refunded in full frees the item again. A line with a quantity (e.g. 2 × Coke) is
+  paid as one line; to share it, use equal shares.
+Cash or card works with every option; the order is paid when nothing is left.
+
 ### Deliveries and drivers
 
 Add drivers in More → Staff with the role **Driver**. On the till, **Drivers** shows:

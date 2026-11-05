@@ -220,6 +220,48 @@ public sealed class TillTests : HubTestBase
     }
 
     [Fact]
+    public async Task Paying_for_chosen_items_takes_exactly_their_share_and_each_item_is_paid_once()
+    {
+        await Setup();
+        var order = await Order(Doner, Cans(2), Doner); // £8.99, £2.40, £8.99
+        var cans = order.Lines[1].Id;
+
+        // Cash for the cans: the amount is worked out from the items; £5 handed over, £2.60 change.
+        var first = await (await Cashier.Post($"/api/orders/{order.Id}/payments/cash", new CashPaymentRequest(500, null, [cans]))).Read<PaymentResponse>();
+        Assert.Equal(Money.Gbp(240), first.Payment.Amount);
+        Assert.Equal(Money.Gbp(260), first.Payment.Change);
+        Assert.Equal([cans], first.Order.PaidLineIds);
+
+        // The same cans again, or a wrong amount for a doner, are refused and explained.
+        var again = await Cashier.Post($"/api/orders/{order.Id}/payments/card", new CardPaymentRequest(240, ForLineIds: [cans]));
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+        Assert.Equal("Already paid for: Can.", (await again.Read<ErrorView>()).Message);
+        var wrong = await Cashier.Post($"/api/orders/{order.Id}/payments/card", new CardPaymentRequest(500, ForLineIds: [order.Lines[0].Id]));
+        Assert.Equal(HttpStatusCode.BadRequest, wrong.StatusCode);
+        Assert.Equal("The chosen items come to £8.99, not £5.00.", (await wrong.Read<ErrorView>()).Message);
+
+        // Each doner by card: the bill is settled, every item paid once.
+        await Cashier.Post($"/api/orders/{order.Id}/payments/card", new CardPaymentRequest(899, ForLineIds: [order.Lines[0].Id]));
+        var last = await (await Cashier.Post($"/api/orders/{order.Id}/payments/card", new CardPaymentRequest(899, ForLineIds: [order.Lines[2].Id]))).Read<PaymentResponse>();
+        Assert.Equal(Money.Gbp(0), last.Order.Balance);
+        Assert.Equal(3, last.Order.PaidLineIds.Count);
+    }
+
+    [Fact]
+    public async Task An_item_payment_refunded_in_full_can_be_paid_again()
+    {
+        await Setup();
+        var order = await Order(Doner, Cans(2));
+        var cans = order.Lines[1].Id;
+        var card = await (await Cashier.Post($"/api/orders/{order.Id}/payments/card", new CardPaymentRequest(240, ForLineIds: [cans]))).Read<PaymentResponse>();
+
+        await WithManagerPin(Cashier, $"/api/orders/{order.Id}/payments/{card.Payment.Id}/refund", new RefundRequest(240, "Wrong card"));
+
+        Assert.Empty((await Cashier.GetJson<PaymentsView>($"/api/orders/{order.Id}/payments")).PaidLineIds);
+        Assert.Equal(HttpStatusCode.OK, (await Cashier.Post($"/api/orders/{order.Id}/payments/cash", new CashPaymentRequest(240, null, [cans]))).StatusCode);
+    }
+
+    [Fact]
     public async Task Payments_need_an_open_shift_on_a_till()
     {
         await Manager.Put("/api/menu", TestMenu.State());

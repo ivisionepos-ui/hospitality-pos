@@ -93,16 +93,31 @@ public sealed class TillService(HubDatabase db, HubSettings settings, OrderServi
     }
 
     /// <summary>Takes cash on an order. Safe to send again with the same payment id.</summary>
+    /// <remarks>Paying for chosen items: the amount is the items' share of the bill (worked out here if not given).</remarks>
     public PaymentResult TakeCash(Guid orderId, Guid deviceId, Guid userId, Guid? paymentId, Money tendered, Money? amount, IReadOnlyList<Guid>? forLineIds) =>
-        Take(orderId, deviceId, userId, paymentId, (ledger, ctx) => ledger.TakeCash(tendered, ctx, amount, forLineIds), forLineIds);
+        Take(orderId, deviceId, userId, paymentId, (ledger, ctx, items) => ledger.TakeCash(tendered, ctx, ItemsAmount(amount ?? items, items), forLineIds), forLineIds);
 
     /// <summary>Records a card payment taken on the terminal. Safe to send again with the same payment id.</summary>
     public PaymentResult TakeCard(Guid orderId, Guid deviceId, Guid userId, Guid? paymentId, Money amount, Money? tip, string? reference, IReadOnlyList<Guid>? forLineIds) =>
-        Take(orderId, deviceId, userId, paymentId, (ledger, ctx) => ledger.TakeCard(amount, ctx, tip, reference, forLineIds), forLineIds);
+        Take(orderId, deviceId, userId, paymentId, (ledger, ctx, items) => ledger.TakeCard(ItemsAmount(amount, items)!.Value, ctx, tip, reference, forLineIds), forLineIds);
 
     /// <summary>Refunds all or part of a payment, from this till's open shift.</summary>
     public PaymentResult Refund(Guid orderId, Guid paymentIdToRefund, Guid deviceId, Guid userId, Guid approvedBy, Money amount, string reason, Guid? refundId) =>
-        Take(orderId, deviceId, userId, refundId, (ledger, ctx) => ledger.Refund(paymentIdToRefund, amount, reason, approvedBy, ctx), null, allowFinished: true);
+        Take(orderId, deviceId, userId, refundId, (ledger, ctx, _) => ledger.Refund(paymentIdToRefund, amount, reason, approvedBy, ctx), null, allowFinished: true);
+
+    /// <summary>Items already paid for by a payment for chosen items (and not since refunded in full).</summary>
+    public static IReadOnlySet<Guid> PaidLines(OrderPayments ledger)
+    {
+        ArgumentNullException.ThrowIfNull(ledger);
+        return ledger.Payments.Where(p => !p.IsRefund && p.ForLineIds.Count > 0 && ledger.Refundable(p.Id).MinorUnits > 0)
+            .SelectMany(p => p.ForLineIds).ToHashSet();
+    }
+
+    // A payment for chosen items must be exactly what those items come to, so the record of who paid for what is true.
+    private static Money? ItemsAmount(Money? amount, Money? items) =>
+        items is null || amount is null || amount == items
+            ? amount
+            : throw new ArgumentException($"The chosen items come to {items.Value.Display()}, not {amount.Value.Display()}.");
 
     /// <summary>Amount for chosen lines of an order (split by items).</summary>
     public Money AmountForLines(Order order, IReadOnlyList<Guid> lineIds)
@@ -158,7 +173,7 @@ public sealed class TillService(HubDatabase db, HubSettings settings, OrderServi
     // ---------- Internals ----------
 
     private PaymentResult Take(
-        Guid orderId, Guid deviceId, Guid userId, Guid? paymentId, Func<OrderPayments, PaymentContext, Payment> take, IReadOnlyList<Guid>? forLineIds, bool allowFinished = false) =>
+        Guid orderId, Guid deviceId, Guid userId, Guid? paymentId, Func<OrderPayments, PaymentContext, Money?, Payment> take, IReadOnlyList<Guid>? forLineIds, bool allowFinished = false) =>
         db.RunInTransaction(() =>
         {
             var order = orders.Get(orderId);
@@ -185,7 +200,21 @@ public sealed class TillService(HubDatabase db, HubSettings settings, OrderServi
 
             var shift = RequireOpenShift(deviceId);
             var ledger = Ledger(order);
-            var payment = take(ledger, new PaymentContext(shift.Id, userId, deviceId, clock.GetUtcNow(), paymentId));
+            Money? itemsAmount = null;
+            if (forLineIds is { Count: > 0 })
+            {
+                // Each item is paid for once: two people at a table cannot both pay for the same burger.
+                var paid = PaidLines(ledger);
+                var again = order.ActiveLines.Where(l => forLineIds.Contains(l.Id) && paid.Contains(l.Id)).Select(l => l.Display.Name.En).ToList();
+                if (again.Count > 0)
+                {
+                    throw new InvalidOperationException($"Already paid for: {string.Join(", ", again)}.");
+                }
+
+                itemsAmount = AmountForLines(order, forLineIds);
+            }
+
+            var payment = take(ledger, new PaymentContext(shift.Id, userId, deviceId, clock.GetUtcNow(), paymentId), itemsAmount);
             db.Execute(
                 "INSERT INTO payments (id, order_id, shift_id, business_date, method, amount, at, state_json) VALUES ($id, $o, $s, $d, $m, $a, $at, $json);",
                 ("$id", payment.Id.ToString()), ("$o", orderId.ToString()), ("$s", shift.Id.ToString()), ("$d", Iso(shift.BusinessDate)),

@@ -157,7 +157,7 @@ public static class Endpoints
                 : throw new AccessDeniedException("NotATill", "Payments and shifts are only on tills.", 403);
         }
 
-        static PaymentsView View(OrderPayments ledger) => new(ledger.Total, ledger.Paid, ledger.Balance, ledger.Tips, ledger.Payments);
+        static PaymentsView View(OrderPayments ledger) => new(ledger.Total, ledger.Paid, ledger.Balance, ledger.Tips, ledger.Payments) { PaidLineIds = [.. TillService.PaidLines(ledger)] };
 
         // ----- Shifts -----
         api.MapGet("/shifts/current", (HttpContext http, TillService tills) => Handle(() =>

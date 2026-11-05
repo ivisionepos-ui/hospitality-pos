@@ -169,3 +169,7 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-163 | 2026-11-05 | A driver's day counts only payments taken after the order went out | A phone payment taken in the shop before is not the driver's money |
 | C-164 | 2026-11-05 | Drivers log in to a read-only My deliveries screen | Addresses and amounts at hand; changes stay with the shop staff |
 | C-165 | 2026-11-05 | Order statuses shown in plain words (Out with driver) | Staff-facing text |
+| C-166 | 2026-11-05 | Split bill lives on the payment screen: Whole bill, Equal shares, By items | One place to take money; any mix of cash and card |
+| C-167 | 2026-11-05 | Each item can be paid for once; a payment for items must be exactly their share (worked out by the hub) | Found while building: nothing stopped two guests paying for the same item, or an item payment at the wrong amount |
+| C-168 | 2026-11-05 | Equal shares are worked out again from what is left after each person pays | Someone paying a different amount does not break the rest |
+| C-169 | 2026-11-05 | A line with a quantity is paid as one line when splitting by items | Kept simple for now; equal shares cover sharing a line |

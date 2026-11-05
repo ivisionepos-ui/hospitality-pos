@@ -445,3 +445,15 @@ h1, h2, h3 { margin: 0; }
 .driver-name { font-weight: 700; font-size: 1.1rem; }
 .driver-address { font-size: 1.15rem; }
 .driver-phone { font-size: 1.1rem; font-weight: 700; }
+
+/* Split bill */
+.split-modes { margin-top: 10px; }
+.split-panel { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.people { display: flex; align-items: center; gap: 10px; }
+.people-count { min-width: 90px; text-align: center; font-size: 1.1rem; }
+.split-now { margin: 0; font-size: 1.15rem; font-weight: 800; }
+.split-items { display: flex; flex-direction: column; gap: 6px; max-height: 34vh; overflow-y: auto; }
+.split-item { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 4px 10px; text-align: left; border: 2px solid var(--line); border-radius: var(--radius); background: #fff; }
+.split-item-name { flex: 1; min-width: 0; }
+.split-item-on { border-color: #4c1d95; background: #f5f3ff; }
+.split-item:disabled { color: var(--ink-soft); background: #f3f4f6; }

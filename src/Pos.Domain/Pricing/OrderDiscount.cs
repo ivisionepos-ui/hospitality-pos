@@ -30,6 +30,12 @@ public sealed record DiscountPolicy(int StaffMaxPercentBasisPoints, Money StaffM
 {
     /// <summary>Every order discount needs a manager. The safe default.</summary>
     public static DiscountPolicy ManagerAlways(string currency = "GBP") => new(0, Money.Zero(currency));
+
+    /// <summary>
+    /// No limit. Used when an order is re-priced after the discount was already allowed (items added, order reloaded),
+    /// so a discount given within the rules is never refused later because the order grew or the limits changed.
+    /// </summary>
+    public static DiscountPolicy NoLimit(string currency = "GBP") => new(int.MaxValue, new Money(long.MaxValue, currency));
 }
 
 /// <summary>Thrown when a discount is above the staff limit and no manager has approved it.</summary>

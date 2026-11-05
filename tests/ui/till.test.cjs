@@ -810,6 +810,123 @@ test('owner adds, edits, removes and brings back staff; the new person changes t
   await owner.context().close();
 });
 
+test('owner sets discount limits; cashier gives a discount (manager above the limit), pays, then refunds part to the card', async () => {
+  const owner = await tillPage(shop.till2);
+  await login(owner, '4826');
+  await owner.getByRole('button', { name: 'More', exact: true }).click();
+  await top(owner).getByRole('button', { name: 'Discount limits' }).click();
+  await top(owner).getByLabel('Largest % off without a manager').fill('10');
+  await top(owner).getByLabel('Largest £ off without a manager').fill('5');
+  await top(owner).getByRole('button', { name: 'Save' }).click();
+  await owner.getByText('Saved. Without a manager: up to 10% and £5.00 off.').waitFor();
+  await owner.context().close();
+
+  const page = await tillPage(shop.till1);
+  await login(page, '5931');
+  for (let i = 0; i < 5; i++) await pick(page, 'Drinks', 'Can 330ml');
+  await page.locator('.total-total', { hasText: '£6.00' }).waitFor();
+
+  // 20% is over the cashier's 10%: the order is saved (not sent yet) and a manager approves.
+  await page.getByRole('button', { name: 'Discount', exact: true }).click();
+  await top(page).getByText('Without a manager: up to 10% and £5.00 off.').waitFor();
+  await top(page).getByRole('button', { name: '20%' }).click();
+  await top(page).getByText('20% off: −£1.20, items now £4.80').waitFor();
+  await top(page).getByRole('button', { name: 'Apply discount' }).click();
+  await top(page).getByText('Choose or type a reason.').waitFor();
+  await top(page).getByRole('button', { name: 'Complaint' }).click();
+  await shot(page, 'ui-discount');
+  await top(page).getByRole('button', { name: 'Apply discount' }).click();
+  await top(page).getByText('Staff need a manager for discounts over 10% or £5.00. Manager, enter your PIN.').waitFor();
+  await pin(page, '7402');
+  await top(page).getByRole('button', { name: 'Approve' }).click();
+  await page.getByText('Discount −£1.20 (Complaint).').waitFor();
+  await page.locator('.total-row', { hasText: 'Discount (Complaint)' }).waitFor();
+  await page.locator('.total-total', { hasText: '£4.80' }).waitFor();
+  await page.getByRole('button', { name: 'Send', exact: true }).waitFor(); // saved, not in the kitchen yet
+  const order = (await ordersToday()).at(-1);
+  assert.equal(order.lines.every(l => !l.sentToKitchen), true);
+
+  // Change it to 10%: within the limit, no manager.
+  await page.getByRole('button', { name: 'Change discount' }).click();
+  await top(page).getByText('Now: −£1.20 (Complaint). A new discount replaces it.').waitFor();
+  await top(page).getByRole('button', { name: '10%' }).click();
+  await top(page).getByRole('button', { name: 'Regular customer' }).click();
+  await top(page).getByRole('button', { name: 'Apply discount' }).click();
+  await page.getByText('Discount −£0.60 (Regular customer).').waitFor();
+  await page.locator('.total-total', { hasText: '£5.40' }).waitFor();
+
+  // Pay by card (opening the till if it is closed); paying sends it to the kitchen.
+  await page.getByRole('button', { name: 'Pay', exact: true }).click();
+  if (await top(page).getByText('Open the till').isVisible().catch(() => false) || await top(page).getByText('Open the till').waitFor({ timeout: 1500 }).then(() => true, () => false)) {
+    await pin(page, '5000');
+    await top(page).getByRole('button', { name: 'Open till' }).click();
+  }
+  await top(page).getByRole('button', { name: 'Card', exact: true }).click();
+  await top(page).getByLabel('Terminal receipt number').fill('007777');
+  await top(page).getByRole('button', { name: 'Card approved £5.40' }).click();
+  await page.getByText('Paid. Receipt printing.').waitFor();
+
+  // Refund £2.00 of the card payment: reason, manager PIN, then reminded to do it on the card machine.
+  await page.getByRole('button', { name: /^Orders/ }).click();
+  await top(page).getByRole('button', { name: new RegExp(`^${order.number}`) }).click();
+  await page.getByRole('button', { name: 'More for this order' }).click();
+  assert.equal(await top(page).getByRole('button', { name: 'Discount' }).count(), 1); // still open (not collected), so a discount is possible
+  await top(page).getByRole('button', { name: 'Refund' }).click();
+  await top(page).getByLabel('Card £5.40').getByRole('button', { name: 'Refund up to £5.40' }).click();
+  await pin(page, '200');
+  await top(page).getByRole('button', { name: 'Next' }).click();
+  await top(page).getByRole('button', { name: 'Wrong order' }).click();
+  await top(page).getByText('Refunds need a manager. Manager, enter your PIN.').waitFor();
+  await pin(page, '7402');
+  await top(page).getByRole('button', { name: 'Approve' }).click();
+  await top(page).getByText('Now refund £2.00 on the card machine').waitFor();
+  await top(page).getByRole('button', { name: 'OK' }).click();
+  await top(page).getByRole('button', { name: 'Print' }).click();
+  await page.getByText('Refund recorded.').waitFor();
+  await page.locator('.total-row', { hasText: 'Paid' }).getByText('£3.40').waitFor();
+  await page.locator('.total-row', { hasText: 'Refunded' }).getByText('-£2.00').waitFor();
+  assert.equal(await page.locator('.total-due').count(), 0); // money back for a complaint is not owed again
+  await page.getByRole('button', { name: 'Collected' }).waitFor();
+
+  // The rest can still be refunded; the payment shows what was already given back.
+  await page.getByRole('button', { name: 'More for this order' }).click();
+  await top(page).getByRole('button', { name: 'Refund' }).click();
+  await top(page).getByText('£2.00 already refunded', { exact: false }).waitFor();
+  await top(page).getByRole('button', { name: 'Refund up to £3.40' }).waitFor();
+  await shot(page, 'ui-refund');
+  await top(page).getByRole('button', { name: 'Close' }).click();
+
+  // A discount now would take the total below what was paid (£3.40 paid, 50% → £3.00): refused, explained.
+  await page.getByRole('button', { name: 'Change discount' }).click();
+  await top(page).getByRole('button', { name: '50%' }).click();
+  await top(page).getByRole('button', { name: 'Regular customer' }).click();
+  await top(page).getByRole('button', { name: 'Apply discount' }).click();
+  await pin(page, '7402');
+  await top(page).getByRole('button', { name: 'Approve' }).click();
+  await page.getByText('£3.40 has already been paid, more than the new total. Give the money back as a refund instead.').waitFor();
+
+  // Earlier days can be looked up (for a refund on yesterday's order).
+  await page.getByRole('button', { name: /^Orders/ }).click();
+  await top(page).getByRole('button', { name: 'Previous day' }).click();
+  await top(page).getByText('Yesterday').waitFor();
+  await top(page).getByText('No orders that day.').waitFor();
+  await top(page).getByRole('button', { name: 'Next day' }).click();
+  await top(page).getByText('Today').waitFor();
+  await top(page).getByRole('button', { name: 'Close' }).click();
+
+  await page.getByRole('button', { name: 'Collected' }).click();
+  await page.getByText(`Order ${order.number} collected.`).waitFor();
+
+  const saved = (await ordersToday()).find(o => o.id === order.id);
+  assert.equal(saved.status, 'Completed');
+  assert.equal(saved.total.minorUnits, 540);
+  assert.equal(saved.discountReason, 'Regular customer');
+  const payments = await call('GET', `/api/orders/${order.id}/payments`, { device: shop.owner.device, token: shop.owner.token });
+  assert.deepEqual(payments.payments.map(p => [p.method, p.amount.minorUnits, p.reason ?? null]), [['Card', 540, null], ['Card', -200, 'Wrong order']]);
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
 test('kitchen screen: register it, orders appear live, Start, new items marked, Ready tells the till, Recall', async () => {
   const owner = { device: shop.owner.device, token: shop.owner.token };
   await call('POST', '/api/staff', owner, { name: 'Kofi Kitchen', role: 'Kitchen', pin: '3185' });

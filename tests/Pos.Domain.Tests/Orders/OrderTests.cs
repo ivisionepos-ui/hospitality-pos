@@ -236,6 +236,36 @@ public class OrderTests
     }
 
     [Fact]
+    public void A_discount_given_within_the_limit_stays_when_the_order_grows_or_the_limits_change()
+    {
+        var order = _intake.Submit(Counter(Can)).Order;
+        order.ApplyDiscount(new OrderDiscountInput(OrderDiscountType.Percent, 1000, "Regular", Cashier.UserId), Cashier); // 10%: within the limit
+
+        // Ten more doners: 10% is now well over the £5 staff limit, but the discount was allowed when it was given.
+        for (var i = 0; i < 10; i++)
+        {
+            order.AddLine(Doner.Pricing, Doner.Display, Cashier);
+        }
+
+        Assert.NotNull(order.Discount);
+
+        // The owner then makes every discount need a manager: the saved order still loads and keeps its discount.
+        var reloaded = Order.Restore(order.ToState(), new OrderPricingSetup(new UkVatPolicy(), [], London, DiscountPolicy.ManagerAlways()));
+        Assert.Equal(order.Totals.Total, reloaded.Totals.Total);
+        Assert.Equal(order.Totals.Discount!.AmountOff, reloaded.Totals.Discount!.AmountOff);
+    }
+
+    [Fact]
+    public void The_limit_in_force_when_the_discount_is_given_is_the_one_checked()
+    {
+        var order = _intake.Submit(Counter(Can)).Order;
+
+        Assert.Throws<DiscountApprovalRequiredException>(() =>
+            order.ApplyDiscount(new OrderDiscountInput(OrderDiscountType.Percent, 500, "Regular", Cashier.UserId), Cashier, DiscountPolicy.ManagerAlways()));
+        order.ApplyDiscount(new OrderDiscountInput(OrderDiscountType.Percent, 500, "Regular", Cashier.UserId), Cashier); // the order's own: 10%
+    }
+
+    [Fact]
     public void Delivery_and_service_charge_are_added_to_the_totals()
     {
         var order = _intake.Submit(Counter(Doner, Can) with { Source = OrderSource.Phone, Type = OrderType.Delivery }).Order;

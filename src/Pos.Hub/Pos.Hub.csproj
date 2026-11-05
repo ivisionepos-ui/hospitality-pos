@@ -4,7 +4,7 @@
     <RootNamespace>Pos.Hub</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Shown on the till (login screen and More) so everyone can see which version is running. Raise with each release. -->
-    <Version>0.10.0</Version>
+    <Version>0.11.0</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- Program is a top-level statement file; public partial class Program is exposed for tests. -->
   </PropertyGroup>

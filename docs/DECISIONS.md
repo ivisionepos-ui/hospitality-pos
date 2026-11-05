@@ -153,3 +153,11 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-147 | 2026-11-05 | Two active staff cannot have the same name (ignoring case and extra spaces); names up to 40 characters | Reports, approvals and history must say clearly who did what |
 | C-148 | 2026-11-05 | Every staff change is recorded (when, who, whom, what) in staff_history, never the PIN; staff already on the list get a starting entry | An audit trail for disputes and for licensing to other shops |
 | C-149 | 2026-11-05 | The till in use cannot remove itself | Stops the owner locking themselves out of the PC they are on |
+| C-150 | 2026-11-05 | The staff discount limit is checked once, when the discount is given; re-pricing later never refuses it | Found by a test: a 10% discount within the limit made the order refuse new items once 10% passed £5, and a stricter limit could have stopped saved orders loading |
+| C-151 | 2026-11-05 | Discount limits are an owner setting on the till (whole %, £), saved in the hub; the shipped default is 0 = always a manager | Each shop decides; safe until decided |
+| C-152 | 2026-11-05 | A discount that would take the total below what is already paid is refused | Money back is a refund, with its own approval and record |
+| C-153 | 2026-11-05 | Giving a discount saves a new order without sending it to the kitchen; Send or Pay sends it | Discounts are usually agreed before paying; the kitchen should not get a ticket for an order still being settled |
+| C-154 | 2026-11-05 | Each refund records how much of it lowers the sale (money back for goods) and how much returns an overpayment | Found while testing: a complaint refund made the order owe the money again, and refunds after a removed item or before a cancel would have taken VAT off twice |
+| C-155 | 2026-11-05 | Refunds of orders that end cancelled or rejected take nothing off the Z report's sales or VAT | Those orders were never counted as sales |
+| C-156 | 2026-11-05 | Card refunds are recorded on the till and done by hand on the card machine (until Worldpay is linked); app and online payments are refunded in the app | The till cannot move card or app money itself yet |
+| C-157 | 2026-11-05 | Money in staff messages shows as £12.50 (was "GBP 12.50") | Plain English for staff |

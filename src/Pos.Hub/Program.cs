@@ -52,6 +52,7 @@ builder.Services.AddHostedService<Pos.Hub.Delivery.AddressFolderWorker>();
 builder.Services.AddSingleton<Pos.Hub.Delivery.DeliveryService>();
 builder.Services.AddSingleton<Pos.Hub.Delivery.CustomerService>();
 builder.Services.AddSingleton<ShopDetailsService>();
+builder.Services.AddSingleton<DiscountLimitsService>();
 builder.Services.AddSingleton<OrderService>();
 builder.Services.AddSingleton<TillService>();
 builder.Services.AddSingleton<Pos.Hub.Security.AccessService>();

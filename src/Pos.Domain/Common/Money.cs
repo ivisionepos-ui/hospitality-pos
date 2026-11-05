@@ -99,6 +99,15 @@ public readonly record struct Money : IComparable<Money>
     /// <summary>Compares two amounts of the same currency.</summary>
     public static bool operator >=(Money left, Money right) => left.CompareTo(right) >= 0;
 
+    /// <summary>For messages to staff: "£12.50", "-£1.99" (other currencies: "EUR 12.50").</summary>
+    public string Display()
+    {
+        var sign = MinorUnits < 0 ? "-" : string.Empty;
+        var abs = Math.Abs(MinorUnits);
+        var symbol = Currency == "GBP" ? "£" : $"{Currency} ";
+        return string.Create(CultureInfo.InvariantCulture, $"{sign}{symbol}{abs / 100:#,0}.{abs % 100:00}");
+    }
+
     /// <summary>Plain format for logs and tests, e.g. "GBP 12.50". Receipts use their own formatting.</summary>
     public override string ToString()
     {

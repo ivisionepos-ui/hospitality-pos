@@ -45,6 +45,41 @@ public sealed class TillTests : HubTestBase
     }
 
     [Fact]
+    public async Task A_paid_order_refunded_then_cancelled_takes_nothing_off_the_days_vat()
+    {
+        await Setup();
+        var kept = await Order(Doner);
+        await Cash(kept.Id, 899);
+        await Complete(kept.Id);
+        var left = await Order(Cans(1));
+        var card = await Card(left.Id, 120);
+        Assert.Equal(HttpStatusCode.OK, (await WithManagerPin(Cashier, $"/api/orders/{left.Id}/payments/{card.Payment.Id}/refund", new RefundRequest(120, "Customer left"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await WithManagerPin(Cashier, $"/api/orders/{left.Id}/status", new StatusRequest(OrderStatus.Cancelled, "Customer left"))).StatusCode);
+        await Cashier.Post("/api/shifts/close", new CloseShiftRequest(10000 + 899));
+
+        var z = await (await Manager.Post("/api/reports/z", new ZReportRequest(null))).Read<DayReport>();
+
+        Assert.Equal(Money.Gbp(899), Assert.Single(z.Vat).Gross); // only the doner was sold
+        Assert.Equal(Money.Gbp(120), z.Exceptions.RefundedValue);
+    }
+
+    [Fact]
+    public async Task A_refund_for_a_complaint_leaves_nothing_to_pay_and_the_order_can_be_collected()
+    {
+        await Setup();
+        var order = await Order(Doner);
+        var card = await Card(order.Id, 899);
+
+        await WithManagerPin(Cashier, $"/api/orders/{order.Id}/payments/{card.Payment.Id}/refund", new RefundRequest(200, "Cold chips"));
+        var after = await Cashier.GetJson<OrderView>($"/api/orders/{order.Id}");
+
+        Assert.Equal(Money.Gbp(0), after.Balance);
+        Assert.Equal(Money.Gbp(699), after.Paid);
+        Assert.Equal(Money.Gbp(200), after.Refunded);
+        await Complete(order.Id);
+    }
+
+    [Fact]
     public async Task A_full_trading_day_reconciles_in_the_z_report()
     {
         await Setup();

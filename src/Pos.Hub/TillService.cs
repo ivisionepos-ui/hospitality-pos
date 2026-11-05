@@ -136,8 +136,10 @@ public sealed class TillService(HubDatabase db, HubSettings settings, OrderServi
         var shifts = ShiftsForDay(date);
         var payments = shifts.SelectMany(s => PaymentsForShift(s.Id)).ToList();
         var dayOrders = orders.ForDay(date, null);
-        var refunded = payments.Where(p => p.IsRefund).Select(p => p.OrderId).Distinct()
-            .ToDictionary(id => id, id => orders.Get(id).Totals);
+        // Cancelled and rejected orders were never sales, so refunding them takes nothing off the day's sales or VAT.
+        var refunded = payments.Where(p => p.IsRefund).Select(p => orders.Get(p.OrderId)).DistinctBy(o => o.Id)
+            .Where(o => o.Status is not (OrderStatus.Cancelled or OrderStatus.Rejected))
+            .ToDictionary(o => o.Id, o => o.Totals);
         var number = Convert.ToInt32(db.Scalar("SELECT COALESCE(MAX(z_number), 0) + 1 FROM z_reports;"), CultureInfo.InvariantCulture);
 
         var report = DayReport.Build(date, number, clock.GetUtcNow(), userId, dayOrders, payments, shifts, refunded, Currency);

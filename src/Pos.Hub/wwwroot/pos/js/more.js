@@ -7,6 +7,7 @@ import { withApproval } from './till.js';
 import { soldOutDialog } from './editmenu.js';
 import { addressFinder } from './address-finder.js';
 import { changeMyPin, devicesDialog, staffDialog } from './staff.js';
+import { discountLimitsDialog } from './discounts.js';
 
 function table(rows) {
   return h('table', { class: 'report' }, h('tbody', {}, rows.filter(Boolean).map(([label, value, strong]) =>
@@ -355,7 +356,8 @@ export function moreDialog(till) {
         h('div', { class: 'more-grid' },
           section('Menu',
             can('EditMenu') ? item('Edit menu', () => till.enterEditMode(), true) : null,
-            item('Sold out items', () => soldOutDialog(till))),
+            item('Sold out items', () => soldOutDialog(till)),
+            can('ManageDevices') ? item('Discount limits', discountLimitsDialog) : null),
           section('Till',
             item('Open till', async () => { if (await ensureShift()) toast('The till is open.', 'ok'); }),
             item('Close till (cash count)', closeShift),

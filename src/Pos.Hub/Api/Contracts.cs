@@ -187,8 +187,14 @@ public sealed record OrderView(
     Money OutsideScopeOfVat,
     bool Duplicate)
 {
+    /// <summary>Why the discount was given, when there is one.</summary>
+    public string? DiscountReason { get; init; }
+
     /// <summary>Paid so far (after refunds), when known.</summary>
     public Money? Paid { get; init; }
+
+    /// <summary>Money given back to the customer (refunds), when known.</summary>
+    public Money? Refunded { get; init; }
 
     /// <summary>Still to pay (negative = refund due), when known.</summary>
     public Money? Balance { get; init; }
@@ -213,6 +219,7 @@ public sealed record OrderView(
             t.OutsideScopeOfVat, duplicate)
         {
             Contact = order.Contact,
+            DiscountReason = order.Discount?.Reason,
             Delivery = t.Delivery is { } d
                 ? new DeliveryView(d.Quote.DistanceMiles, d.Override is null ? d.Quote.Status : Pos.Domain.Delivery.DeliveryQuoteStatus.Ok, d.Fee, d.Quote.MinimumOrder, d.Quote.IsFreeDelivery, d.Override is not null)
                 : null,
@@ -259,6 +266,12 @@ public sealed record CardPaymentRequest(long AmountPence, long? TipPence = null,
 /// <param name="Reason">Why.</param>
 /// <param name="RefundId">Id made on the till, reused on retries.</param>
 public sealed record RefundRequest(long AmountPence, string Reason, Guid? RefundId = null);
+
+/// <summary>A discount off the whole order.</summary>
+/// <param name="Type">Percent or Amount.</param>
+/// <param name="Value">Whole percent (1–100) for Percent; pence for Amount.</param>
+/// <param name="Reason">Why (shown on the receipt and reports).</param>
+public sealed record DiscountRequest(Pos.Domain.Pricing.OrderDiscountType Type, long Value, string Reason);
 
 /// <summary>Amount for chosen items.</summary>
 /// <param name="LineIds">Order lines.</param>

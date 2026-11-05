@@ -37,13 +37,14 @@
 | Address lookup choice (Google / Royal Mail online / local file) with owner settings screen, keys kept on the hub, Test button, automatic fallback to the local file, single Find address box with group drill-down, distance from the service's location | 3 | Done 2026-11-04 | 6 hub tests + 1 browser test against stand-ins of both services | **Live test with real Google and AddressNow keys needed in the shop** |
 | Hub restart safety: database waits for work in progress before closing; data-folder lock always released on stop | 2 | Done 2026-11-04 | 3 clean full runs | Fixed the occasional restart test failures |
 | Address files: Royal Mail PAF CSV loaded into the hub (folder at start-up or upload from the till), postcode → every address pick list with filter, fills street/flat/business/town, offline-capable | 3 | Done 2026-11-04 | 5 hub tests + 1 browser test; owner's real B12 file loaded: 7,844 addresses in 443 postcodes (13 PO-box rows skipped) | One full-suite run had a load-related failure in a printing test; 10/10 repeat runs passed — watch (seen once more on 2026-11-05 together with a live-update test, both on 5–10 s waits; 3/3 full re-runs passed) |
+| Discounts and refunds on the till: % or £ off with reason, owner's limits screen, manager PIN above the limits, limit checked only when given, refused below what was paid; refund by payment (part or all) with reason and manager, card-machine and cash reminders, refund receipt, orders of earlier days; refunds split into "lowers the sale" and "gives back an overpayment"; cancelled orders' refunds take nothing off VAT; money shown as £ in messages | 3 | Done 2026-11-05 | 13 hub discount tests + 2 hub refund tests + 6 rule tests + 1 browser test | Card refunds still done by hand on the card machine until Worldpay is linked |
 | Staff screen: add staff (name, role, PIN twice with easy-PIN check), edit name/role, reset a forgotten PIN, remove and bring back, history of every change (never PINs), Change my PIN with the current PIN (tills and kitchen screen), Tills and screens list with remove | 3 | Done 2026-11-05 | 13 hub tests + 1 browser test (owner, the new person, and a manager) | |
 | Connecting other PCs: hub network address on the till, firewall and connect double-click files, self-contained Windows package | 3 | Done 2026-11-04 | 1 hub test + 1 browser test | **Double-click files to be tried on the shop's Windows PCs** |
 | Adding items to a saved order is safe to resend (request id) | 3 | Done 2026-11-03 | 1 hub test | |
 | Hub additions for the till: order quote, sample menu, paid/balance on orders, receipt printed when fully paid | 3 | Done 2026-11-03 | 4 hub tests | |
 | Backups: hourly / start-up / after Z report / on demand; checked zip of database snapshot, PIN key and certificates; second copy folder; keep 48 h then daily for 30 days; restore command; live warning on failure; one hub per data folder; copy before schema upgrades | 2 | Done 2026-11-03 | 13 passing, plus restore run on the real program | Owner to set a USB/second-disk copy folder |
 
-Total: 425 automated tests passing (254 business-rule tests + 157 hub tests + 14 till-screen browser tests), including 1,000 random orders checking that totals and VAT always reconcile.
+Total: 448 automated tests passing (262 business-rule tests + 171 hub tests + 15 till-screen browser tests), including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
 - ESC/POS thermal printers over USB and network, and the cash drawer kick (when printers are available)
@@ -53,7 +54,7 @@ Total: 425 automated tests passing (254 business-rule tests + 157 hub tests + 14
 - Scheduled offers, delivery charge table and discount limits stored on the hub (offers currently not loaded)
 - Editing meal-deal choices; drag and drop of buttons
 - Road distances (OSRM) or offline postcode locations (Code-Point Open)
-- Discounts and refunds on screen, split bill screen
+- Split bill screen
 - Driver screen: assign deliveries to drivers, cash returned by drivers
 - Encrypted off-site (cloud) backup copy
 - Syncing menu and order changes between tills, hub and cloud

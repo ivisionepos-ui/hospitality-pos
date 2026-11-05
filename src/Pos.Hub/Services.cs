@@ -223,6 +223,9 @@ public sealed class OrderService
     public Order Get(Guid orderId) =>
         _db.Run(() => _store.FindById(orderId)) ?? throw new KeyNotFoundException("Order not found.");
 
+    /// <summary>Today's trading day (it starts at the shop's day-start time, e.g. 05:00).</summary>
+    public DateOnly Today() => BusinessDay.For(_clock.GetUtcNow(), _settings.TimeZone, _settings.DayStartsAt);
+
     /// <summary>Orders for a trading day (default: today's).</summary>
     public IReadOnlyList<Order> ForDay(DateOnly? businessDate, OrderStatus? status)
     {

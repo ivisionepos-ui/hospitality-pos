@@ -393,8 +393,10 @@ public static class Endpoints
             Results.Ok(OrderView.From(orders.Quote(request, Actor(http))))))
             .ForStaff(Permission.TakeOrders);
 
-        api.MapGet("/orders", (OrderService orders, TillService tills, DateOnly? date, OrderStatus? status) =>
-            Handle(() => Results.Ok(orders.ForDay(date, status).Select(o => WithMoney(OrderView.From(o), tills.Ledger(o))))))
+        // A trading day's orders: today's, a date, or "daysBack" days before today (the till's Previous day button).
+        api.MapGet("/orders", (OrderService orders, TillService tills, DateOnly? date, int? daysBack, OrderStatus? status) =>
+            Handle(() => Results.Ok(orders.ForDay(date ?? (daysBack is > 0 and <= 400 ? orders.Today().AddDays(-daysBack.Value) : null), status)
+                .Select(o => WithMoney(OrderView.From(o), tills.Ledger(o))))))
             .ForDevices();
 
         api.MapGet("/orders/{orderId:guid}", (OrderService orders, TillService tills, Guid orderId) =>
@@ -414,6 +416,55 @@ public static class Endpoints
             {
                 var (order, duplicate) = orders.AddLines(orderId, request.Lines, Actor(http), request.RequestId);
                 return Results.Ok(OrderView.From(order, duplicate));
+            }))
+            .ForStaff(Permission.TakeOrders);
+
+        // A discount off the whole order. Staff give it within the owner's limits; above them a manager approves.
+        api.MapPost("/orders/{orderId:guid}/discount", (HttpContext http, OrderService orders, TillService tills, DiscountLimitsService limits, Guid orderId, DiscountRequest request) =>
+            Handle(() =>
+            {
+                var actor = Actor(http);
+                var value = request.Type == OrderDiscountType.Percent
+                    ? request.Value is >= 1 and <= 100 ? request.Value * 100 : throw new ArgumentException("The percentage must be 1 to 100.")
+                    : request.Value > 0 ? request.Value : throw new ArgumentException("Enter the amount off.");
+                if (string.IsNullOrWhiteSpace(request.Reason))
+                {
+                    throw new ArgumentException("Choose or type a reason for the discount.");
+                }
+
+                var current = limits.Get();
+                var input = new OrderDiscountInput(request.Type, value, request.Reason.Trim(), actor.UserId, Approver(http, Permission.ApproveDiscounts));
+                try
+                {
+                    var order = orders.Change(orderId, o =>
+                    {
+                        o.ApplyDiscount(input, actor, current.Policy);
+                        var ledger = tills.Ledger(o);
+                        if (ledger.Balance.MinorUnits < 0)
+                        {
+                            throw new InvalidOperationException($"{ledger.Paid.Display()} has already been paid, more than the new total. Give the money back as a refund instead.");
+                        }
+
+                        return o;
+                    });
+                    return Results.Ok(WithMoney(OrderView.From(order), tills.Ledger(order)));
+                }
+                catch (DiscountApprovalRequiredException)
+                {
+                    throw new AccessDeniedException("ApprovalRequired", $"Staff need a manager for {current.Text}. Ask a manager to enter their PIN.", 403);
+                }
+            }))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapDelete("/orders/{orderId:guid}/discount", (HttpContext http, OrderService orders, TillService tills, Guid orderId) =>
+            Handle(() =>
+            {
+                var order = orders.Change(orderId, o =>
+                {
+                    o.RemoveDiscount(Actor(http));
+                    return o;
+                });
+                return Results.Ok(WithMoney(OrderView.From(order), tills.Ledger(order)));
             }))
             .ForStaff(Permission.TakeOrders);
 
@@ -472,6 +523,13 @@ public static class Endpoints
 
         api.MapPut("/settings/shop", (HttpContext http, ShopDetailsService shop, ShopDetails details) => Handle(() =>
             Results.Ok(shop.Save(details, Caller(http).Staff!.Id))))
+            .ForStaff(Permission.ManageDevices);
+
+        api.MapGet("/settings/discounts", (DiscountLimitsService limits) => Handle(() => Results.Ok(limits.Get())))
+            .ForStaff();
+
+        api.MapPut("/settings/discounts", (HttpContext http, DiscountLimitsService limits, DiscountLimits request) => Handle(() =>
+            Results.Ok(limits.Save(request, Caller(http).Staff!.Id))))
             .ForStaff(Permission.ManageDevices);
 
         api.MapGet("/settings/address-lookup", (AddressLookupService lookup) => Handle(() => Results.Ok(lookup.View())))
@@ -538,13 +596,13 @@ public static class Endpoints
                 if (request.Status == OrderStatus.Completed && !ledger.IsSettled)
                 {
                     throw new InvalidOperationException(ledger.Balance.IsNegative
-                        ? $"{Money.Zero(ledger.Total.Currency) - ledger.Balance} must be refunded before this order can be completed."
+                        ? $"{(Money.Zero(ledger.Total.Currency) - ledger.Balance).Display()} must be refunded before this order can be completed."
                         : $"{ledger.Balance} is still to pay.");
                 }
 
                 if (request.Status is OrderStatus.Cancelled or OrderStatus.Rejected && ledger.Paid.MinorUnits != 0)
                 {
-                    throw new InvalidOperationException($"Refund the {ledger.Paid} paid before cancelling this order.");
+                    throw new InvalidOperationException($"Refund the {ledger.Paid.Display()} paid before cancelling this order.");
                 }
 
                 if (request.Status == OrderStatus.Cancelled)
@@ -620,7 +678,12 @@ public static class Endpoints
     private static IResult Change(MenuChange change) => Results.Ok(new MenuChangeView(change.Version, change.Summary));
 
     /// <summary>Turns refusals into clear answers for the till instead of server errors.</summary>
-    private static OrderView WithMoney(OrderView view, OrderPayments ledger) => view with { Paid = ledger.Paid, Balance = ledger.Balance };
+    private static OrderView WithMoney(OrderView view, OrderPayments ledger) => view with
+    {
+        Paid = ledger.Paid,
+        Balance = ledger.Balance,
+        Refunded = ledger.Payments.Where(p => p.IsRefund).Aggregate(Money.Zero(ledger.Total.Currency), (sum, p) => sum - p.Amount),
+    };
 
     /// <summary>This PC's IPv4 addresses on its working network connections (not loopback or virtual adapters' link-local ones).</summary>
     private static IEnumerable<string> NetworkAddresses() =>

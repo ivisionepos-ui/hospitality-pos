@@ -45,6 +45,16 @@ public class MoneyTests
         Assert.Equal(expected, Money.Gbp(pence).ToString());
     }
 
+    [Theory]
+    [InlineData(1250, "£12.50")]
+    [InlineData(5, "£0.05")]
+    [InlineData(-199, "-£1.99")]
+    [InlineData(123456, "£1,234.56")]
+    public void Formats_for_staff_messages(long pence, string expected)
+    {
+        Assert.Equal(expected, Money.Gbp(pence).Display());
+    }
+
     [Fact]
     public void Compares_amounts()
     {

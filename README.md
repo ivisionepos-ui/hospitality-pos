@@ -283,6 +283,26 @@ are used. Language `en` (default), `ar` or `both` stays in appsettings.json. UK 
 - Closing a shift is a blind count: the expected cash and over/short are shown only after the count is entered.
 - The Z report needs every shift of the day closed; it is kept, numbered, and taking it again returns the same one.
 
+### Discounts and refunds
+
+**Discount** (button under the order, or ⋯ on a saved order): % off (quick 5–100%) or £ off, with a reason that
+prints on the receipt. A new order is saved first but not sent to the kitchen (Send or Pay sends it). Cashiers and
+waiters give discounts alone up to the owner's limits (More → Discount limits; the shipped setting is 0 = always a
+manager); above either limit a manager enters their PIN. Managers and owners never need a second PIN. The limit is
+checked once, when the discount is given: an order that grows later, or a change of limits, never undoes it. A
+discount that would take the total below what has already been paid is refused (give a refund instead).
+
+**Refund** (⋯ on an order that has been paid, today's or an earlier day's via Orders → Previous day): choose the
+payment, the amount (all or part), a reason; a manager approves. Cash comes out of this till's drawer; for a card the
+till reminds staff to do the refund on the card machine (until the card machine is linked). Delivery-app and online
+payments are refunded through the app. A receipt showing the refund can be printed.
+
+How refunds count: money given back for what was sold (a complaint, a return) lowers the sale and its VAT, and the
+customer does not owe it again. Money given back because more was paid than the order now comes to (an item removed
+after paying) does not lower the sale again, because the order total already went down. Each refund records which part
+is which. Refunds of orders that end up cancelled or rejected take nothing off the day's sales or VAT (those orders
+were never counted as sales).
+
 ### Roles
 
 | Role | Can do |
@@ -317,6 +337,8 @@ active staff cannot share a name; PINs are 4–8 digits, not easy (1111, 1234) a
 | GET | /api/orders/{id}/payments | cashier | Total, paid, balance, tips, payments |
 | POST | /api/orders/{id}/payments/cash, /card | cashier | Take cash (change worked out) or record a card payment; safe to resend |
 | POST | /api/orders/{id}/payments/{paymentId}/refund | manager (or manager PIN) | Refund all or part of a payment, same method |
+| POST / DELETE | /api/orders/{id}/discount | staff (manager above the limits) | Give or remove an order discount |
+| GET / PUT | /api/settings/discounts | staff / owner | Discount limits for staff |
 | GET | /api/orders/{id}/split?parts=N | cashier | Split the balance equally |
 | POST | /api/orders/{id}/split-by-items | cashier | Amount for chosen items |
 | POST | /api/reports/z | manager | End-of-day Z report (all shifts must be closed); starts a backup |

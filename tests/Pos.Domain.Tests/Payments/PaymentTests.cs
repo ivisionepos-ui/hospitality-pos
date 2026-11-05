@@ -113,11 +113,27 @@ public class PaymentTests
         Assert.Equal(card.Id, first.RefundOf);
         Assert.Equal(Manager, first.ApprovedByUserId);
         Assert.Equal(Money.Gbp(1500), ledger.Refundable(card.Id));
-        Assert.Equal(Money.Gbp(500), ledger.Balance);
+        Assert.Equal(Money.Gbp(500), first.SaleReduction); // money back for the food: the sale goes down
+        Assert.Equal(Money.Gbp(0), ledger.Balance);        // and the customer does not owe it again
+        Assert.Equal(Money.Gbp(1500), ledger.Due);
 
         Assert.Throws<InvalidOperationException>(() => ledger.Refund(card.Id, Money.Gbp(1501), "Too much", Manager, Ctx(6)));
         ledger.Refund(card.Id, Money.Gbp(1500), "Rest", Manager, Ctx(7));
         Assert.Equal(Money.Gbp(0), ledger.Paid);
+    }
+
+    [Fact]
+    public void Giving_back_an_overpayment_does_not_lower_the_sale_and_the_rest_of_a_bigger_refund_does()
+    {
+        var card = Ledger(1000).TakeCard(Money.Gbp(1000), Ctx());
+        var ledger = new OrderPayments(Order, Money.Gbp(800), [card]); // an item removed after paying: the order is now £8
+        Assert.Equal(Money.Gbp(-200), ledger.Balance);
+
+        var refund = ledger.Refund(card.Id, Money.Gbp(300), "Removed item, and £1 off for the wait", Manager, Ctx(1));
+
+        Assert.Equal(Money.Gbp(100), refund.SaleReduction); // £2 was overpaid; only the extra £1 lowers the sale
+        Assert.Equal(Money.Gbp(0), ledger.Balance);
+        Assert.True(ledger.IsSettled);
     }
 
     [Fact]

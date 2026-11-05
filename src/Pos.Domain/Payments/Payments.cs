@@ -55,6 +55,16 @@ public sealed record Payment
     /// <summary>Why it was refunded.</summary>
     public string? Reason { get; init; }
 
+    /// <summary>
+    /// For a refund: how much of it is money back for what was sold (a complaint, a return), which lowers the sale and
+    /// its VAT. The rest only gives back an overpayment (e.g. an item removed after paying), where the order total has
+    /// already gone down. Null on refunds recorded before this was kept: then all of it.
+    /// </summary>
+    public Money? SaleReduction { get; init; }
+
+    /// <summary>The part of a refund that lowers the sale (zero for a payment).</summary>
+    public Money SaleReductionOrAll => !IsRefund ? Money.Zero(Amount.Currency) : SaleReduction ?? Money.Zero(Amount.Currency) - Amount;
+
     /// <summary>Card terminal receipt number or other reference.</summary>
     public string? Reference { get; init; }
 
@@ -123,8 +133,17 @@ public sealed class OrderPayments
     /// <summary>Paid so far, after refunds.</summary>
     public Money Paid => _payments.Aggregate(Money.Zero(Total.Currency), (sum, p) => sum + p.Amount);
 
-    /// <summary>Still to pay. Negative when more was paid than the order now comes to (a refund is due).</summary>
-    public Money Balance => Total - Paid;
+    /// <summary>Money given back for what was sold (complaints, returns): the customer no longer owes it.</summary>
+    public Money RefundedForSale => _payments.Aggregate(Money.Zero(Total.Currency), (sum, p) => sum + p.SaleReductionOrAll);
+
+    /// <summary>What the customer owes in all: the order total less money given back for what was sold.</summary>
+    public Money Due => Total - RefundedForSale;
+
+    /// <summary>
+    /// Still to pay. Negative when more was paid than the order now comes to (a refund is due).
+    /// A refund for a complaint does not make the order owe that money again.
+    /// </summary>
+    public Money Balance => Due - Paid;
 
     /// <summary>Card tips taken.</summary>
     public Money Tips => _payments.Aggregate(Money.Zero(Total.Currency), (sum, p) => sum + p.Tip);
@@ -149,7 +168,7 @@ public sealed class OrderPayments
         CheckAmount(applied);
         if (tendered < applied)
         {
-            throw new ArgumentException($"Cash handed over ({tendered}) is less than the amount to pay ({applied}).");
+            throw new ArgumentException($"Cash handed over ({tendered.Display()}) is less than the amount to pay ({applied.Display()}).");
         }
 
         return Add(new Payment
@@ -240,12 +259,17 @@ public sealed class OrderPayments
         var refundable = Refundable(paymentId);
         if (amount > refundable)
         {
-            throw new InvalidOperationException($"Only {refundable} of this payment can be refunded.");
+            throw new InvalidOperationException($"Only {refundable.Display()} of this payment can be refunded.");
         }
 
+        // The first part of a refund gives back any overpayment; only the rest lowers the sale.
+        var zero = Money.Zero(Total.Currency);
+        var overpaid = Money.Max(zero, zero - Balance);
+        var saleReduction = amount - Money.Min(amount, overpaid);
         var original = _payments.Single(p => p.Id == paymentId);
         return Add(new Payment
         {
+            SaleReduction = saleReduction,
             Id = context.Id,
             OrderId = OrderId,
             ShiftId = context.ShiftId,
@@ -282,7 +306,7 @@ public sealed class OrderPayments
 
         if (amount > Balance)
         {
-            throw new InvalidOperationException($"The amount ({amount}) is more than is left to pay ({Balance}).");
+            throw new InvalidOperationException($"The amount ({amount.Display()}) is more than is left to pay ({Balance.Display()}).");
         }
     }
 

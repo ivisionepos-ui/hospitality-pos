@@ -9,6 +9,7 @@ import { MenuEditor } from './editmenu.js';
 import { MenuView } from './menu.js';
 import { moreDialog } from './more.js';
 import { payDialog } from './pay.js';
+import { discountDialog, refundDialog } from './discounts.js';
 
 const ORDER_MODES = [
   { id: 'counter', label: 'Takeaway', source: 'Counter', type: 'Takeaway' },
@@ -411,9 +412,10 @@ export class Till {
     const saved = this.saved;
     const rows = [];
     if (saved) {
-      if (saved.discountAmount) rows.push(['Discount', `-${money(saved.discountAmount)}`]);
+      if (saved.discountAmount) rows.push([`Discount${saved.discountReason ? ` (${saved.discountReason})` : ''}`, `-${money(saved.discountAmount)}`]);
       if (saved.delivery) rows.push([`Delivery (${saved.delivery.distanceMiles} mi)`, saved.delivery.isFree ? 'Free' : money(saved.delivery.fee)]);
       rows.push(['Total', money(saved.total), 'total']);
+      if (saved.refunded?.minorUnits) rows.push(['Refunded', `-${money(saved.refunded)}`]);
       if (saved.paid?.minorUnits) rows.push(['Paid', money(saved.paid)]);
       if (saved.balance && saved.balance.minorUnits > 0) rows.push(['To pay', money(saved.balance), 'due']);
       if (this.draft.lines.length) rows.push(['+ New items (not sent)', this.quote ? money(this.quote.total) : '…', 'due']);
@@ -429,8 +431,10 @@ export class Till {
     }
 
     const block = this.saved ? null : this.deliveryProblem();
+    const canDiscount = saved ? !CLOSED.includes(saved.status) : this.draft.lines.length > 0 && !block;
     return h('div', { class: 'totals' },
       block ? h('p', { class: 'ticket-warning', role: 'alert', text: block }) : null,
+      canDiscount ? h('button', { class: 'btn btn-small discount-btn', onclick: () => this.discount(), text: saved?.discountAmount ? 'Change discount' : 'Discount' }) : null,
       rows.map(([label, value, kind]) =>
         h('div', { class: `total-row ${kind ? `total-${kind}` : ''}` }, h('span', { text: label }), h('span', { text: value }))));
   }
@@ -506,9 +510,11 @@ export class Till {
 
     const open = !CLOSED.includes(saved.status);
     const due = (saved.balance?.minorUnits ?? 0) > 0 || draftCount > 0;
+    const unsent = saved.lines.some(l => !l.sentToKitchen && !l.isVoided);
     return h('div', { class: 'ticket-actions' },
       h('button', { class: 'btn', onclick: () => this.closeSaved(), text: draftCount ? 'Discard new' : 'Close' }),
       draftCount ? h('button', { class: 'btn btn-kitchen', onclick: () => this.send(), text: 'Send new' }) : null,
+      !draftCount && unsent && open ? h('button', { class: 'btn btn-kitchen', onclick: () => this.send(), text: 'Send' }) : null,
       open && due ? h('button', { class: 'btn btn-primary btn-pay', onclick: () => this.pay(), text: 'Pay' }) : null,
       open && !due ? h('button', { class: 'btn btn-primary', onclick: () => this.complete(saved), text: 'Collected' }) : null,
       h('button', { class: 'btn', onclick: () => this.savedMenu(saved), text: '⋯', 'aria-label': 'More for this order' }));
@@ -530,8 +536,11 @@ export class Till {
     this.renderTicket();
   }
 
-  /** Saves the order (or the new items) on the hub and sends them to the kitchen. Returns the saved order. */
-  async commit() {
+  /**
+   * Saves the order (or the new items) on the hub and sends them to the kitchen. Returns the saved order.
+   * With sendToKitchen false it only saves (e.g. to give a discount first); Send or Pay sends them later.
+   */
+  async commit(sendToKitchen = true) {
     let added = false;
     if (!this.saved) {
       // Same order id and key on every retry, so a dropped connection never makes a second order.
@@ -556,7 +565,7 @@ export class Till {
       added = true;
     }
 
-    if (added || this.saved.lines.some(l => !l.sentToKitchen && !l.isVoided)) {
+    if (sendToKitchen && (added || this.saved.lines.some(l => !l.sentToKitchen && !l.isVoided))) {
       await api.post(`/api/orders/${this.saved.id}/send-to-kitchen`);
     }
 
@@ -612,6 +621,49 @@ export class Till {
     }
   }
 
+  /** A discount off the whole order. A new order is saved first (not sent to the kitchen yet). */
+  async discount() {
+    try {
+      if (!this.saved || this.draft.lines.length) {
+        await busy(() => this.commit(false));
+        this.renderTicket();
+        this.refreshOpenCount();
+      }
+
+      const limits = await api.get('/api/settings/discounts').catch(() => null);
+      const choice = await discountDialog(this.saved, limits);
+      if (!choice) return;
+      const id = this.saved.id;
+      if (choice.remove) {
+        this.saved = await busy(() => api.del(`/api/orders/${id}/discount`));
+        toast('Discount removed.', 'ok');
+      } else {
+        const order = await withApproval(pin => busy(() => api.post(`/api/orders/${id}/discount`, choice, { managerPin: pin })));
+        if (!order) return;
+        this.saved = order;
+        toast(`Discount −${money(order.discountAmount)} (${order.discountReason}).`, 'ok');
+      }
+    } catch (e) {
+      this.showError(e);
+    } finally {
+      this.renderTicket();
+    }
+  }
+
+  async refund(order) {
+    try {
+      if (await refundDialog(order, withApproval)) {
+        toast('Refund recorded.', 'ok');
+        if (this.saved?.id === order.id) {
+          this.saved = await api.get(`/api/orders/${order.id}`);
+          this.renderTicket();
+        }
+      }
+    } catch (e) {
+      this.showError(e);
+    }
+  }
+
   async voidLine(line) {
     const reason = await textDialog(`Remove ${text(line.name)}?`, { label: 'Reason', suggestions: VOID_REASONS, ok: 'Remove' });
     if (!reason) return;
@@ -634,6 +686,8 @@ export class Till {
       class: 'dialog-narrow',
       body: h('div', { class: 'menu-list' },
         h('button', { class: 'btn menu-btn', onclick: async () => { close(); await this.printReceipt(order); }, text: 'Print receipt' }),
+        !CLOSED.includes(order.status) ? h('button', { class: 'btn menu-btn', onclick: async () => { close(); await this.discount(); }, text: order.discountAmount ? 'Change discount' : 'Discount' }) : null,
+        (order.paid?.minorUnits ?? 0) > 0 ? h('button', { class: 'btn menu-btn', onclick: async () => { close(); await this.refund(order); }, text: 'Refund' }) : null,
         order.source === 'Phone' && !CLOSED.includes(order.status) ? h('button', { class: 'btn menu-btn', onclick: async () => { close(); await this.changeSavedCustomer(order); }, text: order.type === 'Delivery' ? 'Change customer or address' : 'Change customer' }) : null,
         !CLOSED.includes(order.status) ? h('button', { class: 'btn btn-danger menu-btn', onclick: async () => { close(); await this.cancelOrder(order); }, text: 'Cancel order' }) : null),
     }));
@@ -686,11 +740,13 @@ export class Till {
     }
   }
 
-  /** Today's orders; tap one to open it. */
+  /** Today's orders (or an earlier day's, e.g. for a refund); tap one to open it. */
   async showOrders() {
+    let daysBack = 0;
     let orders;
+    const load = () => api.get(daysBack ? `/api/orders?daysBack=${daysBack}` : '/api/orders');
     try {
-      orders = await busy(() => api.get('/api/orders'));
+      orders = await busy(load);
     } catch (e) {
       this.showError(e);
       return;
@@ -699,12 +755,31 @@ export class Till {
     let showAll = false;
     const picked = await openDialog(close => {
       const list = h('div', { class: 'orders' });
-      const filter = h('div', { class: 'seg seg-small' });
+      const filter = h('div', { class: 'orders-bar' });
+      const go = async step => {
+        const next = Math.max(0, daysBack + step);
+        if (next === daysBack) return;
+        try {
+          const loaded = await busy(() => api.get(next ? `/api/orders?daysBack=${next}` : '/api/orders'));
+          daysBack = next;
+          orders = loaded;
+          render();
+        } catch (e) {
+          this.showError(e);
+        }
+      };
+      const dayName = () => (daysBack === 0 ? 'Today' : daysBack === 1 ? 'Yesterday' : `${daysBack} days ago`);
       const render = () => {
-        mount(filter, [false, true].map(all => h('button', {
-          class: `seg-btn ${showAll === all ? 'seg-on' : ''}`, onclick: () => { showAll = all; render(); }, text: all ? 'All today' : 'Open',
-        })));
-        const shown = orders.filter(o => showAll || !CLOSED.includes(o.status)).sort((a, b) => b.number.localeCompare(a.number));
+        const all = showAll || daysBack > 0; // an earlier day: every order (they are all finished)
+        mount(filter,
+          h('div', { class: 'seg seg-small' }, [false, true].map(a => h('button', {
+            class: `seg-btn ${all === a ? 'seg-on' : ''}`, disabled: daysBack > 0 && !a, onclick: () => { showAll = a; render(); }, text: a ? 'All orders' : 'Open',
+          }))),
+          h('div', { class: 'day-nav' },
+            h('button', { class: 'btn btn-small', 'aria-label': 'Previous day', onclick: () => go(1), text: '‹ Previous day' }),
+            h('strong', { class: 'day-name', text: dayName() }),
+            h('button', { class: 'btn btn-small', 'aria-label': 'Next day', disabled: daysBack === 0, onclick: () => go(-1), text: 'Next day ›' })));
+        const shown = orders.filter(o => all || !CLOSED.includes(o.status)).sort((a, b) => b.number.localeCompare(a.number));
         mount(list, shown.length ? shown.map(o => {
           const due = o.balance?.minorUnits ?? 0;
           return h('div', { class: 'order-row' },
@@ -713,12 +788,12 @@ export class Till {
               h('span', { class: 'order-meta', text: [timeText(o.createdAt), modeLabel(o.source, o.type), o.contact?.name, o.contact?.address?.postcode].filter(Boolean).join(' · ') }),
               h('span', { class: `status status-${o.status.toLowerCase()}`, text: o.status }),
               h('span', { class: 'order-total', text: money(o.total) }),
-              h('span', { class: `paid-badge ${due > 0 ? 'paid-due' : 'paid-ok'}`, text: due > 0 ? `Due ${penceText(due)}` : 'Paid' })),
+              h('span', { class: `paid-badge ${due > 0 ? 'paid-due' : 'paid-ok'}`, text: due > 0 ? `Due ${penceText(due)}` : due < 0 ? `Refund ${penceText(-due)}` : 'Paid' })),
             !CLOSED.includes(o.status) && due <= 0 ? h('button', { class: 'btn btn-small', onclick: () => close({ complete: o }), text: 'Collected' }) : null);
-        }) : h('p', { class: 'empty-note', text: showAll ? 'No orders yet today.' : 'No open orders.' }));
+        }) : h('p', { class: 'empty-note', text: all ? `No orders ${daysBack ? 'that day' : 'yet today'}.` : 'No open orders.' }));
       };
       render();
-      return { title: 'Today’s orders', wide: true, body: [filter, list] };
+      return { title: 'Orders', wide: true, body: [filter, list] };
     });
 
     if (picked?.open) {

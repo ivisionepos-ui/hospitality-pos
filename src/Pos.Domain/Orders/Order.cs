@@ -374,12 +374,15 @@ public sealed class Order
 
     // ---------- Charges ----------
 
-    /// <summary>Applies or replaces the order discount. Refused if it needs a manager and has no approval.</summary>
-    public void ApplyDiscount(OrderDiscountInput discount, OrderActor actor)
+    /// <summary>
+    /// Applies or replaces the order discount. Refused if it is above the staff limit and has no manager's approval.
+    /// The limit is checked now, when the discount is given (with <paramref name="policy"/>, or the order's own).
+    /// </summary>
+    public void ApplyDiscount(OrderDiscountInput discount, OrderActor actor, DiscountPolicy? policy = null)
     {
         ArgumentNullException.ThrowIfNull(discount);
         EnsureOpen();
-        Totals = Recalculate(_lines, discount, Delivery, ServiceCharge);
+        Totals = Recalculate(_lines, discount, Delivery, ServiceCharge, policy ?? _pricing.DiscountPolicy);
         Discount = discount;
         Record(actor, OrderEventKind.DiscountChanged, $"Discount {Totals.Discount!.AmountOff} applied", reason: discount.Reason, approvedBy: discount.ApprovedByUserId);
     }
@@ -485,7 +488,8 @@ public sealed class Order
 
     // ---------- Internals ----------
 
-    private PricedOrder Recalculate(IReadOnlyList<OrderLine> lines, OrderDiscountInput? discount, DeliveryInput? delivery, ServiceChargeInput? service)
+    // The discount limit is only checked when a discount is given (policy passed in); re-pricing afterwards never refuses it.
+    private PricedOrder Recalculate(IReadOnlyList<OrderLine> lines, OrderDiscountInput? discount, DeliveryInput? delivery, ServiceChargeInput? service, DiscountPolicy? policy = null)
     {
         var fromApp = Source is OrderSource.JustEat or OrderSource.UberEats or OrderSource.Deliveroo;
         var channel = Source switch
@@ -503,7 +507,7 @@ public sealed class Order
             Context = new PricingContext(CreatedAt, _pricing.TimeZone, BranchId, channel),
             Lines = [.. lines.Where(l => !l.IsVoided).Select(l => l.Pricing)],
             Discount = discount,
-            DiscountPolicy = _pricing.DiscountPolicy,
+            DiscountPolicy = policy ?? DiscountPolicy.NoLimit(_pricing.DiscountPolicy.StaffMaxAmount.Currency),
             Delivery = delivery,
             ServiceCharge = service,
         });

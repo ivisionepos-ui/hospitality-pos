@@ -89,7 +89,8 @@ public sealed record DayReport
     /// <summary>
     /// Builds the report. Every shift of the day must be closed.
     /// <paramref name="refundedOrders"/> gives the totals of orders refunded today (which may be from earlier days),
-    /// so the VAT on refunds can be taken off at the right rates.
+    /// so the VAT on refunds can be taken off at the right rates. Leave out cancelled and rejected orders: they were
+    /// never counted as sales, so refunding them takes nothing off.
     /// </summary>
     public static DayReport Build(
         DateOnly businessDate,
@@ -161,7 +162,15 @@ public sealed record DayReport
                 continue;
             }
 
-            var shares = ProportionalAllocator.Allocate(zero - refund.Amount, [.. refundedOrder.VatSummary.Select(v => v.Gross)]);
+            // Only money given back for what was sold lowers the sale; giving back an overpayment does not
+            // (the order total already went down when the item was removed).
+            var reduction = refund.SaleReductionOrAll;
+            if (reduction.MinorUnits == 0)
+            {
+                continue;
+            }
+
+            var shares = ProportionalAllocator.Allocate(reduction, [.. refundedOrder.VatSummary.Select(v => v.Gross)]);
             for (var i = 0; i < shares.Count; i++)
             {
                 AddGross(refundedOrder.VatSummary[i].Rate, zero - shares[i]);

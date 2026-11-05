@@ -183,6 +183,39 @@ public class DayReportTests
     }
 
     [Fact]
+    public void Refunds_that_give_back_an_overpayment_or_undo_a_cancelled_order_take_nothing_more_off_vat()
+    {
+        var shift = Shift.Open(Guid.NewGuid(), Cashier.DeviceId!.Value, Day, Cashier.UserId, _clock.Now, Money.Gbp(0));
+        var ctx = new PaymentContext(shift.Id, Cashier.UserId, Cashier.DeviceId, _clock.Now);
+
+        // Order 1: doner + can paid £10.19 by card, then the can is removed (£8.99) and £1.20 refunded: an overpayment.
+        var o1 = NewOrder(OrderSource.Counter, Doner, Can);
+        var p1 = new OrderPayments(o1.Id, o1.Totals.Total, []).TakeCard(Money.Gbp(1019), ctx);
+        o1.VoidLine(o1.Lines[1].Id, "Out of stock", Cashier, Manager);
+        var ledger1 = new OrderPayments(o1.Id, o1.Totals.Total, [p1]);
+        var r1 = ledger1.Refund(p1.Id, Money.Gbp(120), "Out of stock", Manager, ctx);
+        Assert.True(ledger1.IsSettled);
+        o1.Complete(Cashier);
+
+        // Order 2: a can paid, refunded in full, then cancelled.
+        var o2 = NewOrder(OrderSource.Counter, Can);
+        var ledger2 = new OrderPayments(o2.Id, o2.Totals.Total, []);
+        var p2 = ledger2.TakeCard(Money.Gbp(120), ctx);
+        var r2 = ledger2.Refund(p2.Id, Money.Gbp(120), "Customer left", Manager, ctx);
+        o2.Cancel("Customer left", Cashier, Manager);
+
+        var closed = shift.Close(Cashier.UserId, _clock.Now.AddHours(5), Money.Gbp(0));
+        var report = DayReport.Build(Day, 1, _clock.Now.AddHours(6), Manager, [o1, o2], [p1, r1, p2, r2], [closed],
+            new Dictionary<Guid, PricedOrder> { [o1.Id] = o1.Totals }); // cancelled orders are left out (as the hub does)
+
+        var vat = Assert.Single(report.Vat);
+        Assert.Equal(Money.Gbp(899), vat.Gross); // only the doner was sold
+        Assert.Equal(report.Payments.Aggregate(Money.Gbp(0), (s, p) => s + p.Net), vat.Gross); // money kept = VAT-able sales
+        Assert.Equal(2, report.Exceptions.Refunds);
+        Assert.Equal(Money.Gbp(240), report.Exceptions.RefundedValue);
+    }
+
+    [Fact]
     public void Z_report_needs_every_shift_closed()
     {
         var shift = Shift.Open(Guid.NewGuid(), Guid.NewGuid(), Day, Cashier.UserId, _clock.Now, Money.Gbp(0));

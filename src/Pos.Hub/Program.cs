@@ -68,6 +68,8 @@ builder.Services.AddSingleton(sp =>
     return new Renderer(printing.FontFile, printing.BoldFontFile);
 });
 builder.Services.AddSingleton<PrintOutputs>();
+builder.Services.AddSingleton<PrinterSetupService>();
+builder.Services.AddSingleton<CashDrawerService>();
 builder.Services.AddSingleton<PrintService>();
 builder.Services.AddHostedService<PrintWorker>();
 builder.Services.AddSignalR().AddJsonProtocol(o => PosJson.Configure(o.PayloadSerializerOptions));
@@ -105,6 +107,7 @@ catch (InvalidOperationException ex)
 _ = app.Services.GetRequiredService<OrderService>();
 _ = app.Services.GetRequiredService<Pos.Hub.Security.AccessService>();
 app.Services.GetRequiredService<ShopDetailsService>().Apply(); // the owner's saved shop name and address
+app.Services.GetRequiredService<PrinterSetupService>().Apply(); // the owner's printers (More → Printers)
 var certificates = app.Services.GetRequiredService<HubCertificates>();
 HubLog.CertificatesLoaded(app.Logger, certificates);
 

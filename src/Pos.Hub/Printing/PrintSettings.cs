@@ -13,9 +13,16 @@ public enum PrintOutputType
     Png,
 
     /// <summary>
-    /// A printer installed in Windows, by name. "Microsoft Print to PDF" saves PDF files into the folder without asking.
+    /// A printer installed in Windows, by name, printed as a picture through its driver.
+    /// "Microsoft Print to PDF" saves PDF files into the folder without asking.
     /// </summary>
     Windows,
+
+    /// <summary>A thermal printer on the shop network (ESC/POS on port 9100), by its address. Cuts and opens the drawer.</summary>
+    EscPosNetwork,
+
+    /// <summary>A thermal printer installed in Windows (usually USB), sent ESC/POS directly through the driver. Cuts and opens the drawer.</summary>
+    EscPosWindows,
 }
 
 /// <summary>One printer: what it is and where its output goes.</summary>
@@ -26,6 +33,18 @@ public sealed class PrinterSettings
 
     /// <summary>Windows printer name, for Output = Windows (e.g. "Microsoft Print to PDF").</summary>
     public string PrinterName { get; set; } = "Microsoft Print to PDF";
+
+    /// <summary>Network printer address, for Output = EscPosNetwork: "192.168.1.50" or "192.168.1.50:9100".</summary>
+    public string Address { get; set; } = string.Empty;
+
+    /// <summary>Cut the paper after each printout (thermal printers with a cutter).</summary>
+    public bool Cut { get; set; } = true;
+
+    /// <summary>Cash drawer socket on the printer: 2 (usual) or 5.</summary>
+    public int DrawerPin { get; set; } = 2;
+
+    /// <summary>True for thermal printers sent ESC/POS (they can cut and open a cash drawer).</summary>
+    public bool IsEscPos => Output is PrintOutputType.EscPosNetwork or PrintOutputType.EscPosWindows;
 
     /// <summary>Paper roll width: 80 or 58 mm.</summary>
     public int PaperWidthMm { get; set; } = 80;
@@ -82,6 +101,9 @@ public sealed class PrintSettings
 
     /// <summary>Print the receipt automatically when an order is fully paid (or completed, if never printed).</summary>
     public bool AutoPrintReceipt { get; set; } = true;
+
+    /// <summary>Open the cash drawer (on the receipt printer) for cash payments, cash refunds and paid in/out.</summary>
+    public bool OpenDrawerOnCash { get; set; } = true;
 
     /// <summary>Print kitchen tickets automatically when items are sent to the kitchen.</summary>
     public bool AutoPrintKitchen { get; set; } = true;

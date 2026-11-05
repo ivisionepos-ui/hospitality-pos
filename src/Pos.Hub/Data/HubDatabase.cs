@@ -211,6 +211,18 @@ public sealed class HubDatabase : IDisposable
             INSERT INTO staff_history (at, actor_id, staff_id, change)
                 SELECT created_at, NULL, id, 'On the staff list before history was kept (' || role || ')' FROM staff;
             """),
+        (11, """
+            CREATE TABLE drawer_opens (
+                id             INTEGER PRIMARY KEY,
+                at             TEXT NOT NULL,
+                business_date  TEXT NOT NULL,
+                device_id      TEXT NOT NULL,
+                staff_id       TEXT NOT NULL,
+                approved_by    TEXT NOT NULL,
+                reason         TEXT NOT NULL
+            );
+            CREATE INDEX ix_drawer_opens_day ON drawer_opens (business_date);
+            """),
     ];
 
     private readonly SqliteConnection _connection;

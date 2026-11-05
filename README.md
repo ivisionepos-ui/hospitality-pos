@@ -230,6 +230,22 @@ so a screen never sees something that did not happen. A removed device is discon
 
 ### Printing
 
+**Thermal printers and the cash drawer (More → Printers, owner).** For each of the receipt and kitchen printers choose:
+**Network printer** (a thermal printer on the shop network: type its address from its self-test page, e.g.
+192.168.1.50; port 9100 unless given), **USB printer** (a thermal printer installed in Windows on the hub PC, sent
+ESC/POS straight through its driver), **Windows printer** (any printer, printed as a picture, no cut or drawer),
+**Save as PDF** or **Off**; paper 80 or 58 mm; cut on or off. Thermal printers are sent ESC/POS: the printout is drawn
+exactly as the PDF and sent as a picture (GS v 0, in bands of 255 rows), so the £ sign, bold text and layout never
+depend on the printer's character set; then feed and partial cut. This works with Epson TM printers, most generic
+80/58 mm printers and Star printers in ESC/POS mode. **Test receipt printer / Test kitchen printer / Test drawer**
+print or open straight away and say why if they cannot.
+
+The **cash drawer** plugs into the receipt printer (socket pin 2, or 5). It opens for cash payments, cash refunds and
+paid in/out (can be turned off), through the print queue so it never interrupts a printout, and is tried once only
+(never opens late; the tills are told if it could not open). **Open drawer (no sale)** (More → Till) needs a reason
+and a manager's PIN and is recorded; the X report lists today's no-sale openings.
+
+
 Receipts, kitchen tickets and Z reports are drawn as pictures at thermal-printer width (80 mm or 58 mm), so Arabic
 prints correctly on any printer. Each printer in `appsettings.json` → `Printing` has an `Output`:
 
@@ -382,6 +398,11 @@ active staff cannot share a name; PINs are 4–8 digits, not easy (1111, 1234) a
 | GET | /api/drivers/today | staff taking orders | Each driver's day |
 | GET | /api/reports/sales?from=&to= | manager, owner | Sales report for a range of trading days |
 | GET | /api/reports/sales.csv?from=&to=&table= | manager, owner | One table as CSV (summary, items, categories, hours, days, types, staff, payments, vat) |
+| GET / PUT | /api/settings/printers | owner | Printer choices (and printers installed in Windows) |
+| POST | /api/settings/printers/test | owner | Print a test page now on the receipt or kitchen printer |
+| POST | /api/settings/printers/test-drawer | owner | Open the cash drawer now |
+| POST | /api/drawer/open | staff (manager approves) | No sale: open the drawer, with a reason; recorded |
+| GET | /api/drawer/opens?date= | manager, owner | No-sale openings of a day |
 | POST / DELETE | /api/orders/{id}/discount | staff (manager above the limits) | Give or remove an order discount |
 | GET / PUT | /api/settings/discounts | staff / owner | Discount limits for staff |
 | GET | /api/orders/{id}/split?parts=N | cashier | Split the balance equally |

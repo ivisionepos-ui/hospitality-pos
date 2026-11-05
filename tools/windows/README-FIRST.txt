@@ -56,3 +56,13 @@ If Windows says "Windows protected your PC", click "More info" then "Run anyway"
 (the program is not yet signed with a certificate).
 
 If something fails, the window shows the reason: please copy it and send it back.
+
+Receipt and kitchen printers, cash drawer
+  On the till: More > Printers (owner).
+  Network thermal printer: hold the FEED button while switching it on to print its
+  self-test page; it shows the IP address. Choose "Network printer", type that
+  address, press "Test receipt printer".
+  USB thermal printer: install it in Windows with the maker's driver first, then
+  choose "USB printer" and pick its name.
+  The cash drawer cable goes into the receipt printer's DK socket. Press "Test drawer".
+  Give a network printer a fixed address in the router, like the hub PC.

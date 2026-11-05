@@ -295,6 +295,14 @@ public sealed record BackToShopRequest(string Reason);
 /// <param name="Card">Card taken on their deliveries after they went out.</param>
 public sealed record DriverDayView(Guid DriverId, string Name, int Out, Money ToCollect, int Delivered, Money Cash, Money Card);
 
+/// <summary>Open the cash drawer without a sale.</summary>
+/// <param name="Reason">Why (e.g. change for a note).</param>
+public sealed record NoSaleRequest(string Reason);
+
+/// <summary>Print a test page.</summary>
+/// <param name="Target">Receipt or Kitchen printer.</param>
+public sealed record TestPrintRequest(Pos.Hub.Printing.PrintTarget Target);
+
 /// <summary>A discount off the whole order.</summary>
 /// <param name="Type">Percent or Amount.</param>
 /// <param name="Value">Whole percent (1–100) for Percent; pence for Amount.</param>

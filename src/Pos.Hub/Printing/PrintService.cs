@@ -28,6 +28,9 @@ public enum PrintJobKind
 
     /// <summary>End-of-day Z report.</summary>
     ZReport,
+
+    /// <summary>Open the cash drawer on the receipt printer (tried once, never later).</summary>
+    DrawerKick,
 }
 
 /// <summary>Where a print job is.</summary>
@@ -120,6 +123,24 @@ public sealed class PrintService(
             ? throw new KeyNotFoundException("No Z report has been taken for that day.")
             : Save(new PrintJob(NewId(), PrintJobKind.ZReport, PrintTarget.Receipt, null, [], businessDate));
 
+    /// <summary>True when the receipt printer is a thermal printer that can open a cash drawer.</summary>
+    public bool HasDrawer => settings.Receipt.IsEscPos;
+
+    /// <summary>
+    /// Opens the cash drawer through the print queue (so it never interrupts a printout). Does nothing when the receipt
+    /// printer cannot open a drawer. Returns true when the drawer was asked to open.
+    /// </summary>
+    public bool QueueDrawer()
+    {
+        if (!HasDrawer)
+        {
+            return false;
+        }
+
+        Save(new PrintJob(NewId(), PrintJobKind.DrawerKick, PrintTarget.Receipt, null, [], null));
+        return true;
+    }
+
     // ---------- Staff screens ----------
 
     /// <summary>Jobs, newest first, optionally only with one status.</summary>
@@ -204,8 +225,16 @@ public sealed class PrintService(
 
         try
         {
-            var document = Document(row.Job);
-            var output = outputs.Send(document, settings.For(row.Job.Target), row.Job.Id);
+            string? output;
+            if (row.Job.Kind == PrintJobKind.DrawerKick)
+            {
+                output = outputs.OpenDrawer(settings.Receipt) ? "cash drawer" : "(no cash drawer)";
+            }
+            else
+            {
+                output = outputs.Send(Document(row.Job), settings.For(row.Job.Target), row.Job.Id);
+            }
+
             db.Execute(
                 "UPDATE print_jobs SET status = 'Printed', attempts = attempts + 1, printed_at = $at, output = $out, last_error = NULL WHERE id = $id;",
                 ("$at", Iso(clock.GetUtcNow())), ("$out", output), ("$id", jobId.ToString()));
@@ -216,13 +245,16 @@ public sealed class PrintService(
 #pragma warning restore CA1031
         {
             var attempts = row.Attempts + 1;
-            var giveUp = attempts >= Math.Max(1, settings.MaxAttempts) || ex is KeyNotFoundException;
+            // A drawer is never opened late: one try, then the tills are told.
+            var giveUp = attempts >= Math.Max(1, settings.MaxAttempts) || ex is KeyNotFoundException || row.Job.Kind == PrintJobKind.DrawerKick;
             db.Execute(
                 "UPDATE print_jobs SET status = $s, attempts = $a, last_error = $e WHERE id = $id;",
                 ("$s", giveUp ? nameof(PrintJobStatus.Failed) : nameof(PrintJobStatus.Pending)), ("$a", attempts), ("$e", ex.Message), ("$id", jobId.ToString()));
             if (giveUp)
             {
-                live.PrintFailed($"Could not print {Describe(row.Job)}: {ex.Message}");
+                live.PrintFailed(row.Job.Kind == PrintJobKind.DrawerKick
+                    ? $"Could not open the cash drawer: {ex.Message}"
+                    : $"Could not print {Describe(row.Job)}: {ex.Message}");
             }
 
             return giveUp;

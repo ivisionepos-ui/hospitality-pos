@@ -43,6 +43,38 @@ public sealed class Renderer : IDisposable
         return data.ToArray();
     }
 
+    /// <summary>
+    /// Draws the printout in black and white for a thermal printer: every dot darker than mid-grey prints black.
+    /// The width is rounded down to whole bytes (576 dots = 72 bytes on 80 mm paper).
+    /// </summary>
+    public MonoImage RenderMono(PrintDocument document, int widthDots)
+    {
+        var width = widthDots / 8 * 8;
+        var ops = Layout(document, width, out var height);
+        using var bitmap = new SKBitmap(width, height, SKColorType.Gray8, SKAlphaType.Opaque);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(SKColors.White);
+            Draw(canvas, ops);
+        }
+
+        var widthBytes = width / 8;
+        var bits = new byte[widthBytes * height];
+        var pixels = bitmap.GetPixelSpan();
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                if (pixels[(y * bitmap.RowBytes) + x] < 128)
+                {
+                    bits[(y * widthBytes) + (x >> 3)] |= (byte)(0x80 >> (x & 7));
+                }
+            }
+        }
+
+        return new MonoImage(widthBytes, height, bits);
+    }
+
     /// <summary>Draws the printout as a one-page PDF exactly the width of the paper roll.</summary>
     public byte[] RenderPdf(PrintDocument document, int widthDots, double paperWidthMm)
     {

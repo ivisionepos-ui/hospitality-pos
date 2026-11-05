@@ -9,6 +9,7 @@ import { addressFinder } from './address-finder.js';
 import { changeMyPin, devicesDialog, staffDialog } from './staff.js';
 import { discountLimitsDialog } from './discounts.js';
 import { salesReportsDialog } from './reports.js';
+import { noSale, printersDialog } from './printers.js';
 
 function table(rows) {
   return h('table', { class: 'report' }, h('tbody', {}, rows.filter(Boolean).map(([label, value, strong]) =>
@@ -56,8 +57,17 @@ async function cashMovement(kind) {
 }
 
 async function xReport() {
-  const summary = await busy(() => api.get('/api/shifts/current/x-report'));
-  await openDialog(close => ({ title: 'X report (this till, so far)', body: shiftTable(summary), actions: [h('button', { class: 'btn btn-primary', onclick: () => close(), text: 'Done' })] }));
+  const [summary, opens] = await busy(() => Promise.all([api.get('/api/shifts/current/x-report'), api.get('/api/drawer/opens')]));
+  await openDialog(close => ({
+    title: 'X report (this till, so far)',
+    body: [
+      shiftTable(summary),
+      h('p', { class: 'field-hint', text: opens.length
+        ? `Drawer opened with no sale today (all tills): ${opens.map(o => `${timeText(o.at)} ${o.staff} – ${o.reason} (approved by ${o.approvedBy})`).join('; ')}`
+        : 'Drawer opened with no sale today: none.' }),
+    ],
+    actions: [h('button', { class: 'btn btn-primary', onclick: () => close(), text: 'Done' })],
+  }));
 }
 
 async function zReport() {
@@ -363,11 +373,13 @@ export function moreDialog(till) {
             item('Open till', async () => { if (await ensureShift()) toast('The till is open.', 'ok'); }),
             item('Close till (cash count)', closeShift),
             item('Paid in', () => cashMovement('paid-in')),
-            item('Paid out', () => cashMovement('paid-out'))),
-          section('Staff',
+            item('Paid out', () => cashMovement('paid-out')),
+            item('Open drawer (no sale)', () => noSale(withApproval))),
+          section('Staff and devices',
             can('ManageStaff') ? item('Staff', () => staffDialog(till.ctx.me.staff), true) : null,
             item('Change my PIN', () => changeMyPin(till.ctx.me.staff, till.ctx.logout)),
             can('ManageDevices') ? item('Tills and screens', devicesDialog) : null,
+            can('ManageDevices') ? item('Printers', printersDialog) : null,
             can('ManageDevices') ? item('Add a till or screen', addTill) : null),
           section('Reports and shop',
             can('ManageDevices') ? item('Shop details', shopDetails) : null,

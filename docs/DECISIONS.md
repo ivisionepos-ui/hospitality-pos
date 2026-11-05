@@ -179,3 +179,10 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-173 | 2026-11-05 | Reports are limited to 366 days per request; managers and owners only | Keeps the hub fast during trading; sales figures are sensitive |
 | C-174 | 2026-11-05 | CSV cells starting with = + - @ (unless a plain number) are saved as text; files carry a UTF-8 mark | Stops formula injection through item or staff names; £ shows correctly in Excel |
 | C-175 | 2026-11-05 | Category names in reports come from the current menu; a deleted category shows as Other | Simple; categories are rarely deleted |
+| C-176 | 2026-11-05 | Thermal printers get the printout as an ESC/POS picture (GS v 0), drawn by the same renderer as the PDF | The £ sign, bold and layout print the same on every printer, with no code-page problems; one layout to test |
+| C-177 | 2026-11-05 | Picture sent in bands of at most 255 rows; feed then partial cut (GS V 66) | Small printer buffers; a partial cut keeps the receipt from falling |
+| C-178 | 2026-11-05 | Network printers on raw port 9100 (4-second timeout, clear message); USB printers through the Windows driver in RAW mode | Covers the two ways shops connect thermal printers without extra software |
+| C-179 | 2026-11-05 | Printers are chosen on the till (More → Printers) and saved in the hub; file folders cannot be changed from the till | No settings files to edit; a till cannot make the hub write files elsewhere |
+| C-180 | 2026-11-05 | The cash drawer opens through the print queue for cash in/out, tried once only, and only on a thermal receipt printer | Never interrupts a printout and never springs open late |
+| C-181 | 2026-11-05 | No sale needs a reason and a manager (cash management), and every opening is recorded and shown on the X report | Drawer openings without a sale are a common way cash goes missing |
+| C-182 | 2026-11-05 | One receipt printer and drawer for the shop for now | Matches a one-counter takeaway; per-till printers later |

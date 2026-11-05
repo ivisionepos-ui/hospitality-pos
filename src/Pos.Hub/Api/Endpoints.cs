@@ -168,12 +168,20 @@ public static class Endpoints
             Results.Ok(tills.OpenShift(TillId(http), Caller(http).Staff!.Id, Gbp(request.OpeningFloatPence)))))
             .ForStaff(Permission.TakeOrders);
 
-        api.MapPost("/shifts/paid-in", (HttpContext http, TillService tills, CashMovementRequest request) => Handle(() =>
-            Results.Ok(tills.MoveCash(TillId(http), CashMovementType.PaidIn, Gbp(request.AmountPence), request.Reason, Caller(http).Staff!.Id, CashApprover(http)))))
+        api.MapPost("/shifts/paid-in", (HttpContext http, TillService tills, PrintService print, CashMovementRequest request) => Handle(() =>
+        {
+            var shift = tills.MoveCash(TillId(http), CashMovementType.PaidIn, Gbp(request.AmountPence), request.Reason, Caller(http).Staff!.Id, CashApprover(http));
+            DrawerForCash(print, duplicate: false);
+            return Results.Ok(shift);
+        }))
             .ForStaff();
 
-        api.MapPost("/shifts/paid-out", (HttpContext http, TillService tills, CashMovementRequest request) => Handle(() =>
-            Results.Ok(tills.MoveCash(TillId(http), CashMovementType.PaidOut, Gbp(request.AmountPence), request.Reason, Caller(http).Staff!.Id, CashApprover(http)))))
+        api.MapPost("/shifts/paid-out", (HttpContext http, TillService tills, PrintService print, CashMovementRequest request) => Handle(() =>
+        {
+            var shift = tills.MoveCash(TillId(http), CashMovementType.PaidOut, Gbp(request.AmountPence), request.Reason, Caller(http).Staff!.Id, CashApprover(http));
+            DrawerForCash(print, duplicate: false);
+            return Results.Ok(shift);
+        }))
             .ForStaff();
 
         // Blind count: staff enter what they counted; the expected figure and over/short are shown only after closing.
@@ -194,6 +202,7 @@ public static class Endpoints
         {
             var result = tills.TakeCash(orderId, TillId(http), Caller(http).Staff!.Id, request.PaymentId, Gbp(request.TenderedPence),
                 request.AmountPence is { } a ? Gbp(a) : null, request.ForLineIds);
+            DrawerForCash(print, result.WasDuplicate);
             ReceiptWhenPaid(print, orderId, result.Ledger, result.WasDuplicate);
             return Results.Ok(new PaymentResponse(result.Payment, View(result.Ledger), result.WasDuplicate));
         })).ForStaff(Permission.TakeOrders);
@@ -206,11 +215,16 @@ public static class Endpoints
             return Results.Ok(new PaymentResponse(result.Payment, View(result.Ledger), result.WasDuplicate));
         })).ForStaff(Permission.TakeOrders);
 
-        api.MapPost("/orders/{orderId:guid}/payments/{paymentId:guid}/refund", (HttpContext http, TillService tills, Guid orderId, Guid paymentId, RefundRequest request) => Handle(() =>
+        api.MapPost("/orders/{orderId:guid}/payments/{paymentId:guid}/refund", (HttpContext http, TillService tills, PrintService print, Guid orderId, Guid paymentId, RefundRequest request) => Handle(() =>
         {
             var approver = Approver(http, Permission.RefundPayments)
                 ?? throw new AccessDeniedException("ApprovalRequired", "Refunds need a manager. Ask a manager to enter their PIN.", 403);
             var result = tills.Refund(orderId, paymentId, TillId(http), Caller(http).Staff!.Id, approver, Gbp(request.AmountPence), request.Reason, request.RefundId);
+            if (result.Payment.Method == PaymentMethod.Cash)
+            {
+                DrawerForCash(print, result.WasDuplicate);
+            }
+
             return Results.Ok(new PaymentResponse(result.Payment, View(result.Ledger), result.WasDuplicate));
         })).ForStaff();
 
@@ -603,6 +617,37 @@ public static class Endpoints
             Results.Ok(shop.Save(details, Caller(http).Staff!.Id))))
             .ForStaff(Permission.ManageDevices);
 
+        // Printers (More → Printers): how each is connected, test page, test drawer.
+        api.MapGet("/settings/printers", (PrinterSetupService printers) => Handle(() =>
+            Results.Ok(new { setup = printers.Get(), installed = PrinterSetupService.InstalledPrinters() })))
+            .ForStaff(Permission.ManageDevices);
+
+        api.MapPut("/settings/printers", (HttpContext http, PrinterSetupService printers, PrinterSetup setup) => Handle(() =>
+            Results.Ok(printers.Save(setup, Caller(http).Staff!.Id))))
+            .ForStaff(Permission.ManageDevices);
+
+        api.MapPost("/settings/printers/test", (PrinterSetupService printers, ShopDetailsService shop, TestPrintRequest request) => Handle(() =>
+            Results.Ok(new { output = printers.TestPrint(request.Target, shop.Get().BusinessName) })))
+            .ForStaff(Permission.ManageDevices);
+
+        api.MapPost("/settings/printers/test-drawer", (PrinterSetupService printers) => Handle(() =>
+        {
+            printers.TestDrawer();
+            return Results.NoContent();
+        })).ForStaff(Permission.ManageDevices);
+
+        // "No sale": open the drawer without a sale. A manager approves; every opening is recorded.
+        api.MapPost("/drawer/open", (HttpContext http, CashDrawerService drawer, NoSaleRequest request) => Handle(() =>
+        {
+            var approver = Approver(http, Permission.CashManagement)
+                ?? throw new AccessDeniedException("ApprovalRequired", "Opening the drawer without a sale needs a manager. Ask a manager to enter their PIN.", 403);
+            drawer.NoSale(Caller(http).Device.Id, Caller(http).Staff!.Id, approver, request.Reason);
+            return Results.NoContent();
+        })).ForStaff(Permission.TakeOrders);
+
+        api.MapGet("/drawer/opens", (CashDrawerService drawer, DateOnly? date) => Handle(() => Results.Ok(drawer.Opens(date))))
+            .ForStaff(Permission.ViewReports);
+
         api.MapGet("/settings/discounts", (DiscountLimitsService limits) => Handle(() => Results.Ok(limits.Get())))
             .ForStaff();
 
@@ -776,6 +821,15 @@ public static class Endpoints
             .Order(StringComparer.Ordinal);
 
     /// <summary>Prints the receipt automatically the moment an order becomes fully paid (once).</summary>
+    /// <summary>Opens the cash drawer for cash in or out (not again for a resent request).</summary>
+    private static void DrawerForCash(PrintService print, bool duplicate)
+    {
+        if (!duplicate && print.Settings.OpenDrawerOnCash)
+        {
+            print.QueueDrawer();
+        }
+    }
+
     private static void ReceiptWhenPaid(PrintService print, Guid orderId, OrderPayments ledger, bool duplicate)
     {
         if (!duplicate && print.Settings.AutoPrintReceipt && ledger.IsSettled && ledger.Paid.MinorUnits > 0 && !print.HasReceipt(orderId))

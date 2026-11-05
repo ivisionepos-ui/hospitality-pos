@@ -1102,6 +1102,65 @@ test('owner opens sales reports: totals match the hub, items, hours, staff; a ta
   await page.context().close();
 });
 
+test('owner sets up a network receipt printer, test page and drawer; a cashier opens the drawer (no sale) with a manager', async () => {
+  // A stand-in network thermal printer: records what it is sent.
+  const net = require('node:net');
+  const received = [];
+  const server = net.createServer(socket => { const parts = []; socket.on('data', d => parts.push(d)); socket.on('end', () => received.push(Buffer.concat(parts))); });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const address = `127.0.0.1:${server.address().port}`;
+  const waitFor = async n => { for (let i = 0; i < 100 && received.length < n; i++) await new Promise(r => setTimeout(r, 50)); assert.ok(received.length >= n, `printouts: ${received.length}`); };
+
+  const owner = await tillPage(shop.till2);
+  await login(owner, '4826');
+  await owner.getByRole('button', { name: 'More', exact: true }).click();
+  await top(owner).getByRole('button', { name: 'Printers' }).click();
+  const receipt = top(owner).getByLabel('Receipt printer', { exact: true });
+  await receipt.getByRole('radio', { name: 'Network printer' }).click();
+  await top(owner).getByRole('button', { name: 'Test receipt printer' }).click();
+  await owner.getByText("Type the printer's address, e.g. 192.168.1.50 (it is on the printer's self-test page).").waitFor(); // nothing typed yet
+  await receipt.getByLabel('Receipt printer: address').fill(address);
+  await receipt.getByText('Cash drawer (plugs into this printer)').waitFor();
+  await shot(owner, 'ui-printers');
+  await top(owner).getByRole('button', { name: 'Test receipt printer' }).click();
+  await owner.getByText(`Test page sent to ${address}.`).waitFor();
+  await waitFor(1);
+  assert.deepEqual([...received[0].subarray(0, 6)], [0x1B, 0x40, 0x1D, 0x76, 0x30, 0x00]); // reset, then the picture
+  assert.deepEqual([...received[0].subarray(-7)], [0x1B, 0x64, 0x04, 0x1D, 0x56, 0x42, 0x00]); // feed and cut
+  await top(owner).getByRole('button', { name: 'Test drawer' }).click();
+  await owner.getByText('Drawer opened.').waitFor();
+  await waitFor(2);
+  assert.deepEqual([...received[1]], [0x1B, 0x40, 0x1B, 0x70, 0x00, 0x19, 0xFA]);
+  await top(owner).getByRole('button', { name: 'Save' }).click();
+  await owner.getByText('Printers saved. New printouts use them.').waitFor();
+
+  // A cashier needs a manager to open the drawer without a sale.
+  const page = await tillPage(shop.till1);
+  await login(page, '5931');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Open drawer (no sale)' }).click();
+  await top(page).getByRole('button', { name: 'Change for a note' }).click();
+  await top(page).getByText('Opening the drawer without a sale needs a manager. Manager, enter your PIN.').waitFor();
+  await pin(page, '7402');
+  await top(page).getByRole('button', { name: 'Approve' }).click();
+  await page.getByText('Drawer opened. It is recorded as a no sale.').waitFor();
+  await waitFor(3);
+  assert.deepEqual([...received[2]], [0x1B, 0x40, 0x1B, 0x70, 0x00, 0x19, 0xFA]);
+  const opens = await call('GET', '/api/drawer/opens', { device: shop.owner.device, token: shop.owner.token });
+  assert.deepEqual(opens.map(o => [o.staff, o.approvedBy, o.reason]), [['Cara Cashier', 'Max Manager', 'Change for a note']]);
+
+  // Back to PDF files for the rest of the tests.
+  await owner.getByRole('button', { name: 'More', exact: true }).click();
+  await top(owner).getByRole('button', { name: 'Printers' }).click();
+  await top(owner).getByLabel('Receipt printer', { exact: true }).getByRole('radio', { name: 'Save as PDF' }).click();
+  await top(owner).getByRole('button', { name: 'Save' }).click();
+  await owner.getByText('Printers saved. New printouts use them.').last().waitFor();
+  assert.deepEqual([...page.errors, ...owner.errors], []);
+  await page.context().close();
+  await owner.context().close();
+  server.close();
+});
+
 test('kitchen screen: register it, orders appear live, Start, new items marked, Ready tells the till, Recall', async () => {
   const owner = { device: shop.owner.device, token: shop.owner.token };
   await call('POST', '/api/staff', owner, { name: 'Kofi Kitchen', role: 'Kitchen', pin: '3185' });
@@ -1174,7 +1233,8 @@ test('kitchen screen: register it, orders appear live, Start, new items marked, 
 });
 
 test('every printout was made: kitchen tickets, additions, the void slip and receipts', async () => {
-  const jobs = await call('GET', '/api/print-jobs', { device: shop.owner.device, token: shop.owner.token });
+  const jobs = (await call('GET', '/api/print-jobs', { device: shop.owner.device, token: shop.owner.token }))
+    .filter(j => j.job.kind !== 'DrawerKick'); // drawer openings are not printouts
   const kinds = new Set(jobs.map(j => j.job.kind));
   for (const kind of ['KitchenNew', 'KitchenAdditional', 'KitchenVoid', 'Receipt']) assert.ok(kinds.has(kind), kind);
   assert.ok(jobs.every(j => j.status === 'Printed'), 'all printed');

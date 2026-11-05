@@ -144,3 +144,12 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-138 | 2026-11-04 | Other PCs connect to the hub's network address (https://<address>:5443), never localhost; the till shows the address under More → Add a till or screen | "localhost refused to connect" on a second PC: localhost means that PC itself |
 | C-139 | 2026-11-04 | Double-click files for the firewall rule (hub PC, local subnet only, port 5443) and for connecting another PC (certificate check code compared by the person before installing) | Shop staff can set up a till without typing commands; the check code stops a wrong certificate being trusted |
 | C-140 | 2026-11-04 | The Windows package is self-contained (no .NET install needed), without debug files | A PC without .NET could not start the hub |
+| C-141 | 2026-11-05 | Nobody can change their own role or remove themselves | No self-promotion; the shop can never lose its last owner |
+| C-142 | 2026-11-05 | Managers manage only cashiers, waiters and kitchen staff; only the owner manages managers and owners | Same rule as adding staff; a manager cannot raise their own team's power |
+| C-143 | 2026-11-05 | Changing your own PIN needs your current PIN; wrong ones count towards the device lockout | Someone using a till left logged in cannot take over a PIN |
+| C-144 | 2026-11-05 | A manager can set a new PIN for a person who forgot theirs, without knowing the old one | Forgotten PINs are common; the change is recorded as "PIN reset" |
+| C-145 | 2026-11-05 | A role change logs the person out everywhere; a name change does not | New permissions apply at once; renaming should not interrupt a shift |
+| C-146 | 2026-11-05 | Removed staff are kept (records stay linked) and can be brought back only with a new PIN | Their old PIN was wiped on removal, so it can never work again |
+| C-147 | 2026-11-05 | Two active staff cannot have the same name (ignoring case and extra spaces); names up to 40 characters | Reports, approvals and history must say clearly who did what |
+| C-148 | 2026-11-05 | Every staff change is recorded (when, who, whom, what) in staff_history, never the PIN; staff already on the list get a starting entry | An audit trail for disputes and for licensing to other shops |
+| C-149 | 2026-11-05 | The till in use cannot remove itself | Stops the owner locking themselves out of the PC they are on |

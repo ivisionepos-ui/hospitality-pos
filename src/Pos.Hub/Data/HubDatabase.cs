@@ -199,6 +199,18 @@ public sealed class HubDatabase : IDisposable
                 updated_by  TEXT NOT NULL
             );
             """),
+        (10, """
+            CREATE TABLE staff_history (
+                id        INTEGER PRIMARY KEY,
+                at        TEXT NOT NULL,
+                actor_id  TEXT REFERENCES staff (id),
+                staff_id  TEXT NOT NULL REFERENCES staff (id),
+                change    TEXT NOT NULL
+            );
+            CREATE INDEX ix_staff_history_staff ON staff_history (staff_id);
+            INSERT INTO staff_history (at, actor_id, staff_id, change)
+                SELECT created_at, NULL, id, 'On the staff list before history was kept (' || role || ')' FROM staff;
+            """),
     ];
 
     private readonly SqliteConnection _connection;

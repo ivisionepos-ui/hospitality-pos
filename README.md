@@ -293,6 +293,16 @@ are used. Language `en` (default), `ar` or `both` stays in appsettings.json. UK 
 | Manager | Everything in the shop: approvals, cancels, menu, staff below manager, reports |
 | Owner | Everything, including devices and managers |
 
+**Staff screen** (More → Staff, managers and owners): add staff (name, role, PIN twice), edit name or role, set a
+new PIN for someone who forgot theirs, remove (logged out everywhere at once; records kept) and bring back with a new
+PIN. Rules: nobody changes their own role or removes themselves (so there is always an owner); managers manage only
+cashiers, waiters and kitchen staff; a role change logs the person out so the new permissions apply at once; two
+active staff cannot share a name; PINs are 4–8 digits, not easy (1111, 1234) and unique. Every change is recorded
+(who, whom, what, when; never the PIN) and shown under History / All changes.
+**Change my PIN** (everyone, also on the kitchen screen) needs the current PIN; wrong ones count towards the
+5-wrong-PINs lockout. **Tills and screens** (owner) lists registered devices and removes a lost or replaced one
+(not the one in use).
+
 ### API (version 1)
 
 | Method | Route | Who | What it does |
@@ -324,7 +334,9 @@ are used. Language `en` (default), `ar` or `both` stays in appsettings.json. UK 
 | GET / DELETE | /api/devices[/{id}] | owner | List or remove devices |
 | POST | /api/auth/login, /api/auth/logout | device / staff | PIN login, logout |
 | GET | /api/auth/me | staff | Who is logged in and what they may do |
-| GET / POST / DELETE | /api/staff[/{id}] | manager, owner | List, add, remove staff |
+| GET / POST / PUT / DELETE | /api/staff[/{id}] | manager, owner | List, add, edit name and role, remove staff |
+| POST | /api/staff/{id}/reactivate | manager, owner | Bring back a removed person with a new PIN |
+| GET | /api/staff/history[?staffId=] | manager, owner | Record of staff changes |
 | GET | /api/delivery/check?postcode= | cashier | Postcode check: tidy postcode, town, distance from the shop, and the addresses in it (offline: addresses without distance; 503 only if neither is known) |
 | GET | /api/delivery/settings | any device | Delivery bands, minimum order, maximum distance |
 | GET | /api/customers?phone= | cashier | Past customers whose phone contains these digits (4+) |
@@ -339,7 +351,7 @@ are used. Language `en` (default), `ar` or `both` stays in appsettings.json. UK 
 | POST | /api/addresses/files/reload | owner | Load new or changed files from the addresses folder |
 | POST | /api/orders/{id}/contact | cashier | Change the customer's details on an open order |
 | POST | /api/orders/{id}/delivery | cashier (manager for a changed fee) | Change the distance or fee on an open delivery order |
-| POST | /api/staff/{id}/pin | self, manager | Change a PIN |
+| POST | /api/staff/{id}/pin | self (with current PIN), manager | Change or reset a PIN |
 | GET | /api/menu, /api/menu/changes?since=N | any device | Menu and change log |
 | PUT | /api/menu | manager | Import a whole menu (checked) |
 | POST | /api/menu/products/{id}/price, /rename | manager | Change price or name |

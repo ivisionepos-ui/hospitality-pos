@@ -175,7 +175,7 @@ public sealed class AccessTests : HubTestBase
     [Fact]
     public async Task Staff_can_change_their_own_pin_and_old_logins_end()
     {
-        Assert.Equal(HttpStatusCode.NoContent, (await Cashier.Post($"/api/staff/{Shop.CashierId}/pin", new ChangePinRequest("8264"))).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await Cashier.Post($"/api/staff/{Shop.CashierId}/pin", new ChangePinRequest("8264", TestShop.CashierPin))).StatusCode);
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await Cashier.Post("/api/orders", EmptyOrder())).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await TillOnly.Post("/api/auth/login", new LoginRequest(TestShop.CashierPin))).StatusCode);

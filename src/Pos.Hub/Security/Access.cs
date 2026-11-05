@@ -33,6 +33,14 @@ public sealed record StaffMember(Guid Id, string Name, StaffRole Role, bool IsAc
     public bool Can(Permission permission) => IsActive && RolePermissions.Has(Role, permission);
 }
 
+/// <summary>One change to the staff list.</summary>
+/// <param name="At">When.</param>
+/// <param name="StaffId">Who was changed.</param>
+/// <param name="StaffName">Their name now.</param>
+/// <param name="ChangedBy">Who made the change ("Set-up" for the first owner).</param>
+/// <param name="Change">What changed (never a PIN).</param>
+public sealed record StaffChange(DateTimeOffset At, Guid StaffId, string StaffName, string ChangedBy, string Change);
+
 /// <summary>A registered till or screen.</summary>
 /// <param name="Id">Id.</param>
 /// <param name="Name">Name, e.g. "Till 1".</param>
@@ -140,7 +148,9 @@ public sealed class AccessService
             throw new AccessDeniedException("AlreadySetUp", "The owner has already been set up.", 409);
         }
 
-        return Insert(name, StaffRole.Owner, pin);
+        var owner = Insert(name, StaffRole.Owner, pin);
+        Record(null, owner.Id, "Shop set up: owner");
+        return owner;
     });
 
     /// <summary>Adds a staff member.</summary>
@@ -152,39 +162,144 @@ public sealed class AccessService
             throw new AccessDeniedException("Forbidden", $"A {actor.Role} cannot add a {role}.", 403);
         }
 
-        return Insert(name, role, pin);
+        var staff = Insert(name, role, pin);
+        Record(actor.Id, staff.Id, $"Added as {role}");
+        return staff;
     });
 
-    /// <summary>Changes a staff member's PIN. Anyone may change their own; managers and owners may change others they manage.</summary>
-    public void ChangePin(StaffMember actor, Guid staffId, string pin) => _db.RunInTransaction(() =>
+    /// <summary>
+    /// Changes a staff member's PIN. Anyone may change their own (with their current PIN); managers and owners may set
+    /// a new PIN for others they manage (for a forgotten PIN). The person's logins end, so they log in with the new PIN.
+    /// </summary>
+    public void ChangePin(StaffMember actor, Guid deviceId, Guid staffId, string pin, string? currentPin) => _db.Run(() =>
     {
         ArgumentNullException.ThrowIfNull(actor);
-        var target = FindStaff(staffId) ?? throw new KeyNotFoundException("Staff member not found.");
-        if (actor.Id != staffId && !RolePermissions.CanManage(actor.Role, target.Role))
+        var target = FindStaffNow(staffId) ?? throw new KeyNotFoundException("Staff member not found.");
+        if (actor.Id == staffId)
+        {
+            // The current PIN proves it is really them, not someone using a till left logged in. Wrong ones count
+            // towards the lockout, like a wrong login.
+            var who = _db.RunInTransaction(() => CheckPin(deviceId, currentPin ?? string.Empty));
+            if (who?.Id != actor.Id)
+            {
+                if (who is not null)
+                {
+                    _db.Execute("INSERT INTO pin_failures (device_id, at) VALUES ($d, $at);", ("$d", deviceId.ToString()), ("$at", Iso(_clock.GetUtcNow())));
+                }
+
+                throw new AccessDeniedException("WrongPin", "Your current PIN is wrong.", 401);
+            }
+        }
+        else if (!RolePermissions.CanManage(actor.Role, target.Role))
         {
             throw new AccessDeniedException("Forbidden", "Not allowed to change this PIN.", 403);
         }
 
-        ValidatePin(pin);
-        EnsurePinFree(pin, staffId);
-        _db.Execute("UPDATE staff SET pin_lookup = $p WHERE id = $id;", ("$p", PinLookup(pin)), ("$id", staffId.ToString()));
-        _db.Execute("UPDATE sessions SET revoked = 1 WHERE staff_id = $id;", ("$id", staffId.ToString()));
+        _db.RunInTransaction(() =>
+        {
+            if (!target.IsActive)
+            {
+                throw new InvalidOperationException($"{target.Name} has been removed. Bring them back first.");
+            }
+
+            ValidatePin(pin);
+            EnsurePinFree(pin, staffId);
+            _db.Execute("UPDATE staff SET pin_lookup = $p WHERE id = $id;", ("$p", PinLookup(pin)), ("$id", staffId.ToString()));
+            _db.Execute("UPDATE sessions SET revoked = 1 WHERE staff_id = $id;", ("$id", staffId.ToString()));
+            Record(actor.Id, staffId, actor.Id == staffId ? "Changed their own PIN" : "PIN reset");
+            return 0;
+        });
         return 0;
     });
 
-    /// <summary>Removes a staff member: they can no longer log in, and their logins end now.</summary>
+    /// <summary>
+    /// Changes a staff member's name or role. Nobody can change their own role (so the shop always keeps an owner,
+    /// and nobody promotes themselves). A role change ends their logins, so new permissions apply at once.
+    /// </summary>
+    public StaffMember UpdateStaff(StaffMember actor, Guid staffId, string name, StaffRole role) => _db.RunInTransaction(() =>
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        var target = FindStaff(staffId) ?? throw new KeyNotFoundException("Staff member not found.");
+        if (actor.Id == staffId && role != target.Role)
+        {
+            throw new AccessDeniedException("Forbidden", "You cannot change your own role. Ask the owner.", 403);
+        }
+
+        if (actor.Id != staffId && (!RolePermissions.CanManage(actor.Role, target.Role) || !RolePermissions.CanManage(actor.Role, role)))
+        {
+            throw new AccessDeniedException("Forbidden", $"A {actor.Role} cannot make this change.", 403);
+        }
+
+        var clean = CleanName(name);
+        EnsureNameFree(clean, staffId);
+        var changes = new List<string>();
+        if (clean != target.Name)
+        {
+            changes.Add($"Name {target.Name} → {clean}");
+        }
+
+        if (role != target.Role)
+        {
+            changes.Add($"Role {target.Role} → {role}");
+            _db.Execute("UPDATE sessions SET revoked = 1 WHERE staff_id = $id;", ("$id", staffId.ToString()));
+        }
+
+        if (changes.Count > 0)
+        {
+            _db.Execute("UPDATE staff SET name = $n, role = $r WHERE id = $id;", ("$n", clean), ("$r", role.ToString()), ("$id", staffId.ToString()));
+            Record(actor.Id, staffId, string.Join("; ", changes));
+        }
+
+        return target with { Name = clean, Role = role };
+    });
+
+    /// <summary>Removes a staff member: they can no longer log in, and their logins end now. Their history is kept.</summary>
     public void Deactivate(StaffMember actor, Guid staffId) => _db.RunInTransaction(() =>
     {
         ArgumentNullException.ThrowIfNull(actor);
         var target = FindStaff(staffId) ?? throw new KeyNotFoundException("Staff member not found.");
-        if (!RolePermissions.CanManage(actor.Role, target.Role) || actor.Id == staffId)
+        if (actor.Id == staffId)
+        {
+            throw new AccessDeniedException("Forbidden", "You cannot remove yourself.", 403);
+        }
+
+        if (!RolePermissions.CanManage(actor.Role, target.Role))
         {
             throw new AccessDeniedException("Forbidden", "Not allowed to remove this staff member.", 403);
         }
 
+        if (!target.IsActive)
+        {
+            return 0;
+        }
+
         _db.Execute("UPDATE staff SET is_active = 0, pin_lookup = $dead WHERE id = $id;", ("$dead", "removed:" + staffId), ("$id", staffId.ToString()));
         _db.Execute("UPDATE sessions SET revoked = 1 WHERE staff_id = $id;", ("$id", staffId.ToString()));
+        Record(actor.Id, staffId, "Removed");
         return 0;
+    });
+
+    /// <summary>Brings back a removed staff member, with a new PIN (their old one was cleared when they were removed).</summary>
+    public StaffMember Reactivate(StaffMember actor, Guid staffId, string pin) => _db.RunInTransaction(() =>
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        var target = FindStaff(staffId) ?? throw new KeyNotFoundException("Staff member not found.");
+        if (!RolePermissions.CanManage(actor.Role, target.Role))
+        {
+            throw new AccessDeniedException("Forbidden", "Not allowed to bring back this staff member.", 403);
+        }
+
+        if (target.IsActive)
+        {
+            throw new InvalidOperationException($"{target.Name} is already active.");
+        }
+
+        EnsureNameFree(target.Name, staffId);
+        ValidatePin(pin);
+        EnsurePinFree(pin, staffId);
+        _db.Execute("UPDATE staff SET is_active = 1, pin_lookup = $p WHERE id = $id;", ("$p", PinLookup(pin)), ("$id", staffId.ToString()));
+        Record(actor.Id, staffId, "Brought back");
+        return target with { IsActive = true };
     });
 
     /// <summary>A staff member's name, or "Unknown".</summary>
@@ -194,12 +309,35 @@ public sealed class AccessService
     /// <summary>All staff, active first, by name.</summary>
     public IReadOnlyList<StaffMember> ListStaff() => _db.Run(() =>
     {
-        using var command = _db.Command("SELECT id, name, role, is_active FROM staff ORDER BY is_active DESC, name;");
+        using var command = _db.Command("SELECT id, name, role, is_active FROM staff ORDER BY is_active DESC, name COLLATE NOCASE;");
         using var reader = command.ExecuteReader();
         var result = new List<StaffMember>();
         while (reader.Read())
         {
             result.Add(ReadStaff(reader));
+        }
+
+        return result;
+    });
+
+    /// <summary>Staff changes, newest first: who changed whom, and what (never the PINs themselves).</summary>
+    public IReadOnlyList<StaffChange> StaffHistory(Guid? staffId, int limit = 200) => _db.Run(() =>
+    {
+        using var command = _db.Command(
+            """
+            SELECT h.at, h.staff_id, s.name, h.actor_id, a.name, h.change
+            FROM staff_history h JOIN staff s ON s.id = h.staff_id LEFT JOIN staff a ON a.id = h.actor_id
+            WHERE $s IS NULL OR h.staff_id = $s
+            ORDER BY h.id DESC LIMIT $limit;
+            """,
+            ("$s", (object?)staffId?.ToString() ?? DBNull.Value), ("$limit", Math.Clamp(limit, 1, 1000)));
+        using var reader = command.ExecuteReader();
+        var result = new List<StaffChange>();
+        while (reader.Read())
+        {
+            result.Add(new StaffChange(
+                DateTimeOffset.Parse(reader.GetString(0), CultureInfo.InvariantCulture), Guid.Parse(reader.GetString(1)), reader.GetString(2),
+                reader.IsDBNull(4) ? "Set-up" : reader.GetString(4), reader.GetString(5)));
         }
 
         return result;
@@ -434,15 +572,52 @@ public sealed class AccessService
 
     private StaffMember Insert(string name, StaffRole role, string pin)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var clean = CleanName(name);
+        EnsureNameFree(clean, null);
         ValidatePin(pin);
         EnsurePinFree(pin, null);
-        var staff = new StaffMember(Guid.CreateVersion7(_clock.GetUtcNow()), name.Trim(), role, true);
+        var staff = new StaffMember(Guid.CreateVersion7(_clock.GetUtcNow()), clean, role, true);
         _db.Execute(
             "INSERT INTO staff (id, name, role, pin_lookup, is_active, created_at) VALUES ($id, $n, $r, $p, 1, $c);",
             ("$id", staff.Id.ToString()), ("$n", staff.Name), ("$r", role.ToString()), ("$p", PinLookup(pin)), ("$c", Iso(_clock.GetUtcNow())));
         return staff;
     }
+
+    /// <summary>Longest staff name (fits the till's top bar and printouts).</summary>
+    public const int MaxNameLength = 40;
+
+    private static string CleanName(string? name)
+    {
+        var clean = string.Join(' ', (name ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (clean.Length == 0)
+        {
+            throw new ArgumentException("Enter a name.");
+        }
+
+        if (clean.Length > MaxNameLength || clean.Any(char.IsControl))
+        {
+            throw new ArgumentException($"A name can be up to {MaxNameLength} characters.");
+        }
+
+        return clean;
+    }
+
+    // Two active staff with the same name would make reports and approvals ambiguous.
+    private void EnsureNameFree(string name, Guid? exceptStaffId)
+    {
+        var other = _db.Scalar("SELECT id FROM staff WHERE is_active = 1 AND name = $n COLLATE NOCASE AND id <> $id;", ("$n", name), ("$id", exceptStaffId?.ToString() ?? string.Empty));
+        if (other is not null)
+        {
+            throw new ArgumentException($"Someone called {name} is already on the staff list. Add a surname or initial.");
+        }
+    }
+
+    private void Record(Guid? actorId, Guid staffId, string change) =>
+        _db.Execute(
+            "INSERT INTO staff_history (at, actor_id, staff_id, change) VALUES ($at, $a, $s, $c);",
+            ("$at", Iso(_clock.GetUtcNow())), ("$a", (object?)actorId?.ToString() ?? DBNull.Value), ("$s", staffId.ToString()), ("$c", change));
+
+    private StaffMember? FindStaffNow(Guid id) => _db.RunInTransaction(() => FindStaff(id));
 
     private void EnsurePinFree(string pin, Guid? exceptStaffId)
     {

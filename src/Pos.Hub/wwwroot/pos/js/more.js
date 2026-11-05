@@ -1,4 +1,4 @@
-// The "More" menu: till shift, X and Z reports, adding a till, failed prints, backups.
+// The "More" menu: menu, till shift, staff, X and Z reports, adding a till, failed prints, backups.
 import { api } from './api.js';
 import { h, mount, money, penceText, timeText, toast } from './dom.js';
 import { alertDialog, amountDialog, busy, confirmDialog, openDialog, textDialog } from './dialogs.js';
@@ -6,6 +6,7 @@ import { ensureShift } from './pay.js';
 import { withApproval } from './till.js';
 import { soldOutDialog } from './editmenu.js';
 import { addressFinder } from './address-finder.js';
+import { changeMyPin, devicesDialog, staffDialog } from './staff.js';
 
 function table(rows) {
   return h('table', { class: 'report' }, h('tbody', {}, rows.filter(Boolean).map(([label, value, strong]) =>
@@ -360,13 +361,17 @@ export function moreDialog(till) {
             item('Close till (cash count)', closeShift),
             item('Paid in', () => cashMovement('paid-in')),
             item('Paid out', () => cashMovement('paid-out'))),
+          section('Staff',
+            can('ManageStaff') ? item('Staff', () => staffDialog(till.ctx.me.staff), true) : null,
+            item('Change my PIN', () => changeMyPin(till.ctx.me.staff, till.ctx.logout)),
+            can('ManageDevices') ? item('Tills and screens', devicesDialog) : null,
+            can('ManageDevices') ? item('Add a till or screen', addTill) : null),
           section('Reports and shop',
             can('ManageDevices') ? item('Shop details', shopDetails) : null,
             can('ViewReports') ? item('X report (this till)', xReport) : null,
             can('ViewReports') ? item('End of day (Z report)', zReport) : null,
             item('Failed printouts', failedPrints),
             can('ViewReports') ? item('Back up now', backupNow) : null,
-            can('ManageDevices') ? item('Add a till or screen', addTill) : null,
             can('ManageDevices') ? item('Address lookup', addressLookup) : null,
             can('ManageDevices') ? item('Address files', addressFiles) : null)),
         h('p', { class: 'version', text: `Version ${window.posVersion ?? ''} · ${till.ctx.me.staff.name} (${till.ctx.me.staff.role})` }),

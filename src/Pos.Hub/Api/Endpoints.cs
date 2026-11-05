@@ -71,7 +71,13 @@ public static class Endpoints
 
         api.MapDelete("/devices/{deviceId:guid}", (HttpContext http, AccessService access, Live.LiveUpdates live, Guid deviceId) => Handle(() =>
         {
-            access.RemoveDevice(Caller(http).Staff!, deviceId);
+            var caller = Caller(http);
+            if (caller.Device.Id == deviceId)
+            {
+                throw new InvalidOperationException("You cannot remove the till you are using. Remove it from another till.");
+            }
+
+            access.RemoveDevice(caller.Staff!, deviceId);
             live.DisconnectDevice(deviceId);
             return Results.NoContent();
         })).ForStaff(Permission.ManageDevices);
@@ -103,9 +109,21 @@ public static class Endpoints
 
         api.MapPost("/staff/{staffId:guid}/pin", (HttpContext http, AccessService access, Guid staffId, ChangePinRequest request) => Handle(() =>
         {
-            access.ChangePin(Caller(http).Staff!, staffId, request.Pin);
+            var caller = Caller(http);
+            access.ChangePin(caller.Staff!, caller.Device.Id, staffId, request.Pin, request.CurrentPin);
             return Results.NoContent();
         })).ForStaff();
+
+        api.MapPut("/staff/{staffId:guid}", (HttpContext http, AccessService access, Guid staffId, UpdateStaffRequest request) => Handle(() =>
+            Results.Ok(access.UpdateStaff(Caller(http).Staff!, staffId, request.Name, request.Role))))
+            .ForStaff(Permission.ManageStaff);
+
+        api.MapPost("/staff/{staffId:guid}/reactivate", (HttpContext http, AccessService access, Guid staffId, ReactivateStaffRequest request) => Handle(() =>
+            Results.Ok(access.Reactivate(Caller(http).Staff!, staffId, request.Pin))))
+            .ForStaff(Permission.ManageStaff);
+
+        api.MapGet("/staff/history", (AccessService access, Guid? staffId) => Handle(() => Results.Ok(access.StaffHistory(staffId))))
+            .ForStaff(Permission.ManageStaff);
 
         api.MapDelete("/staff/{staffId:guid}", (HttpContext http, AccessService access, Guid staffId) => Handle(() =>
         {

@@ -709,6 +709,107 @@ test('owner opens Add a till or screen: the code and the steps for another PC ar
   await owner.context().close();
 });
 
+async function pinIn(page, digits) {
+  await pin(page, digits);
+  await top(page).locator('.keypad-enter').click();
+}
+
+test('owner adds, edits, removes and brings back staff; the new person changes their own PIN; a manager sees less', async () => {
+  const owner = await tillPage(shop.till2);
+  await login(owner, '4826');
+  await owner.getByRole('button', { name: 'More', exact: true }).click();
+  await top(owner).getByRole('button', { name: 'Staff', exact: true }).click();
+  await top(owner).getByLabel('Olivia Owner').getByText('Olivia Owner (you)').waitFor();
+
+  // Add: name and role, then the PIN twice. An easy PIN is explained before anything is saved.
+  await top(owner).getByRole('button', { name: '+ Add staff' }).click();
+  await top(owner).getByLabel('Name').fill('Wendy  Waiter');
+  await top(owner).getByRole('radio', { name: 'Waiter' }).click();
+  await top(owner).getByRole('button', { name: 'Next: PIN' }).click();
+  await pinIn(owner, '2222');
+  await top(owner).getByText('That PIN is too easy to guess (like 1111 or 1234). Choose another.').waitFor();
+  await pinIn(owner, '6152');
+  await pinIn(owner, '6159');
+  await top(owner).getByText('The two PINs are different. Start again.').waitFor();
+  await pinIn(owner, '6152');
+  await pinIn(owner, '6152');
+  await owner.getByText('Wendy Waiter added as Waiter. They log in with their PIN.').waitFor();
+
+  // A second person with the same name is refused by the hub, and the form comes back to fix it.
+  await top(owner).getByRole('button', { name: '+ Add staff' }).click();
+  await top(owner).getByLabel('Name').fill('wendy waiter');
+  await top(owner).getByRole('button', { name: 'Next: PIN' }).click();
+  await pinIn(owner, '6170');
+  await pinIn(owner, '6170');
+  await owner.getByText('Someone called wendy waiter is already on the staff list. Add a surname or initial.').waitFor();
+  await top(owner).getByRole('button', { name: 'Close' }).click(); // the PIN asked again: give up
+
+  // Edit: make Wendy a cashier.
+  const wendy = () => top(owner).getByLabel('Wendy Waiter', { exact: true });
+  await wendy().getByRole('button', { name: 'Edit' }).click();
+  await top(owner).getByRole('radio', { name: 'Cashier' }).click();
+  await top(owner).getByRole('button', { name: 'Save' }).click();
+  await owner.getByText('Wendy Waiter is now Cashier. They need to log in again.').waitFor();
+  await wendy().getByText('Cashier', { exact: true }).waitFor();
+
+  // Remove, then bring back with a new PIN.
+  await wendy().getByRole('button', { name: 'Remove' }).click();
+  await top(owner).getByRole('button', { name: 'Remove' }).click();
+  await wendy().getByText('Cashier · removed').waitFor();
+  await wendy().getByRole('button', { name: 'Bring back' }).click();
+  await pinIn(owner, '6153');
+  await pinIn(owner, '6153');
+  await owner.getByText('Wendy Waiter is back as Cashier.').waitFor();
+  await shot(owner, 'ui-staff');
+
+  await top(owner).getByRole('button', { name: 'All changes' }).click();
+  for (const change of ['Added as Waiter', 'Role Waiter → Cashier', 'Removed', 'Brought back']) await top(owner).getByRole('cell', { name: change, exact: true }).waitFor();
+  assert.equal(await top(owner).getByText('6152').count(), 0); // PINs are never shown
+  await shot(owner, 'ui-staff-history');
+  await top(owner).getByRole('button', { name: 'Done' }).click();
+  await top(owner).getByRole('button', { name: 'Done' }).click();
+
+  // Tills and screens: the owner's own till cannot be removed from itself.
+  await owner.getByRole('button', { name: 'More', exact: true }).click();
+  await shot(owner, 'ui-more');
+  await top(owner).getByRole('button', { name: 'Tills and screens' }).click();
+  await top(owner).getByText('Till 2 (this one)').waitFor();
+  assert.equal(await top(owner).getByLabel('Till 2', { exact: true }).getByRole('button', { name: 'Remove' }).count(), 0);
+  await top(owner).getByRole('button', { name: 'Done' }).click();
+
+  // Wendy logs in and changes her own PIN; she must log in again with it.
+  const page = await tillPage(shop.till1);
+  await login(page, '6153');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  assert.equal(await top(page).getByRole('button', { name: 'Staff', exact: true }).count(), 0); // cashiers do not manage staff
+  await top(page).getByRole('button', { name: 'Change my PIN' }).click();
+  await pinIn(page, '6158'); // wrong current PIN
+  await pinIn(page, '6154');
+  await pinIn(page, '6154');
+  await page.getByText('Your current PIN is wrong.').waitFor();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Change my PIN' }).click();
+  await pinIn(page, '6153');
+  await pinIn(page, '6154');
+  await pinIn(page, '6154');
+  await page.getByText('PIN changed. Log in with your new PIN.').waitFor();
+  await login(page, '6154');
+
+  // A manager sees the staff list but cannot change the owner or make managers.
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await login(page, '7402');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Staff', exact: true }).click();
+  assert.equal(await top(page).getByLabel('Olivia Owner', { exact: true }).getByRole('button', { name: 'Edit' }).count(), 0);
+  await top(page).getByLabel('Wendy Waiter', { exact: true }).getByRole('button', { name: 'Edit' }).click();
+  assert.deepEqual(await top(page).getByRole('radio').allInnerTexts().then(t => t.map(x => x.split('\n')[0])), ['Cashier', 'Waiter', 'Kitchen']);
+  await top(page).getByRole('button', { name: 'Cancel' }).click();
+
+  assert.deepEqual([...page.errors, ...owner.errors], []);
+  await page.context().close();
+  await owner.context().close();
+});
+
 test('kitchen screen: register it, orders appear live, Start, new items marked, Ready tells the till, Recall', async () => {
   const owner = { device: shop.owner.device, token: shop.owner.token };
   await call('POST', '/api/staff', owner, { name: 'Kofi Kitchen', role: 'Kitchen', pin: '3185' });

@@ -4,6 +4,7 @@ import { h, mount, text, timeText, toast } from './dom.js';
 import { confirmDialog, openDialog } from './dialogs.js';
 import { soldOutDialog } from './editmenu.js';
 import { MenuView } from './menu.js';
+import { changeMyPin } from './staff.js';
 
 const COOKING = ['Accepted', 'Preparing'];
 const NEW_FOR_MS = 3 * 60 * 1000; // items added to an order show "NEW" for 3 minutes
@@ -105,6 +106,7 @@ export class Kitchen {
           h('button', { class: 'top-btn', onclick: () => this.recall(), text: 'Recall' }),
           h('button', { class: 'top-btn', onclick: () => this.soldOut(), text: 'Sold out' }),
           h('span', { class: 'staff-name', text: this.ctx.me.staff.name }),
+          h('button', { class: 'top-btn top-btn-quiet', onclick: () => changeMyPin(this.ctx.me.staff, this.ctx.logout).catch(e => toast(e.message, 'error')), text: 'My PIN' }),
           h('button', { class: 'top-btn top-btn-quiet', onclick: () => this.ctx.logout(), text: 'Log out' }))),
       this.board,
       this.readyBar);

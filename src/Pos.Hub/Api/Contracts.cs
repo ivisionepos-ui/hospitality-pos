@@ -126,7 +126,17 @@ public sealed record AddStaffRequest(string Name, Pos.Domain.Staff.StaffRole Rol
 
 /// <summary>Change a PIN.</summary>
 /// <param name="Pin">New PIN.</param>
-public sealed record ChangePinRequest(string Pin);
+/// <param name="CurrentPin">The person's current PIN; needed when changing your own.</param>
+public sealed record ChangePinRequest(string Pin, string? CurrentPin = null);
+
+/// <summary>Change a staff member's name or role.</summary>
+/// <param name="Name">Name.</param>
+/// <param name="Role">Role.</param>
+public sealed record UpdateStaffRequest(string Name, Pos.Domain.Staff.StaffRole Role);
+
+/// <summary>Bring back a removed staff member.</summary>
+/// <param name="Pin">Their new PIN.</param>
+public sealed record ReactivateStaffRequest(string Pin);
 
 /// <summary>A menu change as returned to the till.</summary>
 /// <param name="Version">New menu version.</param>

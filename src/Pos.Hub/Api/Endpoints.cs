@@ -223,6 +223,18 @@ public static class Endpoints
             Results.Ok(new SplitView([tills.AmountForLines(orders.Get(orderId), request.LineIds)]))))
             .ForStaff(Permission.TakeOrders);
 
+        // ----- Back-office sales reports (any range of trading days) -----
+        api.MapGet("/reports/sales", (SalesReportService reports, OrderService orders, DateOnly? from, DateOnly? to) => Handle(() =>
+            Results.Ok(reports.Build(from ?? to ?? orders.Today(), to ?? from ?? orders.Today()))))
+            .ForStaff(Permission.ViewReports);
+
+        api.MapGet("/reports/sales.csv", (SalesReportService reports, OrderService orders, DateOnly? from, DateOnly? to, string? table) => Handle(() =>
+        {
+            var (name, csv) = reports.Csv(reports.Build(from ?? to ?? orders.Today(), to ?? from ?? orders.Today()), table ?? "items");
+            // A byte-order mark so Excel reads £ and accented names correctly.
+            return Results.File(System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csv)).ToArray(), "text/csv; charset=utf-8", name);
+        })).ForStaff(Permission.ViewReports);
+
         // ----- End of day -----
         api.MapPost("/reports/z", (HttpContext http, TillService tills, BackupService backups, ZReportRequest? request) => Handle(() =>
         {

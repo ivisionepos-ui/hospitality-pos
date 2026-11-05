@@ -75,6 +75,28 @@ public sealed class SqliteOrderStore(HubDatabase db, Func<OrderPricingSetup> pri
         }
     }
 
+    /// <summary>Orders for a range of trading days, oldest first (for reports).</summary>
+    public IReadOnlyList<Order> ForDays(Guid branchId, DateOnly from, DateOnly to)
+    {
+        using var command = db.Command(
+            """
+            SELECT state_json FROM orders
+            WHERE branch_id = $b AND business_date BETWEEN $f AND $t
+            ORDER BY created_at, reference;
+            """,
+            ("$b", branchId.ToString()),
+            ("$f", from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
+            ("$t", to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+        using var reader = command.ExecuteReader();
+        var result = new List<Order>();
+        while (reader.Read())
+        {
+            result.Add(Order.Restore(PosJson.Deserialize<OrderState>(reader.GetString(0)), pricing(), clock));
+        }
+
+        return result;
+    }
+
     /// <summary>Orders for a trading day, oldest first, optionally only those with a given status.</summary>
     public IReadOnlyList<Order> ForDay(Guid branchId, DateOnly businessDate, OrderStatus? status)
     {

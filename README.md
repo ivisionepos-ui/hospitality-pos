@@ -283,6 +283,17 @@ are used. Language `en` (default), `ar` or `both` stays in appsettings.json. UK 
 - Closing a shift is a blind count: the expected cash and over/short are shown only after the count is entered.
 - The Z report needs every shift of the day closed; it is kept, numbered, and taking it again returns the same one.
 
+### Sales reports (back office)
+
+More → **Sales reports** (managers and owners): Today, Yesterday, This week, Last 7 days, This month, Last month, or
+any dates (up to 366 days). Tabs: **Summary** (sales, orders, average order, net sales after refunds, offers,
+discounts, delivery and service charges, cancels, removed items, by order type and source), **Items** and
+**Categories** (sold and sales after their share of discounts), **Hours** and **Days** (bars), **Staff** (orders
+taken, discounts given, items removed, refunds made), **Payments** (by method, with refunds and tips) and **VAT**
+(after refunds for what was sold). **Save as spreadsheet** saves the table on screen as a CSV file that opens in
+Excel (cells that could run as formulas are made plain text). Sales are completed orders by trading day; refunds and
+payments by the day they were made. Each day's Z report stays the record for that day.
+
 ### Split bill
 
 On the payment screen choose **Whole bill**, **Equal shares** or **By items**:
@@ -369,6 +380,8 @@ active staff cannot share a name; PINs are 4–8 digits, not easy (1111, 1234) a
 | POST | /api/orders/{id}/send-out | staff taking orders | Send a delivery out with a driver (or hand to another) |
 | POST | /api/orders/{id}/back-to-shop | staff taking orders | Driver brought it back (reason) |
 | GET | /api/drivers/today | staff taking orders | Each driver's day |
+| GET | /api/reports/sales?from=&to= | manager, owner | Sales report for a range of trading days |
+| GET | /api/reports/sales.csv?from=&to=&table= | manager, owner | One table as CSV (summary, items, categories, hours, days, types, staff, payments, vat) |
 | POST / DELETE | /api/orders/{id}/discount | staff (manager above the limits) | Give or remove an order discount |
 | GET / PUT | /api/settings/discounts | staff / owner | Discount limits for staff |
 | GET | /api/orders/{id}/split?parts=N | cashier | Split the balance equally |

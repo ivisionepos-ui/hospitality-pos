@@ -173,3 +173,9 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-167 | 2026-11-05 | Each item can be paid for once; a payment for items must be exactly their share (worked out by the hub) | Found while building: nothing stopped two guests paying for the same item, or an item payment at the wrong amount |
 | C-168 | 2026-11-05 | Equal shares are worked out again from what is left after each person pays | Someone paying a different amount does not break the rest |
 | C-169 | 2026-11-05 | A line with a quantity is paid as one line when splitting by items | Kept simple for now; equal shares cover sharing a line |
+| C-170 | 2026-11-05 | Sales reports count completed orders by trading day; refunds and payments by the day they were made; the Z report stays each day's record | Same rules as the Z report, so figures agree |
+| C-171 | 2026-11-05 | Item and category sales are after each item's share of order discounts and before delivery charges | What each item really earned |
+| C-172 | 2026-11-05 | Staff reports credit an order to the person who created it; discounts to who gave them; refunds to who made them | Clear responsibility |
+| C-173 | 2026-11-05 | Reports are limited to 366 days per request; managers and owners only | Keeps the hub fast during trading; sales figures are sensitive |
+| C-174 | 2026-11-05 | CSV cells starting with = + - @ (unless a plain number) are saved as text; files carry a UTF-8 mark | Stops formula injection through item or staff names; £ shows correctly in Excel |
+| C-175 | 2026-11-05 | Category names in reports come from the current menu; a deleted category shows as Other | Simple; categories are rarely deleted |

@@ -120,7 +120,7 @@ async function setUpShop() {
 
 /** A browser page on a registered till, at the PIN screen. */
 async function tillPage(device, viewport = { width: 1366, height: 768 }) {
-  const context = await browser.newContext({ viewport });
+  const context = await browser.newContext({ viewport, acceptDownloads: true });
   await context.addInitScript(d => {
     if (!localStorage.getItem('pos.device')) localStorage.setItem('pos.device', JSON.stringify(d));
   }, device);
@@ -1049,6 +1049,55 @@ test('split bill at a table: one pays for their item, the rest is shared equally
   const payments = await call('GET', `/api/orders/${order.id}/payments`, { device: shop.owner.device, token: shop.owner.token });
   const cheesecake = order.lines.find(l => l.name.en === 'Cheesecake').id;
   assert.deepEqual(payments.payments.map(p => [p.method, p.amount.minorUnits, p.forLineIds]), [['Card', 399, [cheesecake]], ['Cash', 599, []], ['Card', 598, []]]);
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
+test('owner opens sales reports: totals match the hub, items, hours, staff; a table saves as a spreadsheet', async () => {
+  const owner = { device: shop.owner.device, token: shop.owner.token };
+  // A completed sale of its own: a cheesecake, paid in cash.
+  const cake = (await call('GET', '/api/menu', owner)).products.find(p => p.name.en === 'Cheesecake');
+  const id = crypto.randomUUID();
+  const sale = await call('POST', '/api/orders', owner, { orderId: id, idempotencyKey: id, source: 'Counter', type: 'Takeaway', lines: [{ productId: cake.id, variantId: cake.variants[0].id, quantity: 1 }] });
+  await call('POST', '/api/shifts/open', owner, { openingFloatPence: 0 }).catch(() => {}); // already open is fine
+  await call('POST', `/api/orders/${sale.id}/payments/cash`, owner, { tenderedPence: 399 });
+  await call('POST', `/api/orders/${sale.id}/status`, owner, { status: 'Completed' });
+  const expected = await call('GET', '/api/reports/sales', owner);
+  assert.ok(expected.summary.orders > 0);
+  const page = await tillPage(shop.till2);
+  await login(page, '4826');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await shot(page, 'ui-more-reports');
+  await top(page).getByRole('button', { name: 'Sales reports' }).click();
+
+  const kpi = label => top(page).locator('.kpi', { hasText: label }).locator('.kpi-value');
+  assert.equal(await kpi('Orders').innerText(), String(expected.summary.orders));
+  const pounds = m => `£${(m.minorUnits / 100).toFixed(2)}`;
+  assert.equal(await kpi('Sales').first().innerText(), pounds(expected.summary.sales));
+  await shot(page, 'ui-reports-summary');
+
+  await top(page).getByRole('tab', { name: 'Items' }).click();
+  await top(page).getByRole('cell', { name: 'Cheesecake', exact: true }).waitFor();
+  await top(page).getByRole('tab', { name: 'Hours' }).click();
+  await top(page).locator('.bar-row').first().waitFor();
+  await shot(page, 'ui-reports-hours');
+  await top(page).getByRole('tab', { name: 'Staff' }).click();
+  await top(page).getByRole('cell', { name: 'Olivia Owner' }).waitFor();
+
+  // The items table as a spreadsheet file.
+  await top(page).getByRole('tab', { name: 'Items' }).click();
+  const [download] = await Promise.all([page.waitForEvent('download'), top(page).getByRole('button', { name: 'Save as spreadsheet' }).click()]);
+  const csv = fs.readFileSync(await download.path(), 'utf8').replace(/^\uFEFF/, '');
+  assert.equal(csv.split('\r\n')[0], 'Item,Quantity,Sales');
+  const cakes = expected.items.find(i => i.name === 'Cheesecake');
+  assert.ok(csv.includes(`\r\nCheesecake,${cakes.quantity},${(cakes.sales.minorUnits / 100).toFixed(2)}\r\n`));
+  assert.match(download.suggestedFilename(), /^sales-items-\d{4}-\d{2}-\d{2}-to-\d{4}-\d{2}-\d{2}\.csv$/);
+
+  // Yesterday had no sales in this test shop.
+  await top(page).getByRole('button', { name: 'Yesterday' }).click();
+  await top(page).getByText('No sales in these days.').waitFor();
+  await top(page).getByRole('tab', { name: 'Summary' }).click();
+  assert.equal(await kpi('Orders').innerText(), '0');
   assert.deepEqual(page.errors, []);
   await page.context().close();
 });

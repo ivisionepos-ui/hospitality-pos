@@ -226,6 +226,9 @@ public sealed class OrderService
     /// <summary>Today's trading day (it starts at the shop's day-start time, e.g. 05:00).</summary>
     public DateOnly Today() => BusinessDay.For(_clock.GetUtcNow(), _settings.TimeZone, _settings.DayStartsAt);
 
+    /// <summary>Orders for a range of trading days (for reports).</summary>
+    public IReadOnlyList<Order> ForDays(DateOnly from, DateOnly to) => _db.Run(() => _store.ForDays(_settings.BranchId, from, to));
+
     /// <summary>Orders for a trading day (default: today's).</summary>
     public IReadOnlyList<Order> ForDay(DateOnly? businessDate, OrderStatus? status)
     {

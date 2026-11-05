@@ -8,6 +8,7 @@ import { soldOutDialog } from './editmenu.js';
 import { addressFinder } from './address-finder.js';
 import { changeMyPin, devicesDialog, staffDialog } from './staff.js';
 import { discountLimitsDialog } from './discounts.js';
+import { salesReportsDialog } from './reports.js';
 
 function table(rows) {
   return h('table', { class: 'report' }, h('tbody', {}, rows.filter(Boolean).map(([label, value, strong]) =>
@@ -370,6 +371,7 @@ export function moreDialog(till) {
             can('ManageDevices') ? item('Add a till or screen', addTill) : null),
           section('Reports and shop',
             can('ManageDevices') ? item('Shop details', shopDetails) : null,
+            can('ViewReports') ? item('Sales reports', salesReportsDialog, true) : null,
             can('ViewReports') ? item('X report (this till)', xReport) : null,
             can('ViewReports') ? item('End of day (Z report)', zReport) : null,
             item('Failed printouts', failedPrints),

@@ -237,6 +237,20 @@ public sealed class TillService(HubDatabase db, HubSettings settings, OrderServi
 
     private List<Payment> PaymentsForShift(Guid shiftId) => ReadAll<Payment>("SELECT state_json FROM payments WHERE shift_id = $k ORDER BY at;", shiftId.ToString());
 
+    /// <summary>Payments and refunds made on a range of trading days (for reports).</summary>
+    public IReadOnlyList<Payment> PaymentsForDays(DateOnly from, DateOnly to) => db.Run(() =>
+    {
+        using var command = db.Command("SELECT state_json FROM payments WHERE business_date BETWEEN $f AND $t ORDER BY at;", ("$f", Iso(from)), ("$t", Iso(to)));
+        using var reader = command.ExecuteReader();
+        var result = new List<Payment>();
+        while (reader.Read())
+        {
+            result.Add(PosJson.Deserialize<Payment>(reader.GetString(0)));
+        }
+
+        return result;
+    });
+
     private List<Payment> PaymentsForOrder(Guid orderId) => ReadAll<Payment>("SELECT state_json FROM payments WHERE order_id = $k ORDER BY at;", orderId.ToString());
 
     private List<T> ReadAll<T>(string sql, string key) => db.Run(() =>

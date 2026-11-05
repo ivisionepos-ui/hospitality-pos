@@ -124,6 +124,29 @@ public sealed class EscPosTests
         Assert.Equal([0x1B, 0x70, 0x01, 0x19, 0xFA], EscPos.DrawerKick(5));
     }
 
+    [Fact]
+    public void A_star_tsp100_printout_is_raster_lines_then_feed_and_cut()
+    {
+        var image = new MonoImage(2, 2, [0xFF, 0x00, 0x0F, 0xF0]);
+
+        var bytes = StarGraphic.Printout(image, cut: true);
+
+        Assert.Equal(
+            [
+                0x1B, 0x2A, 0x72, 0x52,                   // ESC * r R  reset raster settings
+                0x1B, 0x2A, 0x72, 0x41,                   // ESC * r A  enter raster mode
+                0x1B, 0x2A, 0x72, 0x50, 0x30, 0x00,       // ESC * r P "0" NUL  continuous paper
+                0x1B, 0x2A, 0x72, 0x45, 0x31, 0x33, 0x00, // ESC * r E "13" NUL  feed, cut feed, partial cut
+                0x62, 0x02, 0x00, 0xFF, 0x00,             // b n1 n2 row 1
+                0x62, 0x02, 0x00, 0x0F, 0xF0,             // b n1 n2 row 2
+                0x1B, 0x0C, 0x04,                         // ESC FF EOT  end of document
+                0x1B, 0x2A, 0x72, 0x42,                   // ESC * r B  leave raster mode
+            ],
+            bytes);
+        Assert.Equal([0x1B, 0x2A, 0x72, 0x45, 0x32, 0x00], StarGraphic.EndMode(cut: false)); // "2": feed to the tear bar
+        Assert.Equal([0x07], StarGraphic.DrawerKick);
+    }
+
     [Theory]
     [InlineData("192.168.1.50", "192.168.1.50", 9100)]
     [InlineData(" 192.168.1.50:9101 ", "192.168.1.50", 9101)]
@@ -219,6 +242,28 @@ public sealed class ThermalPrinterTests : HubTestBase, IDisposable
         await _printer.WaitFor(1);
         await Task.Delay(300);
         Assert.True(IsReceipt(Assert.Single(_printer.Received)));
+    }
+
+    [Fact]
+    public async Task A_star_tsp100_gets_star_graphic_commands_and_its_drawer_opens_with_bel()
+    {
+        var star = new PrinterChoice(PrintOutputType.EscPosNetwork, null, _printer.Address, 80, true, 2, PrinterCommands.StarGraphic);
+        Assert.Equal(HttpStatusCode.OK, (await Owner.Put("/api/settings/printers", new PrinterSetup(star, Pdf, true))).StatusCode);
+        var order = await Order();
+
+        await Cashier.Post($"/api/orders/{order.Id}/payments/cash", new CashPaymentRequest(500));
+
+        var received = await _printer.WaitFor(2);
+        Assert.Equal([0x07], received[0]);
+        var receipt = received[1];
+        Assert.True(receipt.AsSpan(0, 14).SequenceEqual(StarGraphic.Start));
+        Assert.True(receipt.AsSpan(14, 7).SequenceEqual(StarGraphic.EndMode(cut: true)));
+        Assert.Equal((0x62, 72, 0), (receipt[21], receipt[22], receipt[23])); // 72 bytes (576 dots) per line
+        Assert.True(receipt.AsSpan(receipt.Length - 7).SequenceEqual(StarGraphic.End));
+        Assert.Equal(0, (receipt.Length - 21 - 7) % 75); // whole lines only
+
+        var pin5 = await Owner.Put("/api/settings/printers", new PrinterSetup(star with { DrawerPin = 5 }, Pdf, true));
+        Assert.Equal("Star TSP100 printers open the drawer on their one drawer socket: choose pin 2.", (await pin5.Read<ErrorView>()).Message);
     }
 
     [Fact]

@@ -25,6 +25,16 @@ public enum PrintOutputType
     EscPosWindows,
 }
 
+/// <summary>The command language a thermal printer understands.</summary>
+public enum PrinterCommands
+{
+    /// <summary>ESC/POS: Epson (e.g. TM-m30, TM-T20), Xprinter (e.g. XP-Q801) and most other receipt printers.</summary>
+    EscPos,
+
+    /// <summary>STAR Graphic Mode: Star TSP100 / TSP143 series, which print pictures only and do not understand ESC/POS.</summary>
+    StarGraphic,
+}
+
 /// <summary>One printer: what it is and where its output goes.</summary>
 public sealed class PrinterSettings
 {
@@ -36,6 +46,9 @@ public sealed class PrinterSettings
 
     /// <summary>Network printer address, for Output = EscPosNetwork: "192.168.1.50" or "192.168.1.50:9100".</summary>
     public string Address { get; set; } = string.Empty;
+
+    /// <summary>The thermal printer's command language (ESC/POS, or Star graphic for the Star TSP100 series).</summary>
+    public PrinterCommands Commands { get; set; } = PrinterCommands.EscPos;
 
     /// <summary>Cut the paper after each printout (thermal printers with a cutter).</summary>
     public bool Cut { get; set; } = true;

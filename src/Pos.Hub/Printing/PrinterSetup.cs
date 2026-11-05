@@ -11,7 +11,8 @@ namespace Pos.Hub.Printing;
 /// <param name="PaperWidthMm">80 or 58.</param>
 /// <param name="Cut">Cut after each printout.</param>
 /// <param name="DrawerPin">Cash drawer socket: 2 or 5.</param>
-public sealed record PrinterChoice(PrintOutputType Output, string? PrinterName, string? Address, int PaperWidthMm, bool Cut, int DrawerPin)
+/// <param name="Commands">Command language: ESC/POS (Epson, Xprinter, most) or Star graphic (Star TSP100).</param>
+public sealed record PrinterChoice(PrintOutputType Output, string? PrinterName, string? Address, int PaperWidthMm, bool Cut, int DrawerPin, PrinterCommands Commands = PrinterCommands.EscPos)
 {
     /// <summary>Checks and tidies the choice; throws <see cref="ArgumentException"/> with a clear reason.</summary>
     public PrinterChoice Checked(string which)
@@ -29,6 +30,16 @@ public sealed record PrinterChoice(PrintOutputType Output, string? PrinterName, 
         if (DrawerPin is not (2 or 5))
         {
             throw new ArgumentException("The drawer socket is 2 (usual) or 5.");
+        }
+
+        if (!Enum.IsDefined(Commands))
+        {
+            throw new ArgumentException($"Choose the {which} printer's type.");
+        }
+
+        if (Commands == PrinterCommands.StarGraphic && DrawerPin != 2 && Output is PrintOutputType.EscPosNetwork or PrintOutputType.EscPosWindows)
+        {
+            throw new ArgumentException("Star TSP100 printers open the drawer on their one drawer socket: choose pin 2.");
         }
 
         var name = string.IsNullOrWhiteSpace(PrinterName) ? null : PrinterName.Trim();
@@ -51,7 +62,7 @@ public sealed record PrinterChoice(PrintOutputType Output, string? PrinterName, 
     public static PrinterChoice From(PrinterSettings p)
     {
         ArgumentNullException.ThrowIfNull(p);
-        return new(p.Output, p.PrinterName, p.Address, p.PaperWidthMm, p.Cut, p.DrawerPin);
+        return new(p.Output, p.PrinterName, p.Address, p.PaperWidthMm, p.Cut, p.DrawerPin, p.Commands);
     }
 
     /// <summary>Puts the choice into the printer settings in use.</summary>
@@ -64,6 +75,7 @@ public sealed record PrinterChoice(PrintOutputType Output, string? PrinterName, 
         p.PaperWidthMm = PaperWidthMm;
         p.Cut = Cut;
         p.DrawerPin = DrawerPin;
+        p.Commands = Commands;
     }
 }
 

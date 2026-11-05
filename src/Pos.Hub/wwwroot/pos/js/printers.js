@@ -12,6 +12,10 @@ const CONNECTIONS = [
   ['None', 'Off', 'Nothing is printed.'],
 ];
 const isThermal = output => output === 'EscPosNetwork' || output === 'EscPosWindows';
+const TYPES = [
+  ['EscPos', 'Epson, Xprinter and most (ESC/POS)'],
+  ['StarGraphic', 'Star TSP100 / TSP143'],
+];
 const problemText = e => (e instanceof ApiError ? e.message : 'Could not reach the hub.');
 
 function printerCard(title, choice, installed, isReceipt, setup) {
@@ -40,12 +44,14 @@ function printerCard(title, choice, installed, isReceipt, setup) {
       needsName ? h('label', { class: 'field' }, h('span', { class: 'field-label', text: 'Windows printer name' }), name,
         h('datalist', { id: `${title}-installed` }, installed.map(p => h('option', { value: p })))) : null,
       needsName && !installed.length ? h('p', { class: 'field-hint', text: 'The list of installed printers shows when the hub runs on Windows.' }) : null,
+      isThermal(choice.output) ? seg('Printer type', TYPES, choice.commands ?? 'EscPos', v => { choice.commands = v; if (v === 'StarGraphic') choice.drawerPin = 2; }) : null,
+      isThermal(choice.output) && choice.commands === 'StarGraphic' ? h('p', { class: 'field-hint', text: 'Star TSP100 printers have no built-in fonts; the till sends each printout as a picture in Star graphic mode.' }) : null,
       choice.output !== 'None' && choice.output !== 'Pdf' ? seg('Paper width', [[80, '80 mm'], [58, '58 mm']], choice.paperWidthMm, v => { choice.paperWidthMm = v; }) : null,
       isThermal(choice.output) ? h('label', { class: 'check' }, cut, h('span', { text: 'Cut the paper after each printout' })) : null,
       isReceipt && isThermal(choice.output) ? h('div', { class: 'drawer-box' },
         h('strong', { text: 'Cash drawer (plugs into this printer)' }),
         h('label', { class: 'check' }, onCash, h('span', { text: 'Open it for cash payments, cash refunds and paid in/out' })),
-        seg('Drawer socket', [[2, 'Pin 2 (usual)'], [5, 'Pin 5']], choice.drawerPin, v => { choice.drawerPin = v; })) : null);
+        choice.commands === 'StarGraphic' ? null : seg('Drawer socket', [[2, 'Pin 2 (usual)'], [5, 'Pin 5']], choice.drawerPin, v => { choice.drawerPin = v; })) : null);
   };
   render();
   return card;

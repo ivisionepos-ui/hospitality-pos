@@ -1121,6 +1121,7 @@ test('owner sets up a network receipt printer, test page and drawer; a cashier o
   await owner.getByText("Type the printer's address, e.g. 192.168.1.50 (it is on the printer's self-test page).").waitFor(); // nothing typed yet
   await receipt.getByLabel('Receipt printer: address').fill(address);
   await receipt.getByText('Cash drawer (plugs into this printer)').waitFor();
+  await receipt.getByRole('radio', { name: 'Epson, Xprinter and most (ESC/POS)' }).waitFor(); // the usual type is chosen
   await shot(owner, 'ui-printers');
   await top(owner).getByRole('button', { name: 'Test receipt printer' }).click();
   await owner.getByText(`Test page sent to ${address}.`).waitFor();
@@ -1149,9 +1150,20 @@ test('owner sets up a network receipt printer, test page and drawer; a cashier o
   const opens = await call('GET', '/api/drawer/opens', { device: shop.owner.device, token: shop.owner.token });
   assert.deepEqual(opens.map(o => [o.staff, o.approvedBy, o.reason]), [['Cara Cashier', 'Max Manager', 'Change for a note']]);
 
-  // Back to PDF files for the rest of the tests.
+  // A Star TSP100 gets Star graphic mode instead.
   await owner.getByRole('button', { name: 'More', exact: true }).click();
   await top(owner).getByRole('button', { name: 'Printers' }).click();
+  await top(owner).getByLabel('Receipt printer', { exact: true }).getByRole('radio', { name: 'Star TSP100 / TSP143' }).click();
+  await top(owner).getByText('Star TSP100 printers have no built-in fonts', { exact: false }).waitFor();
+  assert.equal(await top(owner).getByRole('radio', { name: 'Pin 5' }).count(), 0);
+  await shot(owner, 'ui-printers-star');
+  await top(owner).getByRole('button', { name: 'Test receipt printer' }).click();
+  await owner.getByText(`Test page sent to ${address}.`).last().waitFor();
+  await waitFor(4);
+  assert.deepEqual([...received[3].subarray(0, 8)], [0x1B, 0x2A, 0x72, 0x52, 0x1B, 0x2A, 0x72, 0x41]); // ESC * r R, ESC * r A
+  assert.deepEqual([...received[3].subarray(-7)], [0x1B, 0x0C, 0x04, 0x1B, 0x2A, 0x72, 0x42]);       // ESC FF EOT, ESC * r B
+
+  // Back to PDF files for the rest of the tests.
   await top(owner).getByLabel('Receipt printer', { exact: true }).getByRole('radio', { name: 'Save as PDF' }).click();
   await top(owner).getByRole('button', { name: 'Save' }).click();
   await owner.getByText('Printers saved. New printouts use them.').last().waitFor();

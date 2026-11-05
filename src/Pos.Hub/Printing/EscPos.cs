@@ -49,3 +49,43 @@ public static class EscPos
         return stream.ToArray();
     }
 }
+
+/// <summary>
+/// STAR Graphic Mode commands, for Star printers that have no fonts and only print pictures (TSP100 / TSP143 series:
+/// "futurePRNT"); they do not understand ESC/POS. From the STAR Graphic Mode Command Specifications (Rev. 2.32):
+/// numbers in "ESC * r" commands are written as text digits followed by NUL.
+/// </summary>
+public static class StarGraphic
+{
+    /// <summary>ESC * r R: reset raster settings. ESC * r A: enter raster mode. ESC * r P "0" NUL: continuous paper (no page length).</summary>
+    public static readonly byte[] Start = [0x1B, 0x2A, 0x72, 0x52, 0x1B, 0x2A, 0x72, 0x41, 0x1B, 0x2A, 0x72, 0x50, (byte)'0', 0x00];
+
+    /// <summary>ESC FF EOT: end of the printout (runs the EOT mode: feed and cut). ESC * r B: leave raster mode.</summary>
+    public static readonly byte[] End = [0x1B, 0x0C, 0x04, 0x1B, 0x2A, 0x72, 0x42];
+
+    /// <summary>BEL: open the cash drawer (works in raster mode too; 200 ms pulse by default).</summary>
+    public static readonly byte[] DrawerKick = [0x07];
+
+    /// <summary>
+    /// ESC * r E n NUL, the "end of transmission" mode: 13 = form feed, feed to the cutter and partial cut;
+    /// 2 = form feed and feed to the tear bar (printers without a cutter, or cut off).
+    /// </summary>
+    public static byte[] EndMode(bool cut) => [0x1B, 0x2A, 0x72, 0x45, .. System.Text.Encoding.ASCII.GetBytes(cut ? "13" : "2"), 0x00];
+
+    /// <summary>A whole printout: start raster mode, one "b n1 n2" line per row of dots, then end (feed and cut).</summary>
+    public static byte[] Printout(MonoImage image, bool cut)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        using var stream = new MemoryStream();
+        stream.Write(Start);
+        stream.Write(EndMode(cut));
+        for (var row = 0; row < image.Height; row++)
+        {
+            stream.Write([(byte)'b', (byte)(image.WidthBytes & 0xFF), (byte)(image.WidthBytes >> 8)]);
+            stream.Write(image.Bits, row * image.WidthBytes, image.WidthBytes);
+        }
+
+        stream.Write(End);
+        return stream.ToArray();
+    }
+}

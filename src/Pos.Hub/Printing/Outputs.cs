@@ -52,7 +52,9 @@ public sealed class PrintOutputs(Renderer renderer, TimeProvider clock)
             }
 
             case PrintOutputType.EscPosNetwork or PrintOutputType.EscPosWindows:
-                return SendRaw(printer, EscPos.Printout(renderer.RenderMono(document, printer.WidthDots), printer.Cut), document.Title);
+                var image = renderer.RenderMono(document, printer.WidthDots);
+                var bytes = printer.Commands == PrinterCommands.StarGraphic ? StarGraphic.Printout(image, printer.Cut) : EscPos.Printout(image, printer.Cut);
+                return SendRaw(printer, bytes, document.Title);
 
             default:
                 throw new NotSupportedException($"Unknown print output {printer.Output}.");
@@ -68,7 +70,7 @@ public sealed class PrintOutputs(Renderer renderer, TimeProvider clock)
             return false;
         }
 
-        SendRaw(printer, [.. EscPos.Initialise, .. EscPos.DrawerKick(printer.DrawerPin)], "Open drawer");
+        SendRaw(printer, printer.Commands == PrinterCommands.StarGraphic ? StarGraphic.DrawerKick : [.. EscPos.Initialise, .. EscPos.DrawerKick(printer.DrawerPin)], "Open drawer");
         return true;
     }
 

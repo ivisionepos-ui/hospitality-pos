@@ -64,5 +64,7 @@ Receipt and kitchen printers, cash drawer
   address, press "Test receipt printer".
   USB thermal printer: install it in Windows with the maker's driver first, then
   choose "USB printer" and pick its name.
+  Printer type: "Star TSP100 / TSP143" for the Star TSP100; "Epson, Xprinter and
+  most (ESC/POS)" for the Epson TM-m30 and the Xprinter XP-Q801.
   The cash drawer cable goes into the receipt printer's DK socket. Press "Test drawer".
   Give a network printer a fixed address in the router, like the hub PC.

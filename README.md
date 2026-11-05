@@ -236,8 +236,10 @@ so a screen never sees something that did not happen. A removed device is discon
 ESC/POS straight through its driver), **Windows printer** (any printer, printed as a picture, no cut or drawer),
 **Save as PDF** or **Off**; paper 80 or 58 mm; cut on or off. Thermal printers are sent ESC/POS: the printout is drawn
 exactly as the PDF and sent as a picture (GS v 0, in bands of 255 rows), so the £ sign, bold text and layout never
-depend on the printer's character set; then feed and partial cut. This works with Epson TM printers, most generic
-80/58 mm printers and Star printers in ESC/POS mode. **Test receipt printer / Test kitchen printer / Test drawer**
+depend on the printer's character set; then feed and partial cut. Choose the **printer type**: **ESC/POS** for Epson (e.g. TM-m30), Xprinter
+(e.g. XP-Q801) and most others; **Star TSP100 / TSP143** for Star's picture-only printers, which do not understand
+ESC/POS and get STAR Graphic Mode instead (ESC * r R, ESC * r A, ESC * r P "0", ESC * r E "13" for feed and partial cut,
+one "b n1 n2" line per row of dots, ESC FF EOT, ESC * r B; drawer by BEL, socket 1 only). **Test receipt printer / Test kitchen printer / Test drawer**
 print or open straight away and say why if they cannot.
 
 The **cash drawer** plugs into the receipt printer (socket pin 2, or 5). It opens for cash payments, cash refunds and

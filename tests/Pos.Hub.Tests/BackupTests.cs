@@ -84,8 +84,12 @@ public sealed class BackupTests : HubTestBase
         File.Copy(file, damaged);
         using (var zip = ZipFile.Open(damaged, ZipArchiveMode.Update))
         {
+            // Flip every bit of the first byte of the PIN key. (Writing a fixed value failed about 1 run in 256:
+            // the key is random, so its first byte was sometimes that value already and nothing changed.)
             using var key = zip.GetEntry("hub.key")!.Open();
-            key.WriteByte(0x55); // change the first byte of the PIN key
+            var first = key.ReadByte();
+            key.Position = 0;
+            key.WriteByte((byte)(first ^ 0xFF));
         }
 
         var ex = Assert.Throws<InvalidDataException>(() => BackupService.Verify(damaged));

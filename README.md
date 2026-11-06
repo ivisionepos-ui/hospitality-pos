@@ -242,6 +242,15 @@ ESC/POS and get STAR Graphic Mode instead (ESC * r R, ESC * r A, ESC * r P "0", 
 one "b n1 n2" line per row of dots, ESC FF EOT, ESC * r B; drawer by BEL, socket 1 only). **Test receipt printer / Test kitchen printer / Test drawer**
 print or open straight away and say why if they cannot.
 
+**Several kitchen printers.** Up to 10 kitchen printers, each with a name (printed at the top of its tickets when
+there is more than one), its own connection, and what it prints: **Everything**, or **Only what I choose**
+(categories, and single items, which override their category). For each item: printers that chose the item get it;
+otherwise printers that chose its category; "Everything" printers always get it; and an item nobody chose prints on
+the **first** kitchen printer, so nothing is missed. A **meal deal** goes whole to a printer that chose the deal (or
+its category); otherwise it is split, each printer getting the deal marked "(part)" with only its items. Additions
+and void slips go to the same printers. Kitchen PDF files carry the printer's name. Printer set-ups saved by earlier
+versions load as one "Kitchen" printer that prints everything.
+
 The **cash drawer** plugs into the receipt printer (socket pin 2, or 5). It opens for cash payments, cash refunds and
 paid in/out (can be turned off), through the print queue so it never interrupts a printout, and is tried once only
 (never opens late; the tills are told if it could not open). **Open drawer (no sale)** (More → Till) needs a reason

@@ -57,18 +57,58 @@ function printerCard(title, choice, installed, isReceipt, setup) {
   return card;
 }
 
+/** What a kitchen printer prints: everything, or chosen categories and single items. */
+function printsWhat(k, label, menu) {
+  const box = h('div', { class: 'prints-what' });
+  const render = () => {
+    const toggle = (list, id) => { const i = list.indexOf(id); if (i >= 0) list.splice(i, 1); else list.push(id); render(); };
+    const chosenItems = k.productIds.length;
+    mount(box,
+      h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Prints' }),
+        h('div', { class: 'seg seg-small', role: 'radiogroup', 'aria-label': `${label}: prints` }, [['Everything', 'Everything'], ['Chosen', 'Only what I choose']].map(([v, text]) => h('button', {
+          type: 'button', class: `seg-btn ${k.mode === v ? 'seg-on' : ''}`, role: 'radio', 'aria-checked': String(k.mode === v),
+          onclick: () => { k.mode = v; render(); }, text,
+        })))),
+      k.mode === 'Chosen' ? [
+        h('span', { class: 'field-label', text: 'Categories' }),
+        h('div', { class: 'chips', role: 'group', 'aria-label': `${label}: categories` }, menu.categories.map(c => h('button', {
+          type: 'button', class: `chip ${k.categoryIds.includes(c.id) ? 'chip-on' : ''}`, 'aria-pressed': String(k.categoryIds.includes(c.id)),
+          onclick: () => toggle(k.categoryIds, c.id), text: c.name.en,
+        }))),
+        h('details', { class: 'single-items', open: chosenItems > 0 },
+          h('summary', { text: chosenItems ? `Single items (${chosenItems} chosen)` : 'Single items (these override their category)' }),
+          menu.categories.map(c => {
+            const items = menu.products.filter(p => p.categoryId === c.id);
+            return items.length ? h('div', { class: 'item-group' }, h('span', { class: 'field-hint', text: c.name.en }),
+              h('div', { class: 'chips', role: 'group', 'aria-label': `${label}: ${c.name.en} items` }, items.map(p => h('button', {
+                type: 'button', class: `chip chip-small ${k.productIds.includes(p.id) ? 'chip-on' : ''}`, 'aria-pressed': String(k.productIds.includes(p.id)),
+                onclick: () => toggle(k.productIds, p.id), text: p.name.en,
+              })))) : null;
+          })),
+      ] : null);
+  };
+  render();
+  return box;
+}
+
 /** More → Printers (owner). */
 export async function printersDialog() {
   let data;
+  let menu;
   try {
-    data = await busy(() => api.get('/api/settings/printers'));
+    [data, menu] = await busy(() => Promise.all([api.get('/api/settings/printers'), api.get('/api/menu')]));
   } catch (e) {
     toast(problemText(e), 'error');
     return;
   }
 
+  menu = {
+    categories: [...menu.categories].filter(c => !c.isHidden).sort((a, b) => a.sortOrder - b.sortOrder),
+    products: [...menu.products].sort((a, b) => a.sortOrder - b.sortOrder),
+  };
   const setup = structuredClone(data.setup);
   await openDialog(close => {
+    const kitchenList = h('div', { class: 'kitchen-list' });
     const save = async () => {
       const saved = await busy(() => api.put('/api/settings/printers', setup));
       Object.assign(setup, structuredClone(saved));
@@ -81,21 +121,51 @@ export async function printersDialog() {
         toast(problemText(e), 'error', 8000);
       }
     };
-    const test = target => run(async () => {
-      await save();
-      const result = await busy(() => api.post('/api/settings/printers/test', { target }));
+    const testKitchen = index => run(async () => {
+      await save(); // a new printer gets its id when saved
+      const result = await busy(() => api.post('/api/settings/printers/test', { target: 'Kitchen', kitchenId: setup.kitchens[index].id }));
       toast(`Test page sent to ${result.output}.`, 'ok', 6000);
+      renderKitchens();
     });
+    const renderKitchens = () => mount(kitchenList,
+      setup.kitchens.map((k, i) => {
+        const label = `Kitchen printer ${i + 1}`;
+        const name = h('input', { class: 'text-input', type: 'text', maxlength: 30, value: k.name, 'aria-label': `${label}: name`, placeholder: 'e.g. Pizza' });
+        name.addEventListener('input', () => { k.name = name.value; });
+        return h('section', { class: 'kitchen-card', 'aria-label': label },
+          h('div', { class: 'kitchen-head' },
+            h('label', { class: 'field kitchen-name' }, h('span', { class: 'field-label', text: `${label} (name on its tickets)` }), name),
+            setup.kitchens.length > 1 ? h('button', { class: 'btn btn-small btn-danger-soft', onclick: () => { setup.kitchens.splice(i, 1); renderKitchens(); }, text: 'Remove' }) : null),
+          i === 0 && setup.kitchens.length > 1 ? h('p', { class: 'field-hint', text: 'The first printer also prints anything no other printer has chosen, so nothing is missed.' }) : null,
+          printsWhat(k, label, menu),
+          printerCard(`${label} connection`, k.printer, data.installed, false, setup),
+          h('button', { class: 'btn btn-small', onclick: testKitchen(i), text: `Test ${k.name || 'this printer'}` }));
+      }),
+      setup.kitchens.length < 10 ? h('button', {
+        class: 'btn', text: '+ Add kitchen printer',
+        onclick: () => {
+          setup.kitchens.push({ id: '00000000-0000-0000-0000-000000000000', name: '', printer: structuredClone(setup.kitchens[0].printer), mode: 'Chosen', categoryIds: [], productIds: [] });
+          renderKitchens();
+          kitchenList.querySelectorAll('.kitchen-name input')[setup.kitchens.length - 1]?.focus();
+        },
+      }) : h('p', { class: 'field-hint', text: 'At most 10 kitchen printers.' }));
+    renderKitchens();
     return {
       title: 'Printers',
       wide: true,
+      class: 'dialog-printers',
       body: h('div', { class: 'printers' },
-        printerCard('Receipt printer', setup.receipt, data.installed, true, setup),
-        printerCard('Kitchen printer', setup.kitchen, data.installed, false, setup)),
+        h('div', { class: 'printers-col' },
+          printerCard('Receipt printer', setup.receipt, data.installed, true, setup),
+          h('div', { class: 'printer-tests' },
+            h('button', { class: 'btn btn-small', onclick: run(async () => { await save(); const r = await busy(() => api.post('/api/settings/printers/test', { target: 'Receipt' })); toast(`Test page sent to ${r.output}.`, 'ok', 6000); }), text: 'Test receipt printer' }),
+            h('button', { class: 'btn btn-small', onclick: run(async () => { await save(); await busy(() => api.post('/api/settings/printers/test-drawer')); toast('Drawer opened.', 'ok'); }), text: 'Test drawer' }))),
+        h('div', { class: 'printers-col' },
+          h('h3', { class: 'menu-heading', text: 'Kitchen printers' }),
+          h('p', { class: 'field-hint', text: 'Each kitchen printer prints only the food it is set for, e.g. Pizzas on the pizza printer, Drinks on the drinks printer. A meal deal is split between them.' }),
+          kitchenList)),
       actions: [
-        h('button', { class: 'btn', onclick: test('Receipt'), text: 'Test receipt printer' }),
-        h('button', { class: 'btn', onclick: test('Kitchen'), text: 'Test kitchen printer' }),
-        h('button', { class: 'btn', onclick: run(async () => { await save(); await busy(() => api.post('/api/settings/printers/test-drawer')); toast('Drawer opened.', 'ok'); }), text: 'Test drawer' }),
+        h('button', { class: 'btn', onclick: () => close(false), text: 'Cancel' }),
         h('button', { class: 'btn btn-primary', onclick: run(async () => { await save(); toast('Printers saved. New printouts use them.', 'ok'); close(true); }), text: 'Save' }),
       ],
     };

@@ -190,8 +190,12 @@ public sealed class ThermalPrinterTests : HubTestBase, IDisposable
 
     private static PrinterChoice Pdf => new(PrintOutputType.Pdf, null, null, 80, true, 2);
 
+    /// <summary>One kitchen printer, printing everything.</summary>
+    private static IReadOnlyList<KitchenPrinterChoice> OneKitchen(PrinterChoice printer) =>
+        [new KitchenPrinterChoice(KitchenStation.MainId, "Kitchen", printer, KitchenPrintMode.Everything, [], [])];
+
     private Task<HttpResponseMessage> UseNetworkReceiptPrinter(string? address = null, bool openDrawerOnCash = true) =>
-        Owner.Put("/api/settings/printers", new PrinterSetup(new PrinterChoice(PrintOutputType.EscPosNetwork, null, address ?? _printer.Address, 80, true, 2), Pdf, openDrawerOnCash));
+        Owner.Put("/api/settings/printers", new PrinterSetup(new PrinterChoice(PrintOutputType.EscPosNetwork, null, address ?? _printer.Address, 80, true, 2), OneKitchen(Pdf), openDrawerOnCash));
 
     private async Task<OrderView> Order()
     {
@@ -248,7 +252,7 @@ public sealed class ThermalPrinterTests : HubTestBase, IDisposable
     public async Task A_star_tsp100_gets_star_graphic_commands_and_its_drawer_opens_with_bel()
     {
         var star = new PrinterChoice(PrintOutputType.EscPosNetwork, null, _printer.Address, 80, true, 2, PrinterCommands.StarGraphic);
-        Assert.Equal(HttpStatusCode.OK, (await Owner.Put("/api/settings/printers", new PrinterSetup(star, Pdf, true))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Owner.Put("/api/settings/printers", new PrinterSetup(star, OneKitchen(Pdf), true))).StatusCode);
         var order = await Order();
 
         await Cashier.Post($"/api/orders/{order.Id}/payments/cash", new CashPaymentRequest(500));
@@ -262,7 +266,7 @@ public sealed class ThermalPrinterTests : HubTestBase, IDisposable
         Assert.True(receipt.AsSpan(receipt.Length - 7).SequenceEqual(StarGraphic.End));
         Assert.Equal(0, (receipt.Length - 21 - 7) % 75); // whole lines only
 
-        var pin5 = await Owner.Put("/api/settings/printers", new PrinterSetup(star with { DrawerPin = 5 }, Pdf, true));
+        var pin5 = await Owner.Put("/api/settings/printers", new PrinterSetup(star with { DrawerPin = 5 }, OneKitchen(Pdf), true));
         Assert.Equal("Star TSP100 printers open the drawer on their one drawer socket: choose pin 2.", (await pin5.Read<ErrorView>()).Message);
     }
 
@@ -337,13 +341,13 @@ public sealed class ThermalPrinterTests : HubTestBase, IDisposable
     [Fact]
     public async Task The_printers_screen_saves_checks_tests_and_keeps_choices_after_a_restart()
     {
-        Assert.Equal(HttpStatusCode.Forbidden, (await Manager.Put("/api/settings/printers", new PrinterSetup(Pdf, Pdf, true))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Manager.Put("/api/settings/printers", new PrinterSetup(Pdf, OneKitchen(Pdf), true))).StatusCode);
 
-        var badAddress = await Owner.Put("/api/settings/printers", new PrinterSetup(new PrinterChoice(PrintOutputType.EscPosNetwork, null, "http://printer", 80, true, 2), Pdf, true));
+        var badAddress = await Owner.Put("/api/settings/printers", new PrinterSetup(new PrinterChoice(PrintOutputType.EscPosNetwork, null, "http://printer", 80, true, 2), OneKitchen(Pdf), true));
         Assert.Equal("\"http://printer\" is not a printer address. Use e.g. 192.168.1.50 or 192.168.1.50:9100.", (await badAddress.Read<ErrorView>()).Message);
-        var noName = await Owner.Put("/api/settings/printers", new PrinterSetup(Pdf, new PrinterChoice(PrintOutputType.EscPosWindows, " ", null, 80, true, 2), true));
-        Assert.Equal("Choose the kitchen printer's name as Windows shows it.", (await noName.Read<ErrorView>()).Message);
-        Assert.Equal(HttpStatusCode.BadRequest, (await Owner.Put("/api/settings/printers", new PrinterSetup(Pdf with { PaperWidthMm = 76 }, Pdf, true))).StatusCode);
+        var noName = await Owner.Put("/api/settings/printers", new PrinterSetup(Pdf, OneKitchen(new PrinterChoice(PrintOutputType.EscPosWindows, " ", null, 80, true, 2)), true));
+        Assert.Equal("Choose the Kitchen printer's name as Windows shows it.", (await noName.Read<ErrorView>()).Message);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Owner.Put("/api/settings/printers", new PrinterSetup(Pdf with { PaperWidthMm = 76 }, OneKitchen(Pdf), true))).StatusCode);
 
         // Test drawer before a thermal printer is chosen: explained.
         Assert.Equal(HttpStatusCode.Conflict, (await Owner.Post("/api/settings/printers/test-drawer", new { })).StatusCode);

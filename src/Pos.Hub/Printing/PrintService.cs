@@ -53,7 +53,11 @@ public enum PrintJobStatus
 /// <param name="OrderId">The order, for receipts and kitchen tickets.</param>
 /// <param name="LineIds">The lines, for kitchen tickets.</param>
 /// <param name="BusinessDate">The day, for Z reports.</param>
-public sealed record PrintJob(Guid Id, PrintJobKind Kind, PrintTarget Target, Guid? OrderId, IReadOnlyList<Guid> LineIds, DateOnly? BusinessDate);
+public sealed record PrintJob(Guid Id, PrintJobKind Kind, PrintTarget Target, Guid? OrderId, IReadOnlyList<Guid> LineIds, DateOnly? BusinessDate)
+{
+    /// <summary>The kitchen printer, for kitchen tickets (none = the first kitchen printer).</summary>
+    public Guid? KitchenId { get; init; }
+}
 
 /// <summary>A print job and how it went, for the "failed prints" screen.</summary>
 /// <param name="Job">The job.</param>
@@ -103,8 +107,11 @@ public sealed class PrintService(
         return Save(new PrintJob(NewId(), printedBefore ? PrintJobKind.ReceiptCopy : PrintJobKind.Receipt, PrintTarget.Receipt, orderId, [], null));
     }
 
-    /// <summary>Queues a kitchen ticket for lines just sent (or voided).</summary>
-    public PrintJob QueueKitchen(Order order, IReadOnlyList<OrderLine> lines, KitchenTicketKind kind)
+    /// <summary>
+    /// Queues kitchen tickets for lines just sent (or voided): one for each kitchen printer that prints any of them
+    /// (pizzas to the pizza printer, drinks to the drinks printer…). Returns the jobs.
+    /// </summary>
+    public IReadOnlyList<PrintJob> QueueKitchen(Order order, IReadOnlyList<OrderLine> lines, KitchenTicketKind kind)
     {
         ArgumentNullException.ThrowIfNull(order);
         ArgumentNullException.ThrowIfNull(lines);
@@ -114,7 +121,8 @@ public sealed class PrintService(
             KitchenTicketKind.Additional => PrintJobKind.KitchenAdditional,
             _ => PrintJobKind.KitchenNew,
         };
-        return Save(new PrintJob(NewId(), jobKind, PrintTarget.Kitchen, order.Id, [.. lines.Select(l => l.Id)], null));
+        return [.. KitchenRouting.Route(lines, settings.Kitchens)
+            .Select(r => Save(new PrintJob(NewId(), jobKind, PrintTarget.Kitchen, order.Id, [.. r.Lines.Select(l => l.Id)], null) { KitchenId = r.Station.Id }))];
     }
 
     /// <summary>Queues the Z report slip for a day whose Z report has been taken.</summary>
@@ -232,7 +240,8 @@ public sealed class PrintService(
             }
             else
             {
-                output = outputs.Send(Document(row.Job), settings.For(row.Job.Target), row.Job.Id);
+                var printer = row.Job.Target == PrintTarget.Kitchen ? settings.KitchenPrinter(row.Job.KitchenId).Printer : settings.Receipt;
+                output = outputs.Send(Document(row.Job), printer, row.Job.Id);
             }
 
             db.Execute(
@@ -297,13 +306,22 @@ public sealed class PrintService(
             default:
                 var order = orders.Get(job.OrderId!.Value);
                 var lines = order.Lines.Where(l => job.LineIds.Contains(l.Id)).ToList();
+                // Meal deals split between printers show only this printer's items. If the printers were changed
+                // since the ticket was queued and this one now gets none of them, it prints them all: nothing is lost.
+                var station = settings.KitchenPrinter(job.KitchenId);
+                var mine = KitchenRouting.Route(lines, settings.Kitchens).FirstOrDefault(r => r.Station.Id == station.Id).Lines;
+                if (mine is { Count: > 0 })
+                {
+                    lines = [.. mine];
+                }
+
                 var kind = job.Kind switch
                 {
                     PrintJobKind.KitchenVoid => KitchenTicketKind.Void,
                     PrintJobKind.KitchenAdditional => KitchenTicketKind.Additional,
                     _ => KitchenTicketKind.New,
                 };
-                return Layouts.KitchenTicket(order, lines, kind, settings.ReceiptText, hub.TimeZone);
+                return Layouts.KitchenTicket(order, lines, kind, settings.ReceiptText, hub.TimeZone, settings.Kitchens.Count > 1 ? station.Name : null);
         }
     }
 
@@ -314,11 +332,11 @@ public sealed class PrintService(
         return Layouts.Receipt(order, tills.Ledger(order), settings.ReceiptText, hub.TimeZone, servedBy, isCopy);
     }
 
-    private static string Describe(PrintJob job) => job.Kind switch
+    private string Describe(PrintJob job) => job.Kind switch
     {
         PrintJobKind.ZReport => "the Z report",
         PrintJobKind.Receipt or PrintJobKind.ReceiptCopy => "a receipt",
-        _ => "a kitchen ticket",
+        _ => settings.Kitchens.Count > 1 ? $"a kitchen ticket on the {settings.KitchenPrinter(job.KitchenId).Name} printer" : "a kitchen ticket",
     };
 
     private Guid NewId() => Guid.CreateVersion7(clock.GetUtcNow());

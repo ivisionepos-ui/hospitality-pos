@@ -301,7 +301,8 @@ public sealed record NoSaleRequest(string Reason);
 
 /// <summary>Print a test page.</summary>
 /// <param name="Target">Receipt or Kitchen printer.</param>
-public sealed record TestPrintRequest(Pos.Hub.Printing.PrintTarget Target);
+/// <param name="KitchenId">Which kitchen printer (the first if not given).</param>
+public sealed record TestPrintRequest(Pos.Hub.Printing.PrintTarget Target, Guid? KitchenId = null);
 
 /// <summary>A discount off the whole order.</summary>
 /// <param name="Type">Percent or Amount.</param>

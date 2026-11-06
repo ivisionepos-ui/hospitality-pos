@@ -197,7 +197,13 @@ public static class Layouts
     /// A kitchen ticket: order number, how it is going out, time, and the items in food-type order
     /// with sizes, extras, deal choices and notes, large and with no prices.
     /// </summary>
-    public static PrintDocument KitchenTicket(Order order, IReadOnlyList<OrderLine> lines, KitchenTicketKind kind, ReceiptSettings shop, TimeZoneInfo timeZone)
+    /// <param name="order">The order.</param>
+    /// <param name="lines">The items for this ticket.</param>
+    /// <param name="kind">New, additional or void.</param>
+    /// <param name="shop">Receipt settings (language).</param>
+    /// <param name="timeZone">Shop time zone.</param>
+    /// <param name="station">The kitchen printer's name, printed at the top when there are several (e.g. "PIZZA").</param>
+    public static PrintDocument KitchenTicket(Order order, IReadOnlyList<OrderLine> lines, KitchenTicketKind kind, ReceiptSettings shop, TimeZoneInfo timeZone, string? station = null)
     {
         ArgumentNullException.ThrowIfNull(order);
         ArgumentNullException.ThrowIfNull(lines);
@@ -211,10 +217,18 @@ public static class Layouts
                 KitchenTicketKind.Additional => new PrintText("ADDITIONAL ITEMS", PrintAlign.Center, PrintSize.Large, Bold: true, Inverted: true),
                 _ => new PrintText("NEW ORDER", PrintAlign.Center, PrintSize.Large, Bold: true),
             },
+        };
+        if (station is not null)
+        {
+            blocks.Add(new PrintText(station.ToUpperInvariant(), PrintAlign.Center, PrintSize.Large, Bold: true, Inverted: true));
+        }
+
+        blocks.AddRange(
+        [
             new PrintText(order.Number.Display, PrintAlign.Center, PrintSize.Huge, Bold: true),
             new PrintText(OrderKind(order), PrintAlign.Center, PrintSize.Large, Bold: true),
             new PrintText($"Ordered {LocalTime(order.CreatedAt, timeZone)}", PrintAlign.Center),
-        };
+        ]);
         AddContact(blocks, order, PrintSize.Normal);
         blocks.Add(new PrintRule());
 
@@ -244,7 +258,7 @@ public static class Layouts
             KitchenTicketKind.Additional => "Kitchen additional",
             _ => "Kitchen",
         };
-        return new PrintDocument($"{title} {order.Number.Display}", blocks);
+        return new PrintDocument(station is null ? $"{title} {order.Number.Display}" : $"{title} {order.Number.Display} {station}", blocks);
     }
 
     /// <summary>The Z report as a printed slip.</summary>

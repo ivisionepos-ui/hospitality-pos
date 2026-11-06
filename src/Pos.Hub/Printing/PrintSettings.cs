@@ -106,8 +106,23 @@ public sealed class PrintSettings
     /// <summary>Customer receipt printer.</summary>
     public PrinterSettings Receipt { get; init; } = new();
 
-    /// <summary>Kitchen ticket printer.</summary>
+    /// <summary>Kitchen ticket printer from appsettings.json (the first kitchen printer until the owner sets up others).</summary>
     public PrinterSettings Kitchen { get; init; } = new();
+
+    private IReadOnlyList<KitchenStation>? _kitchens;
+
+    /// <summary>
+    /// The kitchen printers in use, first one first (it also prints anything not chosen by another printer).
+    /// Until set on the Printers screen: one printer called "Kitchen" that prints everything.
+    /// </summary>
+    public IReadOnlyList<KitchenStation> Kitchens
+    {
+        get => _kitchens ??= [new KitchenStation { Id = KitchenStation.MainId, Name = "Kitchen", Printer = Kitchen }];
+        set => _kitchens = value is { Count: > 0 } ? value : null;
+    }
+
+    /// <summary>A kitchen printer by id; the first one if it no longer exists.</summary>
+    public KitchenStation KitchenPrinter(Guid? id) => Kitchens.FirstOrDefault(k => k.Id == id) ?? Kitchens[0];
 
     /// <summary>What appears on receipts.</summary>
     public ReceiptSettings ReceiptText { get; init; } = new();
@@ -134,7 +149,7 @@ public sealed class PrintSettings
     public string BoldFontFile { get; set; } = "Printing/Fonts/DejaVuSans-Bold.ttf";
 
     /// <summary>The printer for a target.</summary>
-    public PrinterSettings For(PrintTarget target) => target == PrintTarget.Kitchen ? Kitchen : Receipt;
+    public PrinterSettings For(PrintTarget target) => target == PrintTarget.Kitchen ? Kitchens[0].Printer : Receipt;
 }
 
 /// <summary>Which printer a job goes to.</summary>

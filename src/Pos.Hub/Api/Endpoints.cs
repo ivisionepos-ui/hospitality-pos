@@ -627,7 +627,7 @@ public static class Endpoints
             .ForStaff(Permission.ManageDevices);
 
         api.MapPost("/settings/printers/test", (PrinterSetupService printers, ShopDetailsService shop, TestPrintRequest request) => Handle(() =>
-            Results.Ok(new { output = printers.TestPrint(request.Target, shop.Get().BusinessName) })))
+            Results.Ok(new { output = printers.TestPrint(request.Target, shop.Get().BusinessName, request.KitchenId) })))
             .ForStaff(Permission.ManageDevices);
 
         api.MapPost("/settings/printers/test-drawer", (PrinterSetupService printers) => Handle(() =>

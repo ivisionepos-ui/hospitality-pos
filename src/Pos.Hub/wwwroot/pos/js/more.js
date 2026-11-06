@@ -9,6 +9,7 @@ import { addressFinder } from './address-finder.js';
 import { changeMyPin, devicesDialog, staffDialog } from './staff.js';
 import { discountLimitsDialog } from './discounts.js';
 import { salesReportsDialog } from './reports.js';
+import { menuSpreadsheetDialog } from './menusheet.js';
 import { noSale, printersDialog } from './printers.js';
 
 function table(rows) {
@@ -367,6 +368,7 @@ export function moreDialog(till) {
         h('div', { class: 'more-grid' },
           section('Menu',
             can('EditMenu') ? item('Edit menu', () => till.enterEditMode(), true) : null,
+            can('EditMenu') ? item('Menu spreadsheet (Excel)', menuSpreadsheetDialog) : null,
             item('Sold out items', () => soldOutDialog(till)),
             can('ManageDevices') ? item('Discount limits', discountLimitsDialog) : null),
           section('Till',

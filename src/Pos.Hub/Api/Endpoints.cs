@@ -6,6 +6,7 @@ using Pos.Domain.Payments;
 using Pos.Domain.Pricing;
 using Pos.Domain.Staff;
 using Pos.Hub.Backups;
+using Pos.Hub.MenuSheets;
 using Pos.Hub.Delivery;
 using Pos.Hub.Printing;
 using Pos.Hub.Security;
@@ -402,6 +403,33 @@ public static class Endpoints
         api.MapPost("/menu/undo", (HttpContext http, MenuService menu) => Handle(() =>
             Change(menu.Edit(m => m.UndoLast(Caller(http).Staff!.Id)))))
             .ForStaff(Permission.EditMenu);
+
+        // ----- Menu spreadsheet (Excel or CSV): download, preview, import, undo -----
+        api.MapGet("/menu/spreadsheet", (MenuService menu) => Handle(() =>
+            Results.File(MenuSheetImport.Workbook(menu.Read(m => m.ToState())), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "menu.xlsx")))
+            .ForStaff(Permission.EditMenu);
+
+        api.MapPost("/menu/spreadsheet/preview", (HttpContext http, MenuImportService imports, string? name, string? missing) => HandleAsync(async () =>
+        {
+            var file = await ReadUpload(http).ConfigureAwait(false);
+            return Results.Ok(imports.Preview(file, UploadName(name), Missing(missing), Caller(http).Staff!.Id));
+        })).ForStaff(Permission.EditMenu);
+
+        api.MapPost("/menu/spreadsheet/import", (HttpContext http, MenuImportService imports, string? name, string? missing) => HandleAsync(async () =>
+        {
+            var file = await ReadUpload(http).ConfigureAwait(false);
+            return Results.Ok(imports.Import(file, UploadName(name), Missing(missing), Caller(http).Staff!.Id));
+        })).ForStaff(Permission.EditMenu);
+
+        api.MapGet("/menu/spreadsheet/last", (MenuImportService imports) => Handle(() =>
+            imports.Last() is { } last ? Results.Ok(last) : Results.NoContent()))
+            .ForStaff(Permission.EditMenu);
+
+        api.MapPost("/menu/spreadsheet/undo", (HttpContext http, MenuImportService imports) => Handle(() =>
+        {
+            var state = imports.UndoLast(Caller(http).Staff!.Id);
+            return Results.Ok(new { state.Version });
+        })).ForStaff(Permission.EditMenu);
     }
 
     private static void MapDrivers(RouteGroupBuilder api)
@@ -837,6 +865,35 @@ public static class Endpoints
             print.QueueReceipt(orderId);
         }
     }
+
+    private static async Task<byte[]> ReadUpload(HttpContext http)
+    {
+        if (http.Request.ContentLength > Spreadsheet.MaxBytes)
+        {
+            throw new ArgumentException("The file is too big (most is 2 MB). Is it the right file?");
+        }
+
+        using var buffer = new MemoryStream();
+        var chunk = new byte[64 * 1024];
+        int read;
+        while ((read = await http.Request.Body.ReadAsync(chunk, http.RequestAborted).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + read > Spreadsheet.MaxBytes)
+            {
+                throw new ArgumentException("The file is too big (most is 2 MB). Is it the right file?");
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return buffer.ToArray();
+    }
+
+    private static string UploadName(string? name) =>
+        string.IsNullOrWhiteSpace(name) ? throw new ArgumentException("Choose an Excel (.xlsx) or CSV (.csv) file.") : Path.GetFileName(name.Trim());
+
+    private static MissingItems Missing(string? missing) =>
+        string.Equals(missing, "hide", StringComparison.OrdinalIgnoreCase) ? MissingItems.Hide : MissingItems.Keep;
 
     private static IResult Handle(Func<IResult> action)
     {

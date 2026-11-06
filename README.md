@@ -302,6 +302,28 @@ Shop name, address, postcode, phone, VAT number and receipt message are entered 
 distances). Until then the values under `Printing` → `ReceiptText` and `Delivery:ShopPostcode` in appsettings.json
 are used. Language `en` (default), `ar` or `both` stays in appsettings.json. UK VAT receipts must show the VAT number when the business is VAT registered.
 
+### Menu spreadsheet (Excel)
+
+The quickest way to put a whole menu on the till. **More → Menu spreadsheet (Excel)** (staff who can edit the menu):
+
+1. **Download the menu spreadsheet**: `menu.xlsx` with the menu as it is now (examples if it is empty), an
+   **Extras** sheet and a **How to** sheet.
+2. Fill it in with Excel (or any program that saves .xlsx or .csv): **one row per size of each item**: Category,
+   Item, Size (empty for a single price), Price (incl. VAT), VAT (**Hot food**, **Cold food** or **Standard**),
+   Description, Extras (group names from the Extras sheet, separated by ;), Sold out (Yes or empty). An empty
+   Category or Item carries on from the row above. Extras sheet: Group, Extra, Price, Choose at least, Choose at most.
+3. **Choose the filled-in file.** The till shows what will change (new and changed items, price changes like
+   "12" £11.99 → £12.49") or every problem with its row ("Menu row 14: Price "eight" is not a price"). Nothing
+   changes until there are no problems and **Import** is pressed.
+
+Items, sizes, categories and extras already on the till are found **by name** and keep their ids, so kitchen printer
+choices, reports and open orders stay linked, and importing the same file twice changes nothing. A column left out of
+the sheet is left as it is on the till. Items on the till that the sheet does not list are **left as they are**, or
+**hidden** if chosen (never deleted). Meal deals are set up in Edit menu and are never changed by a sheet. A
+**backup is made before every import**, and **Undo last import** puts the menu back exactly, as long as nothing has
+changed it since. Files: .xlsx (Excel 2007 and later) or .csv, at most 2 MB; old .xls files are refused with how to
+save them as .xlsx. Only cell values are read (no formulas or macros run).
+
 ### Money rules
 
 - Every payment goes on the open shift of the till it was taken on. Tills only (not kitchen screens or displays).
@@ -463,6 +485,10 @@ active staff cannot share a name; PINs are 4–8 digits, not easy (1111, 1234) a
 | POST / PUT | /api/menu/categories[/{id}] | manager | Add a category / save its panel |
 | POST | /api/menu/categories/{id}/move | manager | Move a category tab |
 | PUT | /api/menu/modifier-groups/{id} | manager | Add or save a group of extras |
+| GET | /api/menu/spreadsheet | manager | The menu as menu.xlsx (Menu, Extras and How-to sheets) |
+| POST | /api/menu/spreadsheet/preview?name=&missing=keep\|hide | manager | Body: the .xlsx/.csv file. What an import would do, or its problems by row; changes nothing |
+| POST | /api/menu/spreadsheet/import?name=&missing=keep\|hide | manager | Backs up, then imports (refused if the file has problems or changes nothing) |
+| GET / POST | /api/menu/spreadsheet/last, /undo | manager | The last import; undo it (only while the menu is unchanged since) |
 | POST | /api/menu/undo | manager | Undo the last menu change |
 | POST | /api/orders | cashier, waiter | New order from what was picked (with contact and delivery for phone orders; a changed delivery fee needs a manager); safe to resend |
 | POST | /api/orders/quote | cashier, waiter | Totals for an order being built; nothing saved, no number used |

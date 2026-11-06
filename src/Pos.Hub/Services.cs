@@ -58,6 +58,9 @@ public sealed class MenuService
         return imported.ToState();
     });
 
+    /// <summary>Loads the menu from the database again (after a larger change that did not save).</summary>
+    public void Reload() => _db.Run(() => _menu = LoadSaved());
+
     /// <summary>Logged changes after a version.</summary>
     public IReadOnlyList<MenuChangeRecord> ChangesSince(long version) => _db.Run(() => _store.ChangesSince(version));
 

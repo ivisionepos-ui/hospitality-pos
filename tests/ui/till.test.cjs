@@ -1102,6 +1102,57 @@ test('owner opens sales reports: totals match the hub, items, hours, staff; a ta
   await page.context().close();
 });
 
+test('owner downloads the menu spreadsheet, imports one with a mistake, fixes it, imports, then undoes it', async () => {
+  const owner = { device: shop.owner.device, token: shop.owner.token };
+  const before = await call('GET', '/api/menu', owner);
+  const page = await tillPage(shop.till2);
+  await login(page, '4826');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Menu spreadsheet (Excel)' }).click();
+
+  // The download is a real Excel workbook of the menu.
+  const [download] = await Promise.all([page.waitForEvent('download'), top(page).getByRole('button', { name: 'Download the menu spreadsheet' }).click()]);
+  assert.equal(download.suggestedFilename(), 'menu.xlsx');
+  assert.equal(fs.readFileSync(await download.path()).subarray(0, 2).toString(), 'PK');
+
+  // A sheet with a mistake on row 3: nothing can be imported, and the row is named.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pos-sheet-'));
+  const bad = path.join(dir, 'new items.csv');
+  fs.writeFileSync(bad, 'Category,Item,Size,Price,VAT\r\nSheet test,Garlic dip,,0.75,Cold food\r\nSheet test,Chilli dip,,seventy,Cold food\r\n');
+  await top(page).locator('input[type=file]').setInputFiles(bad);
+  await top(page).getByText('1 problem to fix in the spreadsheet').waitFor();
+  await top(page).getByText('Menu row 3:').waitFor();
+  assert.equal(await top(page).getByRole('button', { name: 'Import', exact: true }).isDisabled(), true);
+  await shot(page, 'ui-menu-sheet-problem');
+
+  // Fixed: the preview lists what will change.
+  const good = path.join(dir, 'new items fixed.csv');
+  fs.writeFileSync(good, 'Category,Item,Size,Price,VAT\r\nSheet test,Garlic dip,,0.75,Cold food\r\nSheet test,Chilli dip,,0.70,Cold food\r\n');
+  await top(page).locator('input[type=file]').setInputFiles(good);
+  await top(page).getByText('New: Sheet test › Garlic dip (£0.75, Cold food)').waitFor();
+  await shot(page, 'ui-menu-sheet-preview');
+  await top(page).getByRole('button', { name: 'Import', exact: true }).click();
+  await page.getByText('Menu imported: 2 new items').waitFor();
+
+  // The new tab is on the till straight away.
+  await page.locator('.cats').getByRole('button', { name: 'Sheet test', exact: true }).waitFor();
+  const imported = await call('GET', '/api/menu', owner);
+  assert.equal(imported.products.length, before.products.length + 2);
+
+  // Undo puts the menu back exactly as it was.
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Menu spreadsheet (Excel)' }).click();
+  await top(page).getByText('new items fixed.csv').waitFor();
+  await top(page).getByRole('button', { name: 'Undo last import' }).click();
+  await top(page).getByRole('button', { name: 'Undo import' }).click();
+  await page.getByText('The menu is back to how it was before the import.').waitFor();
+  const after = await call('GET', '/api/menu', owner);
+  assert.deepEqual(after.products.map(p => p.id), before.products.map(p => p.id));
+  assert.deepEqual(after.categories.map(c => c.name.en), before.categories.map(c => c.name.en));
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
 test('owner sets up a network receipt printer, test page and drawer; a cashier opens the drawer (no sale) with a manager', async () => {
   // A stand-in network thermal printer: records what it is sent.
   const net = require('node:net');

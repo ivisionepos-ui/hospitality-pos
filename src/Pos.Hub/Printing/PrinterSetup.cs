@@ -85,8 +85,9 @@ public sealed record PrinterChoice(PrintOutputType Output, string? PrinterName, 
 /// <param name="Printer">How it is connected.</param>
 /// <param name="Mode">Everything, or only the chosen categories and items.</param>
 /// <param name="CategoryIds">Categories it prints.</param>
-/// <param name="ProductIds">Single items it prints (these override their category).</param>
-public sealed record KitchenPrinterChoice(Guid Id, string Name, PrinterChoice Printer, KitchenPrintMode Mode, IReadOnlyList<Guid> CategoryIds, IReadOnlyList<Guid> ProductIds);
+/// <param name="ProductIds">Single items it also prints, whatever their category ("also here").</param>
+/// <param name="ExcludedProductIds">Single items it does not print although their category is chosen ("not here").</param>
+public sealed record KitchenPrinterChoice(Guid Id, string Name, PrinterChoice Printer, KitchenPrintMode Mode, IReadOnlyList<Guid> CategoryIds, IReadOnlyList<Guid> ProductIds, IReadOnlyList<Guid>? ExcludedProductIds = null);
 
 /// <summary>The receipt printer, the kitchen printers and the drawer rule.</summary>
 /// <param name="Receipt">Customer receipt printer (the cash drawer plugs into it).</param>
@@ -131,6 +132,7 @@ public sealed record PrinterSetup(PrinterChoice Receipt, IReadOnlyList<KitchenPr
 
             var categories = (k.CategoryIds ?? []).Distinct().Take(500).ToList();
             var products = (k.ProductIds ?? []).Distinct().Take(2000).ToList();
+            var excluded = (k.ExcludedProductIds ?? []).Distinct().Except(products).Take(2000).ToList();
             if (k.Mode == KitchenPrintMode.Chosen && categories.Count == 0 && products.Count == 0)
             {
                 throw new ArgumentException($"Choose what the {name} printer prints, or set it to print everything.");
@@ -138,7 +140,7 @@ public sealed record PrinterSetup(PrinterChoice Receipt, IReadOnlyList<KitchenPr
 
             var id = k.Id == Guid.Empty || kitchens.Any(x => x.Id == k.Id) ? Guid.NewGuid() : k.Id;
             kitchens.Add(new KitchenPrinterChoice(id, name, k.Printer.Checked(name), k.Mode,
-                k.Mode == KitchenPrintMode.Chosen ? categories : [], k.Mode == KitchenPrintMode.Chosen ? products : []));
+                k.Mode == KitchenPrintMode.Chosen ? categories : [], k.Mode == KitchenPrintMode.Chosen ? products : [], k.Mode == KitchenPrintMode.Chosen ? excluded : []));
         }
 
         return new PrinterSetup(Receipt.Checked("receipt"), kitchens, OpenDrawerOnCash);
@@ -162,7 +164,7 @@ public sealed class PrinterSetupService(HubDatabase db, PrintSettings settings, 
     /// <summary>The printers as set now.</summary>
     public PrinterSetup Get() => new(
         PrinterChoice.From(settings.Receipt),
-        [.. settings.Kitchens.Select(k => new KitchenPrinterChoice(k.Id, k.Name, PrinterChoice.From(k.Printer), k.Mode, [.. k.CategoryIds], [.. k.ProductIds]))],
+        [.. settings.Kitchens.Select(k => new KitchenPrinterChoice(k.Id, k.Name, PrinterChoice.From(k.Printer), k.Mode, [.. k.CategoryIds], [.. k.ProductIds], [.. k.ExcludedProductIds]))],
         settings.OpenDrawerOnCash);
 
     /// <summary>Saves and uses new choices (no restart).</summary>
@@ -194,7 +196,21 @@ public sealed class PrinterSetupService(HubDatabase db, PrintSettings settings, 
             return;
         }
 
-        Apply(PosJson.Deserialize<PrinterSetup>(saved));
+        var setup = PosJson.Deserialize<PrinterSetup>(saved);
+        if (System.Text.Json.Nodes.JsonNode.Parse(saved)?["kitchens"]?.AsArray().Any(k => k?["excludedProductIds"] is null) == true)
+        {
+            // Saved by 0.16.0, where choosing a single item moved it to that printer. Now a chosen item prints there
+            // as well, so it is marked "not here" on every other printer: tickets print exactly as before.
+            setup = setup with
+            {
+                Kitchens = [.. setup.Kitchens.Select(k => k with
+                {
+                    ExcludedProductIds = [.. setup.Kitchens.Where(o => o.Id != k.Id).SelectMany(o => o.ProductIds).Except(k.ProductIds).Distinct()],
+                })],
+            };
+        }
+
+        Apply(setup);
     }
 
     /// <summary>Prints a test page now on one printer. Returns where it went; throws with a clear reason if it cannot.</summary>
@@ -245,7 +261,11 @@ public sealed class PrinterSetupService(HubDatabase db, PrintSettings settings, 
             // Kitchen PDF files all go in the kitchen folder; the printer's name is in each file name.
             var printer = new PrinterSettings { Folder = settings.Kitchen.Folder };
             k.Printer.ApplyTo(printer);
-            return new KitchenStation { Id = k.Id, Name = k.Name, Printer = printer, Mode = k.Mode, CategoryIds = k.CategoryIds.ToHashSet(), ProductIds = k.ProductIds.ToHashSet() };
+            return new KitchenStation
+            {
+                Id = k.Id, Name = k.Name, Printer = printer, Mode = k.Mode,
+                CategoryIds = k.CategoryIds.ToHashSet(), ProductIds = k.ProductIds.ToHashSet(), ExcludedProductIds = (k.ExcludedProductIds ?? []).ToHashSet(),
+            };
         })];
         settings.OpenDrawerOnCash = setup.OpenDrawerOnCash;
     }

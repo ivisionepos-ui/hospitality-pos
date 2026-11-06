@@ -34,15 +34,22 @@ public sealed class KitchenStation
     /// <summary>Categories it prints (Mode = Chosen).</summary>
     public IReadOnlySet<Guid> CategoryIds { get; init; } = new HashSet<Guid>();
 
-    /// <summary>Single items it prints, wherever their category goes (Mode = Chosen).</summary>
+    /// <summary>Single items it also prints, whatever their category (Mode = Chosen).</summary>
     public IReadOnlySet<Guid> ProductIds { get; init; } = new HashSet<Guid>();
+
+    /// <summary>Single items it does not print, although their category is chosen (Mode = Chosen).</summary>
+    public IReadOnlySet<Guid> ExcludedProductIds { get; init; } = new HashSet<Guid>();
+
+    /// <summary>True when this printer (set to "Only what I choose") prints the item.</summary>
+    public bool Prints(Guid productId, Guid categoryId) =>
+        Mode == KitchenPrintMode.Chosen && !ExcludedProductIds.Contains(productId) && (ProductIds.Contains(productId) || CategoryIds.Contains(categoryId));
 }
 
 /// <summary>
-/// Which kitchen printer prints which items. For each item:
-/// a printer that chose the item itself gets it (the item overrides its category); otherwise printers that chose its
-/// category get it; printers set to "Everything" always get it; and an item nobody chose prints on the first printer,
-/// so nothing is ever lost. A meal deal goes whole to a printer that chose the deal (or its category); otherwise each
+/// Which kitchen printers print which items. An item prints on every printer that chose its category or the item
+/// itself ("also here"), except printers where it is marked "not here"; printers set to "Everything" always print it;
+/// so one item can print on several printers. An item that no printer prints goes to the first printer, so nothing is
+/// ever lost. A meal deal goes whole to a printer that chose the deal (or its category); otherwise each
 /// item in it is routed on its own, and each printer gets the deal with only its items.
 /// </summary>
 public static class KitchenRouting
@@ -119,22 +126,10 @@ public static class KitchenRouting
 
     private static IEnumerable<KitchenStation> Everything(IReadOnlyList<KitchenStation> stations) => stations.Where(s => s.Mode == KitchenPrintMode.Everything);
 
-    // The printers that chose this item (or, if none did, its category); the first printer if nobody chose it at all.
+    // Every "only what I choose" printer that prints this item; the first printer if none does and none prints everything.
     private static List<KitchenStation> Targets(Guid productId, Guid categoryId, IReadOnlyList<KitchenStation> stations, bool includeFallback)
     {
-        var chosen = stations.Where(s => s.Mode == KitchenPrintMode.Chosen).ToList();
-        var byItem = chosen.Where(s => s.ProductIds.Contains(productId)).ToList();
-        if (byItem.Count > 0)
-        {
-            return byItem;
-        }
-
-        var byCategory = chosen.Where(s => s.CategoryIds.Contains(categoryId)).ToList();
-        if (byCategory.Count > 0 || !includeFallback || stations.Any(s => s.Mode == KitchenPrintMode.Everything))
-        {
-            return byCategory;
-        }
-
-        return [stations[0]];
+        var targets = stations.Where(s => s.Prints(productId, categoryId)).ToList();
+        return targets.Count > 0 || !includeFallback || stations.Any(s => s.Mode == KitchenPrintMode.Everything) ? targets : [stations[0]];
     }
 }

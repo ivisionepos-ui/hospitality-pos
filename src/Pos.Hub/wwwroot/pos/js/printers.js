@@ -62,7 +62,16 @@ function printsWhat(k, label, menu) {
   const box = h('div', { class: 'prints-what' });
   const render = () => {
     const toggle = (list, id) => { const i = list.indexOf(id); if (i >= 0) list.splice(i, 1); else list.push(id); render(); };
-    const chosenItems = k.productIds.length;
+    k.excludedProductIds ??= [];
+    // A single item: as its category → "also here" → "not here" → as its category.
+    const cycle = id => {
+      if (k.productIds.includes(id)) { k.productIds.splice(k.productIds.indexOf(id), 1); k.excludedProductIds.push(id); }
+      else if (k.excludedProductIds.includes(id)) k.excludedProductIds.splice(k.excludedProductIds.indexOf(id), 1);
+      else k.productIds.push(id);
+      render();
+    };
+    const state = id => (k.productIds.includes(id) ? 'also' : k.excludedProductIds.includes(id) ? 'not' : '');
+    const chosenItems = k.productIds.length + k.excludedProductIds.length;
     mount(box,
       h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Prints' }),
         h('div', { class: 'seg seg-small', role: 'radiogroup', 'aria-label': `${label}: prints` }, [['Everything', 'Everything'], ['Chosen', 'Only what I choose']].map(([v, text]) => h('button', {
@@ -76,14 +85,19 @@ function printsWhat(k, label, menu) {
           onclick: () => toggle(k.categoryIds, c.id), text: c.name.en,
         }))),
         h('details', { class: 'single-items', open: chosenItems > 0 },
-          h('summary', { text: chosenItems ? `Single items (${chosenItems} chosen)` : 'Single items (these override their category)' }),
+          h('summary', { text: chosenItems ? `Single items (${k.productIds.length} also here, ${k.excludedProductIds.length} not here)` : 'Single items: print one item here as well, or not here' }),
+          h('p', { class: 'field-hint', text: 'Tap an item: ＋ also print it here (it still prints on its category\'s printer too) · ✕ do not print it here · tap again to go back to its category.' }),
           menu.categories.map(c => {
             const items = menu.products.filter(p => p.categoryId === c.id);
             return items.length ? h('div', { class: 'item-group' }, h('span', { class: 'field-hint', text: c.name.en }),
-              h('div', { class: 'chips', role: 'group', 'aria-label': `${label}: ${c.name.en} items` }, items.map(p => h('button', {
-                type: 'button', class: `chip chip-small ${k.productIds.includes(p.id) ? 'chip-on' : ''}`, 'aria-pressed': String(k.productIds.includes(p.id)),
-                onclick: () => toggle(k.productIds, p.id), text: p.name.en,
-              })))) : null;
+              h('div', { class: 'chips', role: 'group', 'aria-label': `${label}: ${c.name.en} items` }, items.map(p => {
+                const st = state(p.id);
+                return h('button', {
+                  type: 'button', class: `chip chip-small ${st === 'also' ? 'chip-also' : st === 'not' ? 'chip-not' : ''}`,
+                  'aria-label': `${p.name.en}${st === 'also' ? ': also here' : st === 'not' ? ': not here' : ''}`,
+                  onclick: () => cycle(p.id), text: `${st === 'also' ? '＋ ' : st === 'not' ? '✕ ' : ''}${p.name.en}`,
+                });
+              }))) : null;
           })),
       ] : null);
   };
@@ -144,7 +158,7 @@ export async function printersDialog() {
       setup.kitchens.length < 10 ? h('button', {
         class: 'btn', text: '+ Add kitchen printer',
         onclick: () => {
-          setup.kitchens.push({ id: '00000000-0000-0000-0000-000000000000', name: '', printer: structuredClone(setup.kitchens[0].printer), mode: 'Chosen', categoryIds: [], productIds: [] });
+          setup.kitchens.push({ id: '00000000-0000-0000-0000-000000000000', name: '', printer: structuredClone(setup.kitchens[0].printer), mode: 'Chosen', categoryIds: [], productIds: [], excludedProductIds: [] });
           renderKitchens();
           kitchenList.querySelectorAll('.kitchen-name input')[setup.kitchens.length - 1]?.focus();
         },
@@ -162,7 +176,7 @@ export async function printersDialog() {
             h('button', { class: 'btn btn-small', onclick: run(async () => { await save(); await busy(() => api.post('/api/settings/printers/test-drawer')); toast('Drawer opened.', 'ok'); }), text: 'Test drawer' }))),
         h('div', { class: 'printers-col' },
           h('h3', { class: 'menu-heading', text: 'Kitchen printers' }),
-          h('p', { class: 'field-hint', text: 'Each kitchen printer prints only the food it is set for, e.g. Pizzas on the pizza printer, Drinks on the drinks printer. A meal deal is split between them.' }),
+          h('p', { class: 'field-hint', text: 'Each kitchen printer prints only the food it is set for, e.g. Pizzas on the pizza printer, Drinks on the drinks printer. One item can print on several printers. A meal deal is split between them.' }),
           kitchenList)),
       actions: [
         h('button', { class: 'btn', onclick: () => close(false), text: 'Cancel' }),

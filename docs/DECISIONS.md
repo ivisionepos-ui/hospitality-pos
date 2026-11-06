@@ -196,3 +196,6 @@ The master list (D-001 to D-022) is in the Architecture & SRS document. Decision
 | C-190 | 2026-11-06 | Routing is set on the Printers screen (by category and item), not in the menu editor | One place to set up printers; the menu stays as it is |
 | C-191 | 2026-11-06 | Each ticket remembers its printer; a ticket queued before the printers were changed prints all its items if its printer would now get none | Nothing is lost when the set-up changes during service |
 | C-192 | 2026-11-06 | Printer set-ups saved by 0.15 load as one "Kitchen" printer that prints everything | Updating never changes what an existing shop prints |
+| C-193 | 2026-11-06 | One item can print on several kitchen printers: single items are "＋ also here" or "✕ not here" per printer (replaces C-188's item override) | The owner needs some items on more than one kitchen printer; with the override, choosing an item on a second printer took it off the first |
+| C-194 | 2026-11-06 | An item no printer prints (e.g. "not here" everywhere) still prints on the first kitchen printer | A ticket is never lost through the set-up |
+| C-195 | 2026-11-06 | 0.16.0 set-ups are converted on loading: each chosen item gets "not here" on the other printers | They print exactly as before |

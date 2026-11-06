@@ -1175,6 +1175,15 @@ test('owner sets up a network receipt printer, test page and drawer; a cashier o
 
 test('owner sets up kebab, pizza, drinks and dessert kitchen printers; each item prints only on its own printer', async () => {
   const owner = { device: shop.owner.device, token: shop.owner.token };
+  // One plain item from each category (earlier tests edit the menu, so items are picked, not named).
+  const menu = await call('GET', '/api/menu', owner);
+  const required = new Set(menu.modifierGroups.filter(g => g.minChoices > 0).map(g => g.id));
+  const pickFrom = category => {
+    const cat = menu.categories.find(c => c.name.en === category);
+    const p = menu.products.find(x => x.categoryId === cat.id && x.type === 'Standard' && !x.isSoldOut && !x.isHidden && !x.modifierGroupIds.some(g => required.has(g)) && x.variants.some(v => !v.isSoldOut));
+    return { product: p, line: { productId: p.id, variantId: p.variants.find(v => !v.isSoldOut).id, quantity: 1 } };
+  };
+  const picks = Object.fromEntries(['Pizzas', 'Drinks', 'Desserts', 'Starters'].map(c => [c, pickFrom(c)]));
   const page = await tillPage(shop.till2);
   await login(page, '4826');
   await page.getByRole('button', { name: 'More', exact: true }).click();
@@ -1193,6 +1202,21 @@ test('owner sets up kebab, pizza, drinks and dessert kitchen printers; each item
     await setUp(n, name, category);
   }
 
+  // One item on two printers: the pizza also prints on the drinks printer. The dessert is "not here" on the desserts
+  // printer, so nobody prints it: it falls back to the first printer.
+  const item = async (n, category, name, taps) => {
+    await card(n).getByText(/^Single items/).first().click();
+    for (let i = 0; i < taps; i++) {
+      await card(n).getByRole('group', { name: `Kitchen printer ${n}: ${category} items` }).getByRole('button', { name: new RegExp(`^${name.replace(/[()]/g, '\\$&')}`) }).click();
+    }
+  };
+  await item(3, 'Pizzas', picks.Pizzas.product.name.en, 1);
+  await card(3).getByRole('button', { name: `${picks.Pizzas.product.name.en}: also here` }).waitFor();
+  await item(4, 'Desserts', picks.Desserts.product.name.en, 2);
+  await card(4).getByRole('button', { name: `${picks.Desserts.product.name.en}: not here` }).waitFor();
+  await card(4).getByRole('button', { name: `${picks.Desserts.product.name.en}: not here` }).scrollIntoViewIfNeeded();
+  await shot(page, 'ui-kitchen-items');
+
   // A kitchen printer set to "only what I choose" with nothing chosen is explained.
   await top(page).getByRole('button', { name: '+ Add kitchen printer' }).click();
   await card(5).getByLabel('Kitchen printer 5: name').fill('Spare');
@@ -1206,15 +1230,6 @@ test('owner sets up kebab, pizza, drinks and dessert kitchen printers; each item
   await page.getByText('Printers saved. New printouts use them.').waitFor();
 
   // An order with something for every printer (onion rings: nobody chose Starters, so the first printer).
-  // One plain item from each category (earlier tests edit the menu, so items are picked, not named).
-  const menu = await call('GET', '/api/menu', owner);
-  const required = new Set(menu.modifierGroups.filter(g => g.minChoices > 0).map(g => g.id));
-  const pickFrom = category => {
-    const cat = menu.categories.find(c => c.name.en === category);
-    const p = menu.products.find(x => x.categoryId === cat.id && x.type === 'Standard' && !x.isSoldOut && !x.isHidden && !x.modifierGroupIds.some(g => required.has(g)) && x.variants.some(v => !v.isSoldOut));
-    return { product: p, line: { productId: p.id, variantId: p.variants.find(v => !v.isSoldOut).id, quantity: 1 } };
-  };
-  const picks = Object.fromEntries(['Pizzas', 'Drinks', 'Desserts', 'Starters'].map(c => [c, pickFrom(c)]));
   const id = crypto.randomUUID();
   const order = await call('POST', '/api/orders', owner, { orderId: id, idempotencyKey: id, source: 'Counter', type: 'EatIn',
     lines: Object.values(picks).map(p => p.line) });
@@ -1225,14 +1240,15 @@ test('owner sets up kebab, pizza, drinks and dessert kitchen printers; each item
   let jobs = [];
   for (let i = 0; i < 60; i++) {
     jobs = (await call('GET', '/api/print-jobs', owner)).filter(j => j.job.orderId === order.id && j.job.target === 'Kitchen');
-    if (jobs.length === 4 && jobs.every(j => j.status === 'Printed')) break;
+    if (jobs.length === 3 && jobs.every(j => j.status === 'Printed')) break;
     await new Promise(r => setTimeout(r, 100));
   }
   const nameOf = lineId => order.lines.find(l => l.id === lineId).name.en;
   const got = Object.fromEntries(jobs.map(j => [printers.find(k => k.id === j.job.kitchenId).name, j.job.lineIds.map(nameOf)]));
   assert.deepEqual(got, {
-    Pizza: [picks.Pizzas.product.name.en], Drinks: [picks.Drinks.product.name.en], Desserts: [picks.Desserts.product.name.en],
-    Kebab: [picks.Starters.product.name.en], // nobody chose Starters: the first printer
+    Pizza: [picks.Pizzas.product.name.en],
+    Drinks: [picks.Pizzas.product.name.en, picks.Drinks.product.name.en],         // the pizza prints here as well
+    Kebab: [picks.Desserts.product.name.en, picks.Starters.product.name.en],       // nobody prints these: the first printer
   });
   for (const j of jobs) assert.ok(fs.existsSync(j.output) && j.output.includes(printers.find(k => k.id === j.job.kitchenId).name), j.output);
   assert.deepEqual(page.errors, []);

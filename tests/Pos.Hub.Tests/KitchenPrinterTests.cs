@@ -132,19 +132,82 @@ public sealed class KitchenPrinterTests : HubTestBase
         Assert.Contains("Pizza & Kebab Deal", Ticket(order.Id, pass.Id), StringComparison.Ordinal);
     }
 
+    private static Guid[] PrintersFor(List<PrintJobView> jobs, Guid lineId) =>
+        [.. jobs.Where(j => j.Job.LineIds.Contains(lineId)).Select(j => j.Job.KitchenId!.Value).OrderBy(id => id == GrillId ? 0 : id == PizzaId ? 1 : 2)];
+
     [Fact]
-    public async Task A_chosen_item_overrides_its_category()
+    public async Task One_item_can_print_on_more_than_one_printer()
     {
-        // The margherita is made on the grill (e.g. a different oven), although Pizzas go to the pizza printer.
+        // The margherita is "also here" on the grill: it prints on the pizza printer (its category) and on the grill.
         var kitchens = Stations();
         kitchens[0] = kitchens[0] with { ProductIds = [TestMenu.Margherita] };
         await Save(kitchens);
         var order = await Send(Pizza, Can);
 
-        var jobs = await KitchenJobs(order.Id, 2);
+        var jobs = await KitchenJobs(order.Id, 3);
 
-        Assert.Equal([GrillId, DrinksId], jobs.Select(j => j.Job.KitchenId!.Value).OrderBy(id => id == GrillId ? 0 : 1));
-        Assert.Equal([order.Lines[0].Id], jobs.Single(j => j.Job.KitchenId == GrillId).Job.LineIds);
+        Assert.Equal([GrillId, PizzaId], PrintersFor(jobs, order.Lines[0].Id));
+        Assert.Equal([DrinksId], PrintersFor(jobs, order.Lines[1].Id));
+    }
+
+    [Fact]
+    public async Task One_category_can_print_on_more_than_one_printer()
+    {
+        var kitchens = Stations();
+        kitchens[2] = kitchens[2] with { CategoryIds = [TestMenu.Drinks, TestMenu.Pizzas] }; // drinks station also gets a copy of pizzas
+        await Save(kitchens);
+        var order = await Send(Pizza);
+
+        Assert.Equal([PizzaId, DrinksId], PrintersFor(await KitchenJobs(order.Id, 2), order.Lines[0].Id));
+    }
+
+    [Fact]
+    public async Task An_item_can_be_moved_with_also_here_on_one_printer_and_not_here_on_another()
+    {
+        var kitchens = Stations();
+        kitchens[0] = kitchens[0] with { ProductIds = [TestMenu.Margherita] };          // also here (grill)
+        kitchens[1] = kitchens[1] with { ExcludedProductIds = [TestMenu.Margherita] }; // not here (pizza)
+        await Save(kitchens);
+        var order = await Send(Pizza);
+
+        Assert.Equal([GrillId], PrintersFor(await KitchenJobs(order.Id, 1), order.Lines[0].Id));
+    }
+
+    [Fact]
+    public async Task An_item_marked_not_here_everywhere_still_prints_on_the_first_printer()
+    {
+        var kitchens = Stations();
+        kitchens[1] = kitchens[1] with { ExcludedProductIds = [TestMenu.Margherita] };
+        await Save(kitchens);
+        var order = await Send(Pizza);
+
+        Assert.Equal([GrillId], PrintersFor(await KitchenJobs(order.Id, 1), order.Lines[0].Id)); // nothing is lost
+    }
+
+    [Fact]
+    public async Task A_set_up_saved_by_0_16_0_prints_exactly_as_before()
+    {
+        // In 0.16.0 choosing a single item moved it: the margherita chosen on the grill printed only there.
+        using (var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath};Pooling=False"))
+        {
+            db.Open();
+            using var command = db.CreateCommand();
+            command.CommandText = "INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES ('printers', $v, '2026-11-06T00:00:00Z', 'x');";
+            var pdf = """{"output":"Pdf","paperWidthMm":80,"cut":true,"drawerPin":2}""";
+            command.Parameters.AddWithValue("$v", $$"""
+                {"receipt":{{pdf}},"openDrawerOnCash":true,"kitchens":[
+                  {"id":"{{GrillId}}","name":"Grill","printer":{{pdf}},"mode":"Chosen","categoryIds":["{{TestMenu.Kebabs}}"],"productIds":["{{TestMenu.Margherita}}"]},
+                  {"id":"{{PizzaId}}","name":"Pizza","printer":{{pdf}},"mode":"Chosen","categoryIds":["{{TestMenu.Pizzas}}"],"productIds":[]}]}
+                """);
+            command.ExecuteNonQuery();
+        }
+
+        Restart();
+        var order = await Send(Pizza);
+
+        Assert.Equal([GrillId], PrintersFor(await KitchenJobs(order.Id, 1), order.Lines[0].Id));
+        var pizza = (await Owner.GetJson<PrintersView>("/api/settings/printers")).Setup.Kitchens.Single(k => k.Name == "Pizza");
+        Assert.Equal([TestMenu.Margherita], pizza.ExcludedProductIds!); // shown as "not here" on the pizza printer
     }
 
     [Fact]

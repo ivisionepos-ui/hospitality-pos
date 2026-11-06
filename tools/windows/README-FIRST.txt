@@ -69,5 +69,7 @@ Receipt and kitchen printers, cash drawer
   Several kitchen printers (e.g. Pizza, Kebab, Drinks, Desserts): press
   "+ Add kitchen printer", give it a name, choose "Only what I choose" and tap the
   categories it prints. Anything no printer chose prints on the first one.
+  One item on two printers: open "Single items" on the second printer and tap the
+  item once (+ also here). Tap twice for "not here" (x).
   The cash drawer cable goes into the receipt printer's DK socket. Press "Test drawer".
   Give a network printer a fixed address in the router, like the hub PC.

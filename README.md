@@ -244,12 +244,14 @@ print or open straight away and say why if they cannot.
 
 **Several kitchen printers.** Up to 10 kitchen printers, each with a name (printed at the top of its tickets when
 there is more than one), its own connection, and what it prints: **Everything**, or **Only what I choose**
-(categories, and single items, which override their category). For each item: printers that chose the item get it;
-otherwise printers that chose its category; "Everything" printers always get it; and an item nobody chose prints on
-the **first** kitchen printer, so nothing is missed. A **meal deal** goes whole to a printer that chose the deal (or
+(categories, plus single items marked **＋ Also here** or **✕ Not here**). An item prints on **every** printer that
+chose its category or marked it "also here", except where it is "not here"; "Everything" printers always print it; so
+one item can print on several printers (move an item: "also here" on one printer, "not here" on the other). An item
+no printer prints goes to the **first** kitchen printer, so nothing is missed. A **meal deal** goes whole to a printer that chose the deal (or
 its category); otherwise it is split, each printer getting the deal marked "(part)" with only its items. Additions
 and void slips go to the same printers. Kitchen PDF files carry the printer's name. Printer set-ups saved by earlier
-versions load as one "Kitchen" printer that prints everything.
+versions load as one "Kitchen" printer that prints everything; 0.16.0 set-ups (where a chosen item moved) get "not here" on the
+other printers, so they print exactly as before.
 
 The **cash drawer** plugs into the receipt printer (socket pin 2, or 5). It opens for cash payments, cash refunds and
 paid in/out (can be turned off), through the print queue so it never interrupts a printout, and is tried once only

@@ -314,8 +314,23 @@ test('two tills see each other’s orders and menu changes live', async () => {
 test('phone and eat-in orders are saved with the right type; the till closes with a blind count', async () => {
   const page = await tillPage(shop.till1, { width: 1024, height: 768 });
   await login(page, '5931');
+  // Collection: the customer box opens by itself; name and phone are both needed.
   await page.getByRole('button', { name: 'Collection', exact: true }).click();
+  await top(page).getByLabel('Phone number').fill('07700 900111');
+  await top(page).getByRole('button', { name: 'Use these details' }).click();
+  await top(page).getByText('Enter the customer’s name.').waitFor();
+  await top(page).getByLabel('Name').fill('Omar');
+  await top(page).getByLabel('Phone number').fill('');
+  await top(page).getByRole('button', { name: 'Use these details' }).click();
+  await top(page).getByText('Enter a phone number, so the shop can call about the order.').waitFor();
+  await top(page).getByRole('button', { name: 'Cancel' }).click();
   await pick(page, 'Starters', 'Garlic bread £');
+  await page.locator('.ticket-warning', { hasText: 'Add the customer’s name and phone number first.' }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).isDisabled(), true);
+  await page.getByRole('button', { name: '+ Add customer name and phone' }).click();
+  await top(page).getByLabel('Name').fill('Omar');
+  await top(page).getByLabel('Phone number').fill('07700 900111');
+  await top(page).getByRole('button', { name: 'Use these details' }).click();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.locator('.lines-empty').waitFor();
   await page.getByRole('button', { name: 'Eat in', exact: true }).click();
@@ -325,6 +340,7 @@ test('phone and eat-in orders are saved with the right type; the till closes wit
   await page.locator('.lines-empty').waitFor(); // back to a new, empty order
   const orders = await ordersToday();
   assert.deepEqual(orders.slice(-2).map(o => [o.source, o.type]), [['Phone', 'Takeaway'], ['Counter', 'EatIn']]);
+  assert.deepEqual([orders.at(-2).contact.name, orders.at(-2).contact.phone], ['Omar', '07700900111']);
   // Cold cheesecake eaten in is standard-rated; garlic bread (hot) is too: both have VAT.
   assert.ok(orders.slice(-2).every(o => o.vat.length === 1 && o.vat[0].vat.minorUnits > 0));
 
@@ -526,6 +542,7 @@ test('phone delivery: postcode check, minimum order, remembered customer, manage
   // No internet: the postcode cannot be checked, so the miles are typed in. Too far is blocked.
   await page.getByRole('button', { name: 'Delivery', exact: true }).click();
   await top(page).getByLabel('Phone number').fill('0113 496 0000');
+  await top(page).getByLabel('Name').fill('Test 000');
   await top(page).getByLabel('House number and street').fill('1 Mill Road');
   await top(page).getByLabel('Postcode').fill('LS9 9XX');
   await top(page).getByRole('button', { name: 'Check postcode' }).click();
@@ -570,6 +587,7 @@ test('owner adds a Royal Mail address file; the cashier picks the flat from the 
   await login(page, '5931');
   await page.getByRole('button', { name: 'Delivery', exact: true }).click();
   await top(page).getByLabel('Phone number').fill('07700 900789');
+  await top(page).getByLabel('Name').fill('Test 789');
   await top(page).getByLabel('Find address').fill('ls29jt');
   await top(page).locator('.pick-item').first().waitFor();
   assert.deepEqual(await top(page).locator('.pick-item').allTextContents(),
@@ -619,6 +637,7 @@ test('owner chooses Google, then Royal Mail online, testing each key; the till f
   await login(page, '5931');
   await page.getByRole('button', { name: 'Delivery', exact: true }).click();
   await top(page).getByLabel('Phone number').fill('07700 900321');
+  await top(page).getByLabel('Name').fill('Test 321');
   await top(page).getByLabel('Find address').fill('corner shop test road');
   await top(page).getByText('Results from Google').waitFor();
   await top(page).locator('.pick-item', { hasText: 'Corner Shop' }).click();

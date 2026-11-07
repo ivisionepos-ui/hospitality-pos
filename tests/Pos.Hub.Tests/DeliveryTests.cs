@@ -62,6 +62,45 @@ public sealed class DeliveryTests : HubTestBase
         Assert.Equal(HttpStatusCode.Forbidden, (await Kitchen.GetAsync(new Uri("/api/delivery/check?postcode=LS2 9JT", UriKind.Relative))).StatusCode);
     }
 
+    private static CreateOrderRequest CollectionOrder(OrderContact? contact) =>
+        new(DeviceIds.New(), Guid.NewGuid().ToString(), OrderSource.Phone, OrderType.Takeaway, null, null, [Pizza], contact, null);
+
+    [Theory]
+    [InlineData(null, null, "name and phone number")]
+    [InlineData(null, "07700 900123", "the customer's name.")]
+    [InlineData("Sam Patel", null, "the customer's phone number.")]
+    [InlineData("  ", "07700 900123", "the customer's name.")]
+    public async Task Collection_orders_need_the_customers_name_and_phone(string? name, string? phone, string message)
+    {
+        await Menu();
+        var contact = name is null && phone is null ? null : new OrderContact(name, phone, null, null);
+
+        var response = await Cashier.Post("/api/orders", CollectionOrder(contact));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains(message, (await response.Read<ErrorView>()).Message, StringComparison.Ordinal);
+        Assert.Empty(await Cashier.GetJson<List<OrderView>>("/api/orders"));
+    }
+
+    [Fact]
+    public async Task Collection_order_with_name_and_phone_is_taken_and_the_details_cannot_be_removed_later()
+    {
+        await Menu();
+        var created = await Cashier.Post("/api/orders", CollectionOrder(new OrderContact("Amira", "07700 900456", null, null)));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var order = await created.Read<OrderView>();
+        Assert.Equal(("Amira", "07700900456"), (order.Contact!.Name, order.Contact.Phone));
+
+        // A correction must still have both.
+        var noPhone = await Cashier.Post($"/api/orders/{order.Id}/contact", new OrderContact("Amira K", null, null, null));
+        Assert.Equal(HttpStatusCode.BadRequest, noPhone.StatusCode);
+        (await Cashier.Post($"/api/orders/{order.Id}/contact", new OrderContact("Amira K", "07700 900456", null, null))).EnsureSuccessStatusCode();
+
+        // Counter takeaway and eat-in still need no customer details.
+        var counter = new CreateOrderRequest(DeviceIds.New(), Guid.NewGuid().ToString(), OrderSource.Counter, OrderType.Takeaway, null, null, [Pizza], null, null);
+        Assert.Equal(HttpStatusCode.Created, (await Cashier.Post("/api/orders", counter)).StatusCode);
+    }
+
     [Fact]
     public async Task Delivery_order_charges_by_distance_keeps_the_address_and_remembers_the_customer()
     {
@@ -81,10 +120,14 @@ public sealed class DeliveryTests : HubTestBase
         Assert.Equal("Sam Patel", found.Name);
         Assert.Equal("Side door", found.Notes);
         Assert.Equal(1, found.OrderCount);
-        await Cashier.Post("/api/orders", DeliveryOrder(Sam with { Name = null }, new DeliveryRequest(1.3m), Pizza, Pizza));
+        // A delivery without the customer's name is refused (phone orders need name and phone).
+        var noName = await Cashier.Post("/api/orders", DeliveryOrder(Sam with { Name = null }, new DeliveryRequest(1.3m), Pizza, Pizza));
+        Assert.Equal(HttpStatusCode.BadRequest, noName.StatusCode);
+        Assert.Contains("need the customer's name", (await noName.Read<ErrorView>()).Message, StringComparison.Ordinal);
+        await Cashier.Post("/api/orders", DeliveryOrder(Sam, new DeliveryRequest(1.3m), Pizza, Pizza));
         found = Assert.Single(await Cashier.GetJson<List<CustomerRecord>>("/api/customers?phone=+44 7700 900123"));
         Assert.Equal(2, found.OrderCount);
-        Assert.Equal("Sam Patel", found.Name); // a blank name does not wipe the saved one
+        Assert.Equal("Sam Patel", found.Name);
     }
 
     [Fact]

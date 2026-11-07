@@ -340,7 +340,7 @@ export class Till {
         h('span', { class: 'ticket-number', text: 'New order' }),
         h('div', { class: 'seg seg-small' }, ORDER_MODES.map(m => h('button', {
           class: `seg-btn ${this.mode.id === m.id ? 'seg-on' : ''}`, 'aria-pressed': String(this.mode.id === m.id),
-          onclick: () => { this.mode = m; this.renderTicket(); this.requestQuote(); if (m.id === 'delivery' && !this.draft.customer) this.editCustomer(); }, text: m.label,
+          onclick: () => { this.mode = m; this.renderTicket(); this.requestQuote(); if (m.source === 'Phone' && !this.draft.customer) this.editCustomer(); }, text: m.label,
         }))),
         this.customerBox());
 
@@ -458,6 +458,11 @@ export class Till {
 
   /** Why this delivery cannot be sent yet, or null. */
   deliveryProblem() {
+    // Collection and delivery orders need the customer's name and phone number (and, for delivery, the address).
+    if (!this.saved && this.mode.source === 'Phone' && this.draft.lines.length) {
+      const c = this.draft.customer?.contact;
+      if (!c?.name || !c?.phone) return this.mode.type === 'Delivery' ? 'Add the customer’s name, phone number and address first.' : 'Add the customer’s name and phone number first.';
+    }
     if (!this.isDeliveryMode() || !this.draft.lines.length) return null;
     if (!this.draft.customer) return 'Add the customer’s address first.';
     const d = this.quote?.delivery;
@@ -476,7 +481,7 @@ export class Till {
     const o = this.draft.feeOverride;
     return h('div', { class: 'customer-box' },
       h('button', { class: `customer-btn ${c ? '' : 'customer-btn-empty'}`, onclick: () => this.editCustomer() },
-        c ? contactSummary(c.contact) : this.mode.type === 'Delivery' ? '+ Add customer and address' : '+ Add customer name or phone (optional)'),
+        c ? contactSummary(c.contact) : this.mode.type === 'Delivery' ? '+ Add customer name, phone and address' : '+ Add customer name and phone'),
       this.mode.type === 'Delivery' && c ? h('div', { class: 'fee-row' },
         o ? h('span', { class: 'chip chip-on', text: `Fee ${penceText(o.pence)} (${o.reason}) — needs a manager` }) : null,
         o ? h('button', { class: 'chip', onclick: () => { this.draft.feeOverride = null; this.renderTicket(); this.requestQuote(); }, text: 'Normal fee' })

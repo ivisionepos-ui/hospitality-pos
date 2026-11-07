@@ -135,6 +135,7 @@ public sealed class OrderService
     /// <summary>Changes the customer's details on an open order (e.g. a corrected address).</summary>
     public Order ChangeContact(Guid orderId, OrderContact contact, OrderActor actor) => Change(orderId, order =>
     {
+        CheckPhoneOrderContact(order.Source, contact.Checked());
         order.SetContact(contact, actor);
         if (order.Contact?.Phone is not null)
         {
@@ -151,9 +152,37 @@ public sealed class OrderService
         return order;
     });
 
+    /// <summary>
+    /// Phone orders (collection and delivery) need the customer's name and phone number: the shop must be able to call
+    /// back about the order, and call out the name at the counter or the door.
+    /// </summary>
+    internal static void CheckPhoneOrderContact(OrderSource source, OrderContact? contact)
+    {
+        if (source != OrderSource.Phone)
+        {
+            return;
+        }
+
+        if (contact?.Name is null && contact?.Phone is null)
+        {
+            throw new ArgumentException("Collection and delivery orders need the customer's name and phone number.");
+        }
+
+        if (contact.Name is null)
+        {
+            throw new ArgumentException("Collection and delivery orders need the customer's name.");
+        }
+
+        if (contact.Phone is null)
+        {
+            throw new ArgumentException("Collection and delivery orders need the customer's phone number.");
+        }
+    }
+
     private static OrderContact? CheckDelivery(CreateOrderRequest request)
     {
         var contact = request.Contact?.Checked();
+        CheckPhoneOrderContact(request.Source, contact);
         if (request.Type == Pos.Domain.Tax.OrderType.Delivery)
         {
             if (contact?.Address is null)

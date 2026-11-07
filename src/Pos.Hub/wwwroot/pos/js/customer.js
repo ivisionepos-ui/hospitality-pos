@@ -30,8 +30,8 @@ export function customerDialog({ delivery, initial }) {
   const c = initial?.contact ?? {};
   const a = c.address ?? {};
   return openDialog(close => {
-    const phone = input('Phone number', phoneText(c.phone), { type: 'tel', inputmode: 'tel', maxlength: 20, placeholder: 'Type to find a past customer' });
-    const name = input('Name', c.name, { maxlength: 80 });
+    const phone = input('Phone number', phoneText(c.phone), { type: 'tel', inputmode: 'tel', maxlength: 20, placeholder: 'Type to find a past customer', required: true, 'aria-required': 'true' });
+    const name = input('Name', c.name, { maxlength: 80, required: true, 'aria-required': 'true' });
     const line1 = input('House number and street', a.line1, { maxlength: 120, placeholder: 'e.g. 12 Park Lane' });
     const line2 = input('Flat or building (optional)', a.line2, { maxlength: 120 });
     const town = input('Town (optional)', a.town, { maxlength: 60 });
@@ -148,8 +148,9 @@ export function customerDialog({ delivery, initial }) {
     const save = () => {
       problem.textContent = '';
       const digits = phone.el.value.replace(/[^\d+]/g, '');
-      if (delivery && !digits) { problem.textContent = 'Enter a phone number, so the driver can call.'; return; }
-      if (!delivery && !digits && !name.el.value.trim()) { problem.textContent = 'Enter a name or a phone number.'; return; }
+      // Name and phone are needed on every collection and delivery order (the hub checks this too).
+      if (!name.el.value.trim()) { problem.textContent = 'Enter the customer’s name.'; name.el.focus(); return; }
+      if (!digits) { problem.textContent = delivery ? 'Enter a phone number, so the driver can call.' : 'Enter a phone number, so the shop can call about the order.'; phone.el.focus(); return; }
       if (delivery && !line1.el.value.trim()) { problem.textContent = 'Enter the house number and street.'; return; }
       if (delivery && !postcode.el.value.trim()) { problem.textContent = 'Enter the postcode.'; return; }
       if (delivery && distance === null) { problem.textContent = 'Press Check postcode, or type the distance in miles.'; return; }

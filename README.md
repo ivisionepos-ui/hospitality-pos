@@ -130,8 +130,10 @@ install on tills, no internet needed, and a hub update reaches every till on the
   change its name, colour, food type (receipt order), hidden or position. "+ Add item", "+ Category", new extras and
   extra choices with prices. Undo last and the change log are in the bar. Changes show on every till at once; if
   two people edit the same item, the second save is refused (nothing is overwritten) and the latest is shown.
-- **Phone orders and delivery:** choose Collection or Delivery. The customer panel finds past customers as you type
-  part of their phone number (name, address and driver notes fill in). For delivery: house number and street,
+- **Phone orders and delivery:** choose Collection or Delivery; the customer panel opens by itself. The customer's
+  **name and phone number are required** on every collection and delivery order (Send and Pay stay blocked until
+  they are entered, and the hub refuses such an order without them; a later correction must keep both). The panel
+  finds past customers as you type part of their phone number (name, address and driver notes fill in). For delivery: house number and street,
   postcode and **Check postcode**, which gives the distance from the shop (free postcodes.io data, remembered by
   the hub so repeat postcodes work without internet). No internet: type the miles. The delivery charge comes from
   the distance bands; Send and Pay are blocked, with the reason, when the order is under the minimum or too far,

@@ -40,6 +40,7 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<IConfiguration>().GetS
 builder.Services.AddSingleton<BackupService>();
 builder.Services.AddHostedService<BackupWorker>();
 builder.Services.AddSingleton<MenuService>();
+builder.Services.AddSingleton<TableService>();
 builder.Services.AddSingleton<Pos.Hub.MenuSheets.MenuImportService>();
 builder.Services.AddSingleton(sp => sp.GetRequiredService<IConfiguration>().GetSection("Delivery").Get<Pos.Hub.Delivery.DeliverySettings>() ?? new Pos.Hub.Delivery.DeliverySettings());
 builder.Services.AddSingleton<Pos.Hub.Delivery.IPostcodeLookup>(sp =>

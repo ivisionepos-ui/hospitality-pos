@@ -64,6 +64,10 @@ public static class Layouts
         blocks.Add(new PrintRule());
         blocks.Add(new PrintText($"Order {order.Number.Display}", PrintAlign.Center, PrintSize.Huge, Bold: true));
         blocks.Add(new PrintText(OrderKind(order), PrintAlign.Center, Bold: true));
+        if (order.Table is { } receiptTable)
+        {
+            blocks.Add(new PrintText($"Table {receiptTable}", PrintAlign.Center, PrintSize.Large, Bold: true));
+        }
         blocks.Add(new PrintColumns(LocalTime(order.CreatedAt, timeZone), order.Number.Reference, PrintSize.Small));
         if (!string.IsNullOrWhiteSpace(servedBy))
         {
@@ -229,6 +233,11 @@ public static class Layouts
             new PrintText(OrderKind(order), PrintAlign.Center, PrintSize.Large, Bold: true),
             new PrintText($"Ordered {LocalTime(order.CreatedAt, timeZone)}", PrintAlign.Center),
         ]);
+        if (order.Table is { } table)
+        {
+            blocks.Insert(blocks.Count - 1, new PrintText($"TABLE {table}", PrintAlign.Center, PrintSize.Huge, Bold: true));
+        }
+
         AddContact(blocks, order, PrintSize.Normal);
         blocks.Add(new PrintRule());
 

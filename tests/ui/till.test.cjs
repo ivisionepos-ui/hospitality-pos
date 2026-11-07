@@ -1422,3 +1422,62 @@ test('every printout was made: kitchen tickets, additions, the void slip and rec
   assert.ok(jobs.every(j => j.status === 'Printed'), 'all printed');
   assert.ok(jobs.every(j => fs.existsSync(j.output)), 'files exist');
 });
+
+test('eat-in with tables: owner turns tables on, the till asks which table, a busy table offers its order, move table; tables off goes straight to the menu', async () => {
+  const owner = await tillPage(shop.till2);
+  await login(owner, '4826');
+  await owner.getByRole('button', { name: 'More', exact: true }).click();
+  await top(owner).getByRole('button', { name: 'Eat-in and tables' }).click();
+  await top(owner).getByRole('radio', { name: /^Use tables/ }).click();
+  await top(owner).getByLabel('Number of tables').fill('6');
+  await shot(owner, 'ui-eat-in-settings');
+  await top(owner).getByRole('button', { name: 'Save' }).click();
+  await owner.getByText('Eat-in orders now ask for the table (6 tables).').waitFor();
+  await owner.context().close();
+
+  const page = await tillPage(shop.till2);
+  await login(page, '5931');
+  // Eat in → which table? Cancel leaves the order without a type.
+  await page.getByRole('button', { name: 'Eat in', exact: true }).click();
+  await top(page).getByText('Which table?').waitFor();
+  await top(page).getByRole('button', { name: 'Cancel' }).click();
+  await page.getByText('Choose the order type').waitFor();
+
+  await page.getByRole('button', { name: 'Eat in', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Table 3', exact: true }).click();
+  await page.getByRole('button', { name: 'Table 3, tap to change' }).waitFor();
+  await page.locator('.cats').getByRole('button', { name: 'Desserts', exact: true }).click();
+  await page.locator('.items').getByRole('button', { name: /Cheesecake/ }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await page.getByText(/Order \d+ sent to the kitchen/).waitFor();
+  const first = (await ordersToday()).at(-1);
+  assert.equal(first.table, '3');
+
+  // Table 3 is busy: the till offers to add to its order.
+  await page.getByRole('button', { name: 'Eat in', exact: true }).click();
+  await top(page).getByRole('button', { name: `Table 3, order ${first.number} open` }).waitFor();
+  await shot(page, 'ui-tables');
+  await top(page).getByRole('button', { name: `Table 3, order ${first.number} open` }).click();
+  await top(page).getByRole('button', { name: `Add to order ${first.number}` }).click();
+  await page.locator('.ticket-number', { hasText: `Order ${first.number}` }).waitFor();
+  await page.locator('.ticket-meta', { hasText: 'Table 3' }).waitFor();
+
+  // Move it to table 5.
+  await page.getByRole('button', { name: 'More for this order' }).click();
+  await top(page).getByRole('button', { name: 'Move to another table' }).click();
+  await top(page).getByRole('button', { name: 'Table 5', exact: true }).click();
+  await page.getByText(`Order ${first.number} moved to table 5.`).waitFor();
+  assert.equal((await ordersToday()).find(o => o.id === first.id).table, '5');
+  await page.context().close();
+
+  // Tables off: eat in goes straight to the menu, with no table.
+  await call('PUT', '/api/settings/tables', { device: shop.owner.device, token: shop.owner.token }, { useTables: false });
+  const next = await tillPage(shop.till2);
+  await login(next, '5931');
+  await next.getByRole('button', { name: 'Eat in', exact: true }).click();
+  await next.locator('.seg-btn.seg-on', { hasText: 'Eat in' }).waitFor();
+  assert.equal(await top(next).getByText('Which table?').count(), 0);
+  assert.equal(await next.locator('.table-chip').count(), 0);
+  assert.deepEqual(next.errors, []);
+  await next.context().close();
+});

@@ -16,6 +16,7 @@ namespace Pos.Hub.Api;
 /// <param name="Lines">Items and meal deals.</param>
 /// <param name="Contact">Customer name, phone, address and notes (phone and delivery orders). With a phone, the customer is remembered.</param>
 /// <param name="Delivery">Distance and any fee change (delivery orders).</param>
+/// <param name="Table">The table, for eat-in orders when the shop uses tables.</param>
 public sealed record CreateOrderRequest(
     Guid OrderId,
     string IdempotencyKey,
@@ -25,7 +26,12 @@ public sealed record CreateOrderRequest(
     Guid? TableId,
     IReadOnlyList<OrderLineRequest>? Lines,
     OrderContact? Contact = null,
-    DeliveryRequest? Delivery = null);
+    DeliveryRequest? Delivery = null,
+    string? Table = null);
+
+/// <summary>Move an eat-in order to another table.</summary>
+/// <param name="Table">The table to move to.</param>
+public sealed record MoveTableRequest(string Table);
 
 /// <summary>Delivery distance, and a changed fee if a manager agreed one.</summary>
 /// <param name="DistanceMiles">Distance from the shop, from the postcode check or typed in.</param>
@@ -225,6 +231,7 @@ public sealed record OrderView(
             Contact = order.Contact,
             DiscountReason = order.Discount?.Reason,
             DriverId = order.DriverId,
+            Table = order.Table,
             Delivery = t.Delivery is { } d
                 ? new DeliveryView(d.Quote.DistanceMiles, d.Override is null ? d.Quote.Status : Pos.Domain.Delivery.DeliveryQuoteStatus.Ok, d.Fee, d.Quote.MinimumOrder, d.Quote.IsFreeDelivery, d.Override is not null)
                 : null,
@@ -233,6 +240,9 @@ public sealed record OrderView(
 
     /// <summary>Customer details, if any.</summary>
     public OrderContact? Contact { get; init; }
+
+    /// <summary>The table, for eat-in orders when the shop uses tables.</summary>
+    public string? Table { get; init; }
 
     /// <summary>Delivery distance, fee and whether it is allowed, for delivery orders.</summary>
     public DeliveryView? Delivery { get; init; }

@@ -531,3 +531,22 @@ h1, h2, h3 { margin: 0; }
 .order-type-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
 .order-type-btn { min-height: 88px; font-size: 1.25rem; font-weight: 700; }
 .ticket-head .seg-small .seg-btn { white-space: nowrap; padding: 0 10px; }
+
+/* Eat-in and tables */
+.eat-in-settings { display: flex; flex-direction: column; gap: 14px; }
+.choices { display: flex; flex-direction: column; gap: 10px; }
+.choice { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 14px 16px; min-height: 64px;
+  border: 2px solid var(--line); border-radius: var(--radius); background: #fff; color: inherit; font: inherit; cursor: pointer; }
+.choice strong { font-size: 1.05rem; }
+.choice span { color: var(--muted, #555); font-size: .92rem; }
+.choice-on { border-color: var(--accent, #1d4ed8); background: #eff6ff; }
+.count-input { max-width: 140px; }
+.dialog-tables { width: min(760px, 96vw); }
+.table-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; max-height: 62vh; overflow: auto; padding: 2px; }
+.table-btn { min-height: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.table-name { font-size: 1.5rem; font-weight: 800; overflow-wrap: anywhere; }
+.table-order { font-size: .8rem; font-weight: 600; }
+.table-busy { background: #fff7ed; border-color: #f97316; }
+.table-current { outline: 3px solid var(--accent, #1d4ed8); }
+.table-chip { margin-left: auto; font-weight: 700; }
+.kds-table { font-weight: 800; padding: 2px 8px; border-radius: 6px; background: #111827; color: #fff; }

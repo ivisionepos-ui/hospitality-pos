@@ -592,6 +592,10 @@ public static class Endpoints
             Handle(() => Results.Ok(OrderView.From(orders.ChangeContact(orderId, contact, Actor(http))))))
             .ForStaff(Permission.TakeOrders);
 
+        api.MapPost("/orders/{orderId:guid}/table", (HttpContext http, OrderService orders, Guid orderId, MoveTableRequest request) =>
+            Handle(() => Results.Ok(OrderView.From(orders.MoveToTable(orderId, request.Table, Actor(http))))))
+            .ForStaff(Permission.TakeOrders);
+
         api.MapPost("/orders/{orderId:guid}/delivery", (HttpContext http, OrderService orders, Guid orderId, DeliveryRequest delivery) =>
             Handle(() =>
             {
@@ -643,6 +647,17 @@ public static class Endpoints
 
         api.MapPut("/settings/shop", (HttpContext http, ShopDetailsService shop, ShopDetails details) => Handle(() =>
             Results.Ok(shop.Save(details, Caller(http).Staff!.Id))))
+            .ForStaff(Permission.ManageDevices);
+
+        // Eat-in orders: with or without tables (More → Eat-in and tables).
+        api.MapGet("/tables", (OrderService orders) => Handle(() => Results.Ok(orders.Tables())))
+            .ForStaff();
+
+        api.MapGet("/settings/tables", (TableService tables) => Handle(() => Results.Ok(tables.Get())))
+            .ForStaff();
+
+        api.MapPut("/settings/tables", (HttpContext http, TableService tables, SaveTablesRequest request) => Handle(() =>
+            Results.Ok(tables.Save(request, Caller(http).Staff!.Id))))
             .ForStaff(Permission.ManageDevices);
 
         // Printers (More → Printers): how each is connected, test page, test drawer.

@@ -172,6 +172,67 @@ async function addressFiles() {
 }
 
 /** Owner: shop name and address for receipts, and the postcode delivery distances are measured from. */
+/** More → Eat-in and tables: no tables (eat-in goes straight to the menu) or tables (the till asks which table). */
+async function eatInSettings() {
+  let settings;
+  try {
+    settings = await busy(() => api.get('/api/settings/tables'));
+  } catch (e) {
+    toast(e.message ?? 'Could not reach the hub.', 'error');
+    return;
+  }
+
+  const numbersOnly = settings.tables.every((t, i) => t === String(i + 1));
+  let useTables = settings.useTables;
+  let named = !numbersOnly && settings.tables.length > 0;
+  await openDialog(close => {
+    const body = h('div', { class: 'eat-in-settings' });
+    const count = h('input', { class: 'text-input count-input', type: 'number', inputmode: 'numeric', min: 1, max: 200, value: String(numbersOnly && settings.tables.length ? settings.tables.length : 10), 'aria-label': 'Number of tables' });
+    const names = h('textarea', { class: 'text-input', rows: 6, 'aria-label': 'Table names, one per line', placeholder: 'One per line, e.g.\n1\n2\nWindow 1\nGarden 1' });
+    names.value = settings.tables.join('\n');
+    const problem = h('p', { class: 'form-problem', role: 'alert' });
+    const option = (value, title, hint) => h('button', {
+      class: `choice ${useTables === value ? 'choice-on' : ''}`, role: 'radio', 'aria-checked': String(useTables === value),
+      onclick: () => { useTables = value; render(); },
+    }, h('strong', { text: title }), h('span', { text: hint }));
+
+    const render = () => mount(body,
+      h('div', { class: 'choices', role: 'radiogroup', 'aria-label': 'Eat-in orders' },
+        option(false, 'No tables', 'Eat in goes straight to the menu.'),
+        option(true, 'Use tables', 'Eat in asks which table first. The table is printed on kitchen tickets and receipts.')),
+      useTables ? h('div', { class: 'field' },
+        h('div', { class: 'seg seg-small', role: 'radiogroup', 'aria-label': 'How the tables are named' },
+          h('button', { class: `seg-btn ${named ? '' : 'seg-on'}`, role: 'radio', 'aria-checked': String(!named), onclick: () => { named = false; render(); }, text: 'Numbered' }),
+          h('button', { class: `seg-btn ${named ? 'seg-on' : ''}`, role: 'radio', 'aria-checked': String(named), onclick: () => { named = true; render(); }, text: 'My own names' })),
+        named
+          ? h('label', { class: 'field' }, h('span', { class: 'field-label', text: 'Table names, one per line (up to 200)' }), names)
+          : h('label', { class: 'field' }, h('span', { class: 'field-label', text: 'Number of tables (numbered 1 to this)' }), count)) : null,
+      problem);
+
+    const save = async () => {
+      problem.textContent = '';
+      const request = { useTables };
+      if (useTables && named) request.tables = names.value.split('\n').map(t => t.trim()).filter(Boolean);
+      else if (useTables) request.count = Number(count.value);
+      try {
+        const saved = await busy(() => api.put('/api/settings/tables', request));
+        toast(saved.useTables ? `Eat-in orders now ask for the table (${saved.tables.length} tables).` : 'Eat-in orders now go straight to the menu.', 'ok');
+        close();
+      } catch (e) {
+        problem.textContent = e.message;
+      }
+    };
+
+    render();
+    return {
+      title: 'Eat-in orders',
+      class: 'dialog-narrow',
+      body,
+      actions: [h('button', { class: 'btn', onclick: () => close(), text: 'Cancel' }), h('button', { class: 'btn btn-primary', onclick: save, text: 'Save' })],
+    };
+  });
+}
+
 async function shopDetails() {
   const d = await busy(() => api.get('/api/settings/shop'));
   await openDialog(close => {
@@ -385,6 +446,7 @@ export function moreDialog(till) {
             can('ManageDevices') ? item('Add a till or screen', addTill) : null),
           section('Reports and shop',
             can('ManageDevices') ? item('Shop details', shopDetails) : null,
+            can('ManageDevices') ? item('Eat-in and tables', eatInSettings) : null,
             can('ViewReports') ? item('Sales reports', salesReportsDialog, true) : null,
             can('ViewReports') ? item('X report (this till)', xReport) : null,
             can('ViewReports') ? item('End of day (Z report)', zReport) : null,

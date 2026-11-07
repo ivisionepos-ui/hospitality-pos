@@ -83,17 +83,106 @@ export class Till {
 
   newDraft() {
     // customer: { contact, distanceMiles } for phone and delivery orders; feeOverride: { pence, reason } (needs a manager).
-    this.draft = { orderId: newId(), key: newId(), lines: [], customer: null, feeOverride: null };
+    // table: the table of an eat-in order when the shop uses tables (More → Eat-in and tables).
+    this.draft = { orderId: newId(), key: newId(), lines: [], customer: null, feeOverride: null, table: null };
     this.quote = null;
     this.mode = null; // every new order starts with no type: staff must choose Takeaway, Eat in, Collection or Delivery
   }
 
-  /** Sets the new order's type; collection and delivery open the customer box straight away. */
+  /**
+   * Sets the new order's type. Collection and delivery open the customer box straight away. Eat in asks for the table
+   * first when the shop uses tables (and is not chosen if no table is); with no tables it goes straight to the menu.
+   * Returns false when the type was not set.
+   */
   async setMode(m) {
+    if (m.type === 'EatIn') {
+      const tables = await this.loadTables();
+      if (!tables) return false;
+      if (tables.useTables) {
+        const choice = await this.chooseTable(tables, this.draft.table);
+        if (!choice) return false;
+        if (choice.open) { await this.openOrder(choice.open); return false; }
+        this.draft.table = choice.table;
+      } else {
+        this.draft.table = null;
+      }
+    } else {
+      this.draft.table = null;
+    }
+
     this.mode = m;
     this.renderTicket();
     this.requestQuote();
     if (m.source === 'Phone' && !this.draft.customer) await this.editCustomer();
+    return true;
+  }
+
+  async loadTables() {
+    try {
+      return await busy(() => api.get('/api/tables'));
+    } catch (e) {
+      this.showError(e);
+      return null;
+    }
+  }
+
+  /**
+   * The table picker. A table with an open order shows its number and total; choosing it offers to add to that order
+   * or start another order at the same table. Resolves to { table }, { open: orderId } or null.
+   */
+  async chooseTable(tables, current, { moving = false } = {}) {
+    const picked = await openDialog(close => ({
+      title: moving ? 'Move to which table?' : 'Which table?',
+      wide: tables.tables.length > 24,
+      class: 'dialog-tables',
+      body: h('div', { class: 'table-grid' }, tables.tables.map(t => h('button', {
+        class: `btn table-btn ${t.orderId ? 'table-busy' : ''} ${t.name === current ? 'table-current' : ''}`,
+        'aria-label': t.orderId ? `Table ${t.name}, order ${t.orderNumber} open` : `Table ${t.name}`,
+        onclick: () => close(t),
+      }, h('span', { class: 'table-name', text: t.name }),
+      t.orderId ? h('span', { class: 'table-order', text: `${t.orderNumber} · ${money(t.total)}` }) : null))),
+      actions: [h('button', { class: 'btn', onclick: () => close(null), text: 'Cancel' })],
+    }));
+    if (!picked) return null;
+    if (!picked.orderId || moving) return { table: picked.name };
+    const add = await openDialog(close => ({
+      title: `Table ${picked.name}`,
+      class: 'dialog-narrow',
+      body: h('p', { text: `Order ${picked.orderNumber} (${money(picked.total)}) is open at this table.` }),
+      actions: [
+        h('button', { class: 'btn', onclick: () => close('new'), text: 'Start another order' }),
+        h('button', { class: 'btn btn-primary', onclick: () => close('add'), text: `Add to order ${picked.orderNumber}` }),
+      ],
+    }));
+    if (add === 'add') return { open: picked.orderId };
+    if (add === 'new') return { table: picked.name };
+    return null;
+  }
+
+  /** Opens a saved order on the till (the items being typed are dropped after asking). */
+  async openOrder(orderId) {
+    if (this.draft.lines.length && !this.saved && !(await confirmDialog('Leave this order?', 'The items not yet sent will be removed.', 'Leave'))) return false;
+    this.saved = await api.get(`/api/orders/${orderId}`);
+    this.newDraft();
+    this.selected = null;
+    this.renderTicket();
+    return true;
+  }
+
+  /** Moves a saved eat-in order to another table. */
+  async moveTable(order) {
+    const tables = await this.loadTables();
+    if (!tables) return;
+    const choice = await this.chooseTable(tables, order.table, { moving: true });
+    if (!choice?.table || choice.table === order.table) return;
+    try {
+      await busy(() => api.post(`/api/orders/${order.id}/table`, { table: choice.table }));
+      this.saved = await api.get(`/api/orders/${order.id}`);
+      this.renderTicket();
+      toast(`Order ${order.number} moved to table ${choice.table}.`, 'ok');
+    } catch (e) {
+      this.showError(e);
+    }
   }
 
   /** Asks for the order type before the first item. Returns false if nothing was chosen. */
@@ -108,8 +197,7 @@ export class Till {
       actions: [h('button', { class: 'btn', onclick: () => close(null), text: 'Cancel' })],
     }));
     if (!chosen) return false;
-    await this.setMode(chosen);
-    return true;
+    return this.setMode(chosen);
   }
 
   async start() {
@@ -360,7 +448,7 @@ export class Till {
     const head = saved
       ? h('div', { class: 'ticket-head' },
         h('div', {}, h('span', { class: 'ticket-number', text: `Order ${saved.number}` }),
-          h('span', { class: 'ticket-meta', text: `${modeLabel(saved.source, saved.type)} · ${timeText(saved.createdAt)}` }),
+          h('span', { class: 'ticket-meta', text: [modeLabel(saved.source, saved.type), saved.table ? `Table ${saved.table}` : null, timeText(saved.createdAt)].filter(Boolean).join(' · ') }),
           saved.contact ? h('span', { class: 'ticket-customer', text: contactSummary(saved.contact) }) : null),
         h('span', { class: `status status-${saved.status.toLowerCase()}`, text: statusText(saved.status) }))
       : h('div', { class: 'ticket-head' },
@@ -370,6 +458,9 @@ export class Till {
           onclick: () => this.setMode(m), text: m.label,
         }))),
         this.mode ? null : h('span', { class: 'mode-needed', role: 'status', text: 'Choose the order type' }),
+        this.mode?.type === 'EatIn' && this.draft.table ? h('button', {
+          class: 'btn btn-small table-chip', 'aria-label': `Table ${this.draft.table}, tap to change`, onclick: () => this.setMode(this.mode), text: `Table ${this.draft.table}`,
+        }) : null,
         this.customerBox());
 
     const rows = [];
@@ -587,6 +678,7 @@ export class Till {
         lines: this.draft.lines.map(lineRequest),
         contact: this.mode.source === 'Phone' ? this.draft.customer?.contact ?? null : null,
         delivery: this.deliveryRequest(),
+        table: this.mode.type === 'EatIn' ? this.draft.table : null,
       };
       const created = await withApproval(pin => api.post('/api/orders', body, { managerPin: pin }));
       if (!created) throw new ApiError(0, 'NotApproved', 'The delivery fee change was not approved. Choose "Normal fee" or ask a manager.');
@@ -726,6 +818,7 @@ export class Till {
         h('button', { class: 'btn menu-btn', onclick: async () => { close(); await this.printReceipt(order); }, text: 'Print receipt' }),
         !CLOSED.includes(order.status) ? h('button', { class: 'btn menu-btn', onclick: async () => { close(); await this.discount(); }, text: order.discountAmount ? 'Change discount' : 'Discount' }) : null,
         (order.paid?.minorUnits ?? 0) > 0 ? h('button', { class: 'btn menu-btn', onclick: async () => { close(); await this.refund(order); }, text: 'Refund' }) : null,
+        order.table && !CLOSED.includes(order.status) ? h('button', { class: 'btn menu-btn', onclick: async () => { close(); await this.moveTable(order); }, text: 'Move to another table' }) : null,
         order.source === 'Phone' && !CLOSED.includes(order.status) ? h('button', { class: 'btn menu-btn', onclick: async () => { close(); await this.changeSavedCustomer(order); }, text: order.type === 'Delivery' ? 'Change customer or address' : 'Change customer' }) : null,
         !CLOSED.includes(order.status) ? h('button', { class: 'btn btn-danger menu-btn', onclick: async () => { close(); await this.cancelOrder(order); }, text: 'Cancel order' }) : null),
     }));
@@ -823,7 +916,7 @@ export class Till {
           return h('div', { class: 'order-row' },
             h('button', { class: 'order-open', onclick: () => close({ open: o }) },
               h('span', { class: 'order-no', text: o.number }),
-              h('span', { class: 'order-meta', text: [timeText(o.createdAt), modeLabel(o.source, o.type), o.contact?.name, o.contact?.address?.postcode].filter(Boolean).join(' · ') }),
+              h('span', { class: 'order-meta', text: [timeText(o.createdAt), modeLabel(o.source, o.type), o.table ? `Table ${o.table}` : null, o.contact?.name, o.contact?.address?.postcode].filter(Boolean).join(' · ') }),
               h('span', { class: `status status-${o.status.toLowerCase()}`, text: statusText(o.status) }),
               h('span', { class: 'order-total', text: money(o.total) }),
               h('span', { class: `paid-badge ${due > 0 ? 'paid-due' : 'paid-ok'}`, text: due > 0 ? `Due ${penceText(due)}` : due < 0 ? `Refund ${penceText(-due)}` : 'Paid' })),
@@ -835,11 +928,7 @@ export class Till {
     });
 
     if (picked?.open) {
-      if (this.draft.lines.length && !this.saved && !(await confirmDialog('Leave this order?', 'The items not yet sent will be removed.', 'Leave'))) return;
-      this.saved = await api.get(`/api/orders/${picked.open.id}`);
-      this.newDraft();
-      this.selected = null;
-      this.renderTicket();
+      await this.openOrder(picked.open.id);
     } else if (picked?.complete) {
       await this.complete(picked.complete);
     }

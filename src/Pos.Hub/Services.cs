@@ -80,10 +80,12 @@ public sealed class OrderService
     private readonly LiveUpdates _live;
     private readonly Delivery.CustomerService _customers;
     private readonly Delivery.DeliverySettings _delivery;
+    private readonly TableService _tables;
 
     /// <summary>Creates the service.</summary>
-    public OrderService(HubDatabase db, HubSettings settings, MenuService menu, TimeProvider clock, LiveUpdates live, Delivery.CustomerService customers, Delivery.DeliverySettings delivery)
+    public OrderService(HubDatabase db, HubSettings settings, MenuService menu, TimeProvider clock, LiveUpdates live, Delivery.CustomerService customers, Delivery.DeliverySettings delivery, TableService tables)
     {
+        _tables = tables;
         _customers = customers;
         _delivery = delivery;
         _live = live;
@@ -107,11 +109,12 @@ public sealed class OrderService
     {
         ArgumentNullException.ThrowIfNull(request);
         var contact = CheckDelivery(request);
+        var table = _tables.CheckForNewOrder(request.Type, request.Table);
         return _db.RunInTransaction(() =>
         {
             var lines = _menu.Read(menu => BuildLines(menu, request.Lines ?? []));
             var customerId = contact?.Phone is not null ? _customers.Remember(contact, countOrder: false) : request.CustomerId;
-            var result = _intake.Submit(NewOrderFrom(request, actor, lines, contact, customerId));
+            var result = _intake.Submit(NewOrderFrom(request, actor, lines, contact, customerId) with { Table = table });
             if (!result.WasDuplicate)
             {
                 if (request.Delivery is { } delivery)
@@ -131,6 +134,20 @@ public sealed class OrderService
             return result;
         });
     }
+
+    /// <summary>Moves an open eat-in order to another of the shop's tables.</summary>
+    public Order MoveToTable(Guid orderId, string? table, OrderActor actor)
+    {
+        var checkedTable = _tables.CheckForMove(table);
+        return Change(orderId, order =>
+        {
+            order.MoveToTable(checkedTable, actor);
+            return order;
+        });
+    }
+
+    /// <summary>The shop's tables with the open eat-in order at each.</summary>
+    public TablesView Tables() => _tables.View(ForDay(null, null));
 
     /// <summary>Changes the customer's details on an open order (e.g. a corrected address).</summary>
     public Order ChangeContact(Guid orderId, OrderContact contact, OrderActor actor) => Change(orderId, order =>

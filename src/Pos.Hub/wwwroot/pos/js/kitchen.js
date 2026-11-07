@@ -154,6 +154,7 @@ export class Kitchen {
       h('header', { class: 'kds-head' },
         h('span', { class: 'kds-number', text: order.number }),
         h('span', { class: 'kds-type', text: TYPE[order.type] ?? order.type }),
+        order.table ? h('span', { class: 'kds-table', text: `Table ${order.table}` }) : null,
         h('span', { class: 'kds-time', title: `Ordered ${timeText(order.createdAt)}`, text: `${minutes} min` })),
       who || order.source === 'Phone' ? h('div', { class: 'kds-who', text: [who, order.source === 'Phone' && order.type !== 'Delivery' ? 'Collection' : null].filter(Boolean).join(' · ') }) : null,
       h('ol', { class: 'kds-lines' }, lines.map(line => {
@@ -203,7 +204,7 @@ export class Kitchen {
         class: 'dialog-narrow',
         body: h('div', { class: 'menu-list' }, this.ready.slice(0, 12).map(o => h('button', {
           class: 'btn menu-btn', onclick: () => close(o),
-          text: `${o.number} · ${TYPE[o.type] ?? o.type}${o.contact?.name ? ` · ${o.contact.name}` : ''}`,
+          text: `${o.number} · ${TYPE[o.type] ?? o.type}${o.table ? ` · Table ${o.table}` : ''}${o.contact?.name ? ` · ${o.contact.name}` : ''}`,
         }))),
       }));
       if (!target) return;

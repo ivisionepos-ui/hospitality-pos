@@ -134,6 +134,13 @@ install on tills, no internet needed, and a hub update reaches every till on the
   **Delivery** at the top of the order (shown in red with "Choose the order type" until they do); tapping an item first
   opens a "What type of order?" box, and nothing is added until a type is chosen. The hub also refuses an order that
   does not state its source and type, so no order is ever given a type by default.
+- **Eat-in: with or without tables** (More → Eat-in and tables, owner): **No tables** (a new shop): Eat in goes
+  straight to the menu. **Use tables**: give the number of tables (numbered 1 to N) or your own names (e.g. Window 1);
+  tapping Eat in then shows **Which table?** (Cancel leaves the order without a type). A table with an open order shows
+  its order number and total; choosing it offers **Add to order 012** or **Start another order**. The table shows on
+  the order (tap it to change), in the orders list, on the kitchen screen, as **TABLE 5** on kitchen tickets and on the
+  receipt; **More for this order → Move to another table** moves an open order (recorded in its history). The hub
+  checks the table on every eat-in order (one of the shop's tables when tables are on; none when they are off).
 - **Phone orders and delivery:** choose Collection or Delivery; the customer panel opens by itself. The customer's
   **name and phone number are required** on every collection and delivery order (Send and Pay stay blocked until
   they are entered, and the hub refuses such an order without them; a later correction must keep both). The panel
@@ -491,6 +498,9 @@ active staff cannot share a name; PINs are 4–8 digits, not easy (1111, 1234) a
 | POST / PUT | /api/menu/categories[/{id}] | manager | Add a category / save its panel |
 | POST | /api/menu/categories/{id}/move | manager | Move a category tab |
 | PUT | /api/menu/modifier-groups/{id} | manager | Add or save a group of extras |
+| GET | /api/tables | staff | Tables on or off, and each table with its open eat-in order |
+| GET / PUT | /api/settings/tables | staff / owner | Eat-in setting: `{ useTables, count }` or `{ useTables, tables: [names] }` |
+| POST | /api/orders/{id}/table | staff | Move an open eat-in order to another table: `{ table }` |
 | GET | /api/menu/spreadsheet | manager | The menu as menu.xlsx (Menu, Extras and How-to sheets) |
 | POST | /api/menu/spreadsheet/preview?name=&missing=keep\|hide | manager | Body: the .xlsx/.csv file. What an import would do, or its problems by row; changes nothing |
 | POST | /api/menu/spreadsheet/import?name=&missing=keep\|hide | manager | Backs up, then imports (refused if the file has problems or changes nothing) |

@@ -84,6 +84,9 @@ public enum OrderEventKind
 
     /// <summary>The order went out with a driver, changed driver, or came back to the shop.</summary>
     DriverChanged,
+
+    /// <summary>An eat-in order moved to another table.</summary>
+    TableChanged,
 }
 
 /// <summary>One entry in an order's history. Nothing is ever deleted from it.</summary>
@@ -188,6 +191,7 @@ public sealed class Order
         ServiceCharge = state.ServiceCharge;
         Contact = state.Contact;
         DriverId = state.DriverId;
+        Table = state.Table;
         Totals = Recalculate(_lines, Discount, Delivery, ServiceCharge);
     }
 
@@ -223,6 +227,7 @@ public sealed class Order
         ServiceCharge = ServiceCharge,
         Contact = Contact,
         DriverId = DriverId,
+        Table = Table,
     };
 
     /// <summary>Order id (made on the device that created it).</summary>
@@ -254,6 +259,9 @@ public sealed class Order
 
     /// <summary>Table, for table service.</summary>
     public Guid? TableId { get; }
+
+    /// <summary>The table an eat-in order is at (e.g. "5"), when the shop uses tables; null otherwise.</summary>
+    public string? Table { get; private set; }
 
     /// <summary>Current status.</summary>
     public OrderStatus Status { get; private set; }
@@ -417,6 +425,40 @@ public sealed class Order
 
     /// <summary>Customer details given when the order is created (part of the "created" entry).</summary>
     internal void SetContactAtCreation(OrderContact contact) => Contact = contact.Checked();
+
+    /// <summary>Longest table name.</summary>
+    public const int MaxTableLength = 20;
+
+    /// <summary>The table given when the order is created (eat-in orders only).</summary>
+    internal void SetTableAtCreation(string table) => Table = CheckedTable(table);
+
+    /// <summary>Moves an open eat-in order to another table.</summary>
+    public void MoveToTable(string table, OrderActor actor)
+    {
+        EnsureOpen();
+        var checkedTable = CheckedTable(table);
+        if (checkedTable == Table)
+        {
+            return;
+        }
+
+        var from = Table;
+        Table = checkedTable;
+        Record(actor, OrderEventKind.TableChanged, from is null ? $"Table {checkedTable}" : $"Moved from table {from} to table {checkedTable}");
+    }
+
+    private string CheckedTable(string table)
+    {
+        if (Type != OrderType.EatIn)
+        {
+            throw new ArgumentException("Only eat-in orders have a table.");
+        }
+
+        var trimmed = table?.Trim() ?? string.Empty;
+        return trimmed.Length is 0 or > MaxTableLength
+            ? throw new ArgumentException($"The table must be 1 to {MaxTableLength} characters.")
+            : trimmed;
+    }
 
     private static string Describe(OrderContact contact) =>
         string.Join(", ", new[] { contact.Name, contact.Phone, contact.Address?.ToString() }.Where(p => !string.IsNullOrEmpty(p)));
@@ -652,6 +694,9 @@ public sealed record OrderState
 
     /// <summary>Table.</summary>
     public Guid? TableId { get; init; }
+
+    /// <summary>Table number or name (eat-in orders when the shop uses tables).</summary>
+    public string? Table { get; init; }
 
     /// <summary>All lines, including removed ones.</summary>
     public required IReadOnlyList<OrderLine> Lines { get; init; }

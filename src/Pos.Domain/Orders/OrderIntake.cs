@@ -51,6 +51,9 @@ public sealed record NewOrder
     /// <summary>Table, for table service.</summary>
     public Guid? TableId { get; init; }
 
+    /// <summary>Table number or name for an eat-in order when the shop uses tables (e.g. "5"); null otherwise.</summary>
+    public string? Table { get; init; }
+
     /// <summary>
     /// Starting status. Null = the normal status at the shop (staff orders Accepted, online orders Received).
     /// The cloud uses Pending for online orders not yet acknowledged by the shop.
@@ -177,6 +180,11 @@ public sealed class OrderIntake
             order.SetContactAtCreation(contact);
         }
 
+        if (request.Table is { } table)
+        {
+            order.SetTableAtCreation(table);
+        }
+
         foreach (var line in request.Lines)
         {
             order.AddLine(line.Pricing, line.Display, request.CreatedBy, line.Note);
@@ -243,6 +251,11 @@ public sealed class OrderIntake
                 order.SetContactAtCreation(contact);
             }
 
+            if (request.Table is { } table)
+            {
+                order.SetTableAtCreation(table);
+            }
+
             foreach (var line in request.Lines)
             {
                 order.AddLine(line.Pricing, line.Display, request.CreatedBy, line.Note);
@@ -264,6 +277,11 @@ public sealed class OrderIntake
         if (request.Contact is { } c)
         {
             text.Append(CultureInfo.InvariantCulture, $"|C:{c.Name}|{c.Phone}|{c.Address}|{c.Notes}");
+        }
+
+        if (request.Table is { } table)
+        {
+            text.Append("|T:").Append(table); // only when there is one, so earlier orders keep their fingerprints
         }
 
         foreach (var line in request.Lines)

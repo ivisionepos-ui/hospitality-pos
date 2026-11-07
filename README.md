@@ -130,6 +130,10 @@ install on tills, no internet needed, and a hub update reaches every till on the
   change its name, colour, food type (receipt order), hidden or position. "+ Add item", "+ Category", new extras and
   extra choices with prices. Undo last and the change log are in the bar. Changes show on every till at once; if
   two people edit the same item, the second save is refused (nothing is overwritten) and the latest is shown.
+- **Order type first:** every new order starts with no type. Staff tap **Takeaway**, **Eat in**, **Collection** or
+  **Delivery** at the top of the order (shown in red with "Choose the order type" until they do); tapping an item first
+  opens a "What type of order?" box, and nothing is added until a type is chosen. The hub also refuses an order that
+  does not state its source and type, so no order is ever given a type by default.
 - **Phone orders and delivery:** choose Collection or Delivery; the customer panel opens by itself. The customer's
   **name and phone number are required** on every collection and delivery order (Send and Pay stay blocked until
   they are entered, and the hub refuses such an order without them; a later correction must keep both). The panel

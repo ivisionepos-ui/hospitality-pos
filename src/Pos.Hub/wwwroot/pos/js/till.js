@@ -67,7 +67,7 @@ export class Till {
     this.ctx = ctx;
     this.menu = null;
     this.categoryId = null;
-    this.mode = ORDER_MODES[0];
+    this.mode = null;        // the type of the new order: chosen by staff for every new order (no default)
     this.saved = null;       // the saved order being looked at, or null for a new one
     this.selected = null;    // selected line: { kind: 'draft' | 'saved', key }
     this.quote = null;
@@ -85,6 +85,31 @@ export class Till {
     // customer: { contact, distanceMiles } for phone and delivery orders; feeOverride: { pence, reason } (needs a manager).
     this.draft = { orderId: newId(), key: newId(), lines: [], customer: null, feeOverride: null };
     this.quote = null;
+    this.mode = null; // every new order starts with no type: staff must choose Takeaway, Eat in, Collection or Delivery
+  }
+
+  /** Sets the new order's type; collection and delivery open the customer box straight away. */
+  async setMode(m) {
+    this.mode = m;
+    this.renderTicket();
+    this.requestQuote();
+    if (m.source === 'Phone' && !this.draft.customer) await this.editCustomer();
+  }
+
+  /** Asks for the order type before the first item. Returns false if nothing was chosen. */
+  async chooseMode() {
+    const chosen = await openDialog(close => ({
+      title: 'What type of order?',
+      class: 'dialog-order-type',
+      body: [
+        h('p', { class: 'field-hint', text: 'Choose the order type before adding items.' }),
+        h('div', { class: 'order-type-grid' }, ORDER_MODES.map(m => h('button', { class: 'btn order-type-btn', onclick: () => close(m), text: m.label }))),
+      ],
+      actions: [h('button', { class: 'btn', onclick: () => close(null), text: 'Cancel' })],
+    }));
+    if (!chosen) return false;
+    await this.setMode(chosen);
+    return true;
   }
 
   async start() {
@@ -255,6 +280,7 @@ export class Till {
   // ---------- Adding items ----------
 
   async pick(product) {
+    if (!this.saved && !this.mode && !(await this.chooseMode())) return;
     let line;
     if (this.menu.isDeal(product)) {
       const deal = await dealDialog(this.menu, product);
@@ -303,7 +329,7 @@ export class Till {
   requestQuote() {
     const seq = ++this.quoteSeq;
     clearTimeout(this.quoteTimer);
-    if (!this.draft.lines.length) {
+    if (!this.draft.lines.length || (!this.saved && !this.mode)) {
       this.quote = null;
       this.renderTicket();
       return;
@@ -311,6 +337,7 @@ export class Till {
 
     this.quoteTimer = setTimeout(async () => {
       const mode = this.saved ? { source: this.saved.source, type: this.saved.type } : this.mode;
+      if (!mode || !this.draft.lines.length) return; // the order was sent or cleared meanwhile
       try {
         const quote = await api.post('/api/orders/quote', {
           orderId: this.draft.orderId, idempotencyKey: this.draft.key, source: mode.source, type: mode.type,
@@ -338,10 +365,11 @@ export class Till {
         h('span', { class: `status status-${saved.status.toLowerCase()}`, text: statusText(saved.status) }))
       : h('div', { class: 'ticket-head' },
         h('span', { class: 'ticket-number', text: 'New order' }),
-        h('div', { class: 'seg seg-small' }, ORDER_MODES.map(m => h('button', {
-          class: `seg-btn ${this.mode.id === m.id ? 'seg-on' : ''}`, 'aria-pressed': String(this.mode.id === m.id),
-          onclick: () => { this.mode = m; this.renderTicket(); this.requestQuote(); if (m.source === 'Phone' && !this.draft.customer) this.editCustomer(); }, text: m.label,
+        h('div', { class: `seg seg-small ${this.mode ? '' : 'seg-needed'}`, role: 'group', 'aria-label': 'Order type' }, ORDER_MODES.map(m => h('button', {
+          class: `seg-btn ${this.mode?.id === m.id ? 'seg-on' : ''}`, 'aria-pressed': String(this.mode?.id === m.id),
+          onclick: () => this.setMode(m), text: m.label,
         }))),
+        this.mode ? null : h('span', { class: 'mode-needed', role: 'status', text: 'Choose the order type' }),
         this.customerBox());
 
     const rows = [];
@@ -446,12 +474,12 @@ export class Till {
   // ---------- Phone and delivery customers ----------
 
   isDeliveryMode() {
-    return !this.saved && this.mode.type === 'Delivery';
+    return !this.saved && this.mode?.type === 'Delivery';
   }
 
   /** What the hub needs to price a delivery, or null. */
   deliveryRequest() {
-    if (this.mode.type !== 'Delivery' || this.draft.customer?.distanceMiles == null) return null;
+    if (this.mode?.type !== 'Delivery' || this.draft.customer?.distanceMiles == null) return null;
     const o = this.draft.feeOverride;
     return { distanceMiles: this.draft.customer.distanceMiles, feeOverridePence: o?.pence ?? null, overrideReason: o?.reason ?? null };
   }
@@ -459,7 +487,7 @@ export class Till {
   /** Why this delivery cannot be sent yet, or null. */
   deliveryProblem() {
     // Collection and delivery orders need the customer's name and phone number (and, for delivery, the address).
-    if (!this.saved && this.mode.source === 'Phone' && this.draft.lines.length) {
+    if (!this.saved && this.mode?.source === 'Phone' && this.draft.lines.length) {
       const c = this.draft.customer?.contact;
       if (!c?.name || !c?.phone) return this.mode.type === 'Delivery' ? 'Add the customer’s name, phone number and address first.' : 'Add the customer’s name and phone number first.';
     }
@@ -476,7 +504,7 @@ export class Till {
   }
 
   customerBox() {
-    if (this.mode.source !== 'Phone') return null;
+    if (this.mode?.source !== 'Phone') return null;
     const c = this.draft.customer;
     const o = this.draft.feeOverride;
     return h('div', { class: 'customer-box' },
@@ -552,6 +580,7 @@ export class Till {
   async commit(sendToKitchen = true) {
     let added = false;
     if (!this.saved) {
+      if (!this.mode) throw new ApiError(0, 'NoOrderType', 'Choose the order type first.');
       // Same order id and key on every retry, so a dropped connection never makes a second order.
       const body = {
         orderId: this.draft.orderId, idempotencyKey: this.draft.key, source: this.mode.source, type: this.mode.type,

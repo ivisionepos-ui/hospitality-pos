@@ -154,7 +154,9 @@ afterEach(async t => {
   open.clear();
 });
 
+// Every new order needs its type first (no default). Tests that are not about the type use Takeaway.
 async function pick(page, category, item) {
+  if (await page.locator('.seg-needed').count()) await page.getByRole('button', { name: 'Takeaway', exact: true }).click();
   await page.locator('.cats').getByRole('button', { name: category, exact: true }).click();
   await page.locator('.items').getByRole('button', { name: new RegExp(item) }).click();
 }
@@ -225,6 +227,7 @@ test('cashier sends an order, adds to it, removes a kitchen item with a manager 
   // Open it again and add two cans.
   await page.getByRole('button', { name: /^Orders/ }).click();
   await top(page).getByRole('button', { name: new RegExp(`^${number}`) }).click();
+  await page.locator('.ticket-number', { hasText: `Order ${number}` }).waitFor();
   await pick(page, 'Drinks', 'Can 330ml');
   await page.locator('.items').getByRole('button', { name: /Can 330ml/ }).click();
   await page.locator('.total-due', { hasText: '£2.40' }).waitFor();
@@ -314,6 +317,15 @@ test('two tills see each other’s orders and menu changes live', async () => {
 test('phone and eat-in orders are saved with the right type; the till closes with a blind count', async () => {
   const page = await tillPage(shop.till1, { width: 1024, height: 768 });
   await login(page, '5931');
+  // A new order has no type: tapping an item first asks for it.
+  await page.getByText('Choose the order type').waitFor();
+  await page.locator('.cats').getByRole('button', { name: 'Starters', exact: true }).click();
+  await page.locator('.items').getByRole('button', { name: /Garlic bread £/ }).click();
+  await top(page).getByText('What type of order?').waitFor();
+  await shot(page, 'ui-order-type');
+  await top(page).getByRole('button', { name: 'Cancel' }).click();
+  await page.locator('.lines-empty').waitFor(); // nothing added without a type
+
   // Collection: the customer box opens by itself; name and phone are both needed.
   await page.getByRole('button', { name: 'Collection', exact: true }).click();
   await top(page).getByLabel('Phone number').fill('07700 900111');
@@ -333,9 +345,14 @@ test('phone and eat-in orders are saved with the right type; the till closes wit
   await top(page).getByRole('button', { name: 'Use these details' }).click();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.locator('.lines-empty').waitFor();
-  await page.getByRole('button', { name: 'Eat in', exact: true }).click();
-  await pick(page, 'Desserts', 'Cheesecake');
+  await page.getByText('Choose the order type').waitFor(); // the next order asks again
+  // Choosing in the box that appears when an item is tapped first.
+  await page.locator('.cats').getByRole('button', { name: 'Desserts', exact: true }).click();
+  await page.locator('.items').getByRole('button', { name: /Cheesecake/ }).click();
+  await top(page).getByRole('button', { name: 'Eat in', exact: true }).click();
+  await page.locator('.line', { hasText: 'Cheesecake' }).waitFor();
   await shot(page, 'ui-1024');
+  assert.equal(await page.locator('.toast-error').count(), 0, 'no error messages while taking these orders');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.locator('.lines-empty').waitFor(); // back to a new, empty order
   const orders = await ordersToday();
@@ -1373,6 +1390,7 @@ test('kitchen screen: register it, orders appear live, Start, new items marked, 
   // More items from the till show as NEW on the same card.
   await till.getByRole('button', { name: /^Orders/ }).click();
   await top(till).getByRole('button', { name: new RegExp(`^${order.number}`) }).click();
+  await till.locator('.ticket-number', { hasText: `Order ${order.number}` }).waitFor();
   await pick(till, 'Drinks', 'Can 330ml');
   await till.getByRole('button', { name: 'Send new' }).click();
   await card.locator('.kds-line', { hasText: 'Can 330ml' }).getByText('NEW').waitFor();

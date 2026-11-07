@@ -1,3 +1,4 @@
+using System.Text;
 using System.Net;
 using System.Net.Http.Json;
 using Pos.Domain.Common;
@@ -79,6 +80,23 @@ public sealed class DeliveryTests : HubTestBase
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Contains(message, (await response.Read<ErrorView>()).Message, StringComparison.Ordinal);
+        Assert.Empty(await Cashier.GetJson<List<OrderView>>("/api/orders"));
+    }
+
+    [Theory]
+    [InlineData("type")]
+    [InlineData("source")]
+    public async Task An_order_without_its_type_is_refused_never_given_a_default(string missing)
+    {
+        await Menu();
+        var json = System.Text.Json.Nodes.JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(
+            new CreateOrderRequest(DeviceIds.New(), Guid.NewGuid().ToString(), OrderSource.Counter, OrderType.Takeaway, null, null, [Pizza], null, null), PosJson.Options))!.AsObject();
+        json.Remove(missing);
+        using var body = new StringContent(json.ToJsonString(), Encoding.UTF8, "application/json");
+
+        var response = await Cashier.PostAsync(new Uri("/api/orders", UriKind.Relative), body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Empty(await Cashier.GetJson<List<OrderView>>("/api/orders"));
     }
 

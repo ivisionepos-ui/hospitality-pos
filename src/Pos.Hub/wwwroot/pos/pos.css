@@ -523,3 +523,11 @@ h1, h2, h3 { margin: 0; }
 .last-import p { margin: 0 0 8px; }
 @media (max-width: 700px) { .dialog-menu-sheet .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .menu-sheet .seg { align-self: flex-start; }
+
+/* Order type: chosen for every new order */
+.seg-needed { border-color: var(--danger); box-shadow: 0 0 0 2px #fecaca; }
+.mode-needed { width: 100%; color: var(--danger); font-weight: 600; font-size: .9rem; }
+.dialog-order-type { width: min(560px, 94vw); }
+.order-type-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+.order-type-btn { min-height: 88px; font-size: 1.25rem; font-weight: 700; }
+.ticket-head .seg-small .seg-btn { white-space: nowrap; padding: 0 10px; }

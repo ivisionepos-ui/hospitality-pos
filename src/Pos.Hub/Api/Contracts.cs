@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Pos.Domain.Common;
 using Pos.Domain.Menus;
 using Pos.Domain.Orders;
@@ -18,8 +19,8 @@ namespace Pos.Hub.Api;
 public sealed record CreateOrderRequest(
     Guid OrderId,
     string IdempotencyKey,
-    OrderSource Source,
-    OrderType Type,
+    [property: JsonRequired] OrderSource Source,
+    [property: JsonRequired] OrderType Type,
     Guid? CustomerId,
     Guid? TableId,
     IReadOnlyList<OrderLineRequest>? Lines,

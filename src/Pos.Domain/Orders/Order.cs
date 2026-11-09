@@ -87,6 +87,9 @@ public enum OrderEventKind
 
     /// <summary>An eat-in order moved to another table.</summary>
     TableChanged,
+
+    /// <summary>One kitchen section (e.g. Pizza) finished its part of the order, or put it back on its screen.</summary>
+    KitchenPartChanged,
 }
 
 /// <summary>One entry in an order's history. Nothing is ever deleted from it.</summary>
@@ -425,6 +428,17 @@ public sealed class Order
 
     /// <summary>Customer details given when the order is created (part of the "created" entry).</summary>
     internal void SetContactAtCreation(OrderContact contact) => Contact = contact.Checked();
+
+    /// <summary>
+    /// Records that one kitchen section (e.g. "Pizza") has finished its part of the order, or has put it back on its
+    /// screen. The order itself becomes ready separately, when every section has finished.
+    /// </summary>
+    public void NoteKitchenPart(string section, bool ready, OrderActor actor)
+    {
+        EnsureOpen();
+        ArgumentException.ThrowIfNullOrWhiteSpace(section);
+        Record(actor, OrderEventKind.KitchenPartChanged, ready ? $"{section} part ready" : $"{section} part back on the kitchen screen");
+    }
 
     /// <summary>Longest table name.</summary>
     public const int MaxTableLength = 20;

@@ -1529,3 +1529,68 @@ test('a till with its own receipt printer: its test page, drawer and no sale go 
   await call('PUT', '/api/settings/printers', { device: shop.owner.device, token: shop.owner.token }, { ...setup, tills: [] });
   server.close();
 });
+
+test('kitchen screens per section: the pizza screen shows only pizza, marks its part ready, and waits for the grill', async () => {
+  const owner = { device: shop.owner.device, token: shop.owner.token };
+  const before = (await call('GET', '/api/settings/printers', owner)).setup;
+  const menu = await call('GET', '/api/menu', owner);
+  const cat = name => menu.categories.find(c => c.name.en === name).id;
+  const simple = categoryId => menu.products.find(p => p.categoryId === categoryId && p.type === 'Standard' && !p.isSoldOut && !p.isHidden
+    && !p.variants[0].isSoldOut && p.modifierGroupIds.every(g => (menu.modifierGroups.find(x => x.id === g)?.minChoices ?? 0) === 0));
+  const pizza = simple(cat('Pizzas'));
+  const kebab = simple(cat('Starters')); // the grill section here: starters (kebabs need a sauce chosen)
+  assert.ok(pizza && kebab, 'a pizza and a starter with no required extras');
+  const pdf = { output: 'Pdf', printerName: null, address: null, paperWidthMm: 80, cut: true, drawerPin: 2, commands: 'EscPos' };
+  const empty = '00000000-0000-0000-0000-000000000000';
+  const saved = await call('PUT', '/api/settings/printers', owner, { ...before, kitchens: [
+    { id: empty, name: 'Grill', printer: pdf, mode: 'Chosen', categoryIds: [cat('Starters')], productIds: [], excludedProductIds: [] },
+    { id: empty, name: 'Pizza', printer: pdf, mode: 'Chosen', categoryIds: [cat('Pizzas')], productIds: [], excludedProductIds: [] },
+  ] });
+  const [grillId, pizzaId] = saved.kitchens.map(k => k.id);
+
+  // A new kitchen screen for pizza; the first kitchen screen (Kitchen 1) becomes the grill screen.
+  const { code } = await call('POST', '/api/devices/pairing-code', owner);
+  const screen = await call('POST', '/api/devices/pair', null, { code, name: 'Pizza screen', type: 'KitchenScreen' });
+  const kitchen1 = (await call('GET', '/api/devices', owner)).find(d => d.name === 'Kitchen 1');
+
+  // The owner chooses what each screen shows.
+  const page = await tillPage(shop.till1);
+  await login(page, '4826');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Kitchen screens' }).click();
+  await top(page).getByRole('group', { name: 'Pizza screen: shows' }).getByRole('button', { name: 'Pizza' }).click();
+  await top(page).getByRole('group', { name: 'Kitchen 1: shows' }).getByRole('button', { name: 'Grill' }).click();
+  await shot(page, 'ui-kitchen-screens');
+  await top(page).getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Kitchen screens saved.', { exact: false }).waitFor();
+  const screens = await call('GET', '/api/settings/kitchen-screens', owner);
+  assert.deepEqual(screens.screens.find(s => s.deviceId === screen.deviceId).stationIds, [pizzaId]);
+  assert.deepEqual(screens.screens.find(s => s.deviceId === kitchen1.id).stationIds, [grillId]);
+  await page.context().close();
+
+  // The pizza screen shows only the pizza of a pizza + kebab order.
+  const kds = await tillPage({ ...screen, name: 'Pizza screen' });
+  await pin(kds, '3185');
+  await kds.getByRole('button', { name: 'Log in' }).click();
+  await kds.getByText('Kitchen · Pizza screen · Pizza').waitFor();
+  const cashier = { device: shop.till1, token: (await call('POST', '/api/auth/login', { device: shop.till1 }, { pin: '5931' })).token };
+  const order = await call('POST', '/api/orders', cashier, { orderId: crypto.randomUUID(), idempotencyKey: crypto.randomUUID(), source: 'Counter', type: 'Takeaway',
+    lines: [{ productId: pizza.id, variantId: pizza.variants[0].id, quantity: 1 }, { productId: kebab.id, variantId: kebab.variants[0].id, quantity: 1 }] });
+  await call('POST', `/api/orders/${order.id}/send-to-kitchen`, cashier, {});
+  const card = kds.getByLabel(`Order ${order.number}`);
+  await card.getByText(pizza.name.en).waitFor();
+  assert.equal(await card.getByText(kebab.name.en).count(), 0);
+  await shot(kds, 'ui-kitchen-section');
+
+  // Its part is ready; the order waits for the grill.
+  await card.getByRole('button', { name: 'Ready' }).click();
+  await kds.getByText(`Order ${order.number}: your part is ready (waiting for Grill).`).waitFor();
+  await kds.locator('.kds-ready-chip', { hasText: `${order.number} · waiting for Grill` }).waitFor();
+  assert.notEqual((await call('GET', `/api/orders/${order.id}`, owner)).status, 'Ready');
+  assert.deepEqual(kds.errors, []);
+  await kds.context().close();
+
+  // Back as it was for anything after this test.
+  await call('PUT', '/api/settings/kitchen-screens', owner, []);
+  await call('PUT', '/api/settings/printers', owner, before);
+});

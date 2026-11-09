@@ -554,3 +554,8 @@ h1, h2, h3 { margin: 0; }
 /* Tills with their own printer */
 .till-printers { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
 .till-printer { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); }
+
+/* Kitchen screens per section */
+.kitchen-screens { display: flex; flex-direction: column; gap: 12px; }
+.kitchen-screen-row { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); }
+.kds-ready-waiting { opacity: .75; border-style: dashed; }

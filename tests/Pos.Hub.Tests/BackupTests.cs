@@ -250,7 +250,7 @@ public sealed class DatabaseUpgradeTests : IDisposable
         using (var db = new HubDatabase(path))
         {
             // Make it look like a database from before the printing upgrade.
-            db.Execute("DROP TABLE print_jobs; DROP TABLE order_line_requests; DROP TABLE customers; DROP TABLE postcode_cache; DROP TABLE addresses; DROP TABLE address_sources; DROP TABLE settings; DROP TABLE staff_history; DROP TABLE drawer_opens; DELETE FROM schema_version WHERE version >= 5;");
+            db.Execute("DROP TABLE print_jobs; DROP TABLE order_line_requests; DROP TABLE customers; DROP TABLE postcode_cache; DROP TABLE addresses; DROP TABLE address_sources; DROP TABLE settings; DROP TABLE staff_history; DROP TABLE drawer_opens; DROP TABLE kitchen_part_ready; DELETE FROM schema_version WHERE version >= 5;");
         }
 
         using (var upgraded = new HubDatabase(path))

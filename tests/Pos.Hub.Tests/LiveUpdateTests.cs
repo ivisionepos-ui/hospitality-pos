@@ -15,7 +15,8 @@ namespace Pos.Hub.Tests;
 /// <summary>Live updates: real SignalR connections to the hub, as tills and screens would make.</summary>
 public sealed class LiveUpdateTests : HubTestBase
 {
-    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
+    // Generous: on a busy test machine (the whole suite running at once) a message once took over 5 seconds.
+    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
     private readonly List<HubConnection> _connections = [];
 
     /// <summary>A live connection with the events it has received.</summary>

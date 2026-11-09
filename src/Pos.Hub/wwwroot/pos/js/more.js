@@ -172,6 +172,55 @@ async function addressFiles() {
 }
 
 /** Owner: shop name and address for receipts, and the postcode delivery distances are measured from. */
+/** More → Kitchen screens (owner): each kitchen screen shows all food, or only some kitchen sections (e.g. Pizza). */
+async function kitchenScreensSettings() {
+  let setup;
+  let devices;
+  try {
+    [setup, devices] = await busy(() => Promise.all([api.get('/api/settings/kitchen-screens'), api.get('/api/devices')]));
+  } catch (e) {
+    toast(e.message ?? 'Could not reach the hub.', 'error');
+    return;
+  }
+
+  const screens = devices.filter(d => d.type === 'KitchenScreen' && d.isActive);
+  const chosen = new Map(screens.map(d => [d.id, [...(setup.screens.find(s => s.deviceId === d.id)?.stationIds ?? [])]]));
+  await openDialog(close => {
+    const body = h('div', { class: 'kitchen-screens' });
+    const render = () => mount(body,
+      h('p', { class: 'field-hint', text: 'A screen can show all food, or only the food of some kitchen sections. The sections are the kitchen printers (More → Printers), so a screen shows the same items as its printer. Each section taps Ready for its own part; the order is ready when every section with a screen has finished.' }),
+      !screens.length ? h('p', { class: 'empty-note', text: 'No kitchen screens yet. Add one with More → Add a till or screen.' }) : null,
+      setup.sections.length < 2 && screens.length ? h('p', { class: 'field-hint', text: 'There is one kitchen section, so every screen shows all food. Add kitchen printers (e.g. Pizza, Grill) in More → Printers to split the food between screens.' }) : null,
+      screens.map(d => {
+        const ids = chosen.get(d.id);
+        return h('section', { class: 'kitchen-screen-row', 'aria-label': d.name },
+          h('strong', { text: d.name }),
+          h('div', { class: 'chips', role: 'group', 'aria-label': `${d.name}: shows` },
+            h('button', { type: 'button', class: `chip ${ids.length ? '' : 'chip-on'}`, 'aria-pressed': String(!ids.length), onclick: () => { ids.length = 0; render(); }, text: 'All food' }),
+            setup.sections.length > 1 ? setup.sections.map(sec => h('button', {
+              type: 'button', class: `chip ${ids.includes(sec.id) ? 'chip-on' : ''}`, 'aria-pressed': String(ids.includes(sec.id)),
+              onclick: () => { const i = ids.indexOf(sec.id); if (i >= 0) ids.splice(i, 1); else ids.push(sec.id); render(); }, text: sec.name,
+            })) : null));
+      }));
+    const save = async () => {
+      try {
+        await busy(() => api.put('/api/settings/kitchen-screens', [...chosen].map(([deviceId, stationIds]) => ({ deviceId, stationIds }))));
+        toast('Kitchen screens saved. Each screen uses it after its next log-in.', 'ok', 5000);
+        close();
+      } catch (e) {
+        toast(e.message, 'error', 6000);
+      }
+    };
+    render();
+    return {
+      title: 'Kitchen screens',
+      class: 'dialog-narrow',
+      body,
+      actions: [h('button', { class: 'btn', onclick: () => close(), text: 'Cancel' }), h('button', { class: 'btn btn-primary', onclick: save, text: 'Save' })],
+    };
+  });
+}
+
 /** More → Eat-in and tables: no tables (eat-in goes straight to the menu) or tables (the till asks which table). */
 async function eatInSettings() {
   let settings;
@@ -447,6 +496,7 @@ export function moreDialog(till) {
           section('Reports and shop',
             can('ManageDevices') ? item('Shop details', shopDetails) : null,
             can('ManageDevices') ? item('Eat-in and tables', eatInSettings) : null,
+            can('ManageDevices') ? item('Kitchen screens', kitchenScreensSettings) : null,
             can('ViewReports') ? item('Sales reports', salesReportsDialog, true) : null,
             can('ViewReports') ? item('X report (this till)', xReport) : null,
             can('ViewReports') ? item('End of day (Z report)', zReport) : null,

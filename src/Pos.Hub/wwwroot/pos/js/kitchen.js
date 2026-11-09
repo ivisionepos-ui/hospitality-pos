@@ -44,6 +44,15 @@ export class Kitchen {
     this.ticked = new Set();     // line ids the cook has ticked off (this screen only)
     this.live = false;
     this.ready = [];             // recently ready orders, newest first, for Recall
+    this.sections = null;        // null = all food; else the kitchen sections this screen shows (e.g. Pizza)
+  }
+
+  /** True when this screen shows only some sections' food (More → Kitchen screens). */
+  get bySection() { return Array.isArray(this.sections); }
+
+  /** An order as this screen sees it (only its items when it shows some sections), or null if nothing is for it. */
+  static fromView(view) {
+    return view ? { ...view.order, doneHere: view.doneHere, waitingFor: view.waitingFor } : null;
   }
 
   async start() {
@@ -52,14 +61,19 @@ export class Kitchen {
   }
 
   async reload() {
-    const today = await api.get('/api/orders');
+    const screen = await api.get('/api/kitchen/screen');
+    this.sections = screen.allFood ? null : screen.sections;
+    const today = this.bySection
+      ? (await api.get('/api/kitchen/orders')).map(Kitchen.fromView)
+      : await api.get('/api/orders');
+    this.orders.clear();
     const now = Date.now();
     for (const order of today) {
       this.orders.set(order.id, order);
       for (const line of order.lines) if (line.sentToKitchen && !this.firstSeen.has(line.id)) this.firstSeen.set(line.id, now - NEW_FOR_MS); // not "new" on first load
     }
 
-    this.ready = today.filter(o => o.status === 'Ready').sort((a, b) => b.number.localeCompare(a.number));
+    this.ready = today.filter(o => o.status === 'Ready' || o.doneHere).sort((a, b) => b.number.localeCompare(a.number));
     this.render();
   }
 
@@ -74,7 +88,21 @@ export class Kitchen {
 
   onEvent(event) {
     if (event.kind === 'MenuChanged' || !event.order) return;
-    const order = event.order;
+    if (this.bySection) { this.refreshOne(event.order.id); return; }
+    this.apply(event.order);
+  }
+
+  /** A screen showing some sections asks the hub for its own view of a changed order (only its items). */
+  async refreshOne(orderId) {
+    try {
+      const response = await api.get(`/api/kitchen/orders/${orderId}`);
+      const order = Kitchen.fromView(response);
+      if (order) this.apply(order);
+      else if (this.orders.delete(orderId)) { this.ready = this.ready.filter(o => o.id !== orderId); this.renderBoard(); }
+    } catch { /* caught up on the next change or reload */ }
+  }
+
+  apply(order) {
     const before = this.orders.get(order.id);
     const hadSent = before ? before.lines.some(l => l.sentToKitchen) : false;
     const now = Date.now();
@@ -88,7 +116,7 @@ export class Kitchen {
     }
 
     this.ready = this.ready.filter(o => o.id !== order.id);
-    if (order.status === 'Ready') this.ready.unshift(order);
+    if (order.status === 'Ready' || order.doneHere) this.ready.unshift(order);
     this.renderBoard();
   }
 
@@ -99,7 +127,7 @@ export class Kitchen {
     this.readyBar = h('div', { class: 'kds-ready' });
     mount(this.root,
       h('header', { class: 'topbar kds-top' },
-        h('strong', { text: `Kitchen · ${this.ctx.device?.name ?? ''}` }),
+        h('strong', { text: `Kitchen · ${this.ctx.device?.name ?? ''}${this.bySection ? ` · ${this.sections.map(s => s.name).join(' + ')}` : ''}` }),
         h('span', { class: `live ${this.live ? 'live-on' : 'live-off'}`, text: this.live ? 'Live' : 'Connecting…' }),
         h('span', { class: 'kds-count' }),
         h('div', { class: 'topbar-actions' },
@@ -125,7 +153,7 @@ export class Kitchen {
 
   cooking() {
     return [...this.orders.values()]
-      .filter(o => COOKING.includes(o.status) && o.lines.some(l => l.sentToKitchen))
+      .filter(o => COOKING.includes(o.status) && !o.doneHere && o.lines.some(l => l.sentToKitchen))
       .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   }
 
@@ -140,7 +168,11 @@ export class Kitchen {
     mount(this.readyBar,
       h('span', { class: 'kds-ready-label', text: 'Ready:' }),
       this.ready.length
-        ? this.ready.slice(0, 8).map(o => h('button', { class: 'kds-ready-chip', onclick: () => this.recall(o), text: o.number }))
+        ? this.ready.slice(0, 8).map(o => h('button', {
+          class: `kds-ready-chip ${o.status !== 'Ready' ? 'kds-ready-waiting' : ''}`, onclick: () => this.recall(o),
+          title: o.status !== 'Ready' && o.waitingFor?.length ? `Waiting for ${o.waitingFor.join(', ')}` : '',
+          text: o.status !== 'Ready' && o.waitingFor?.length ? `${o.number} · waiting for ${o.waitingFor.join(', ')}` : o.number,
+        }))
         : h('span', { class: 'kds-ready-none', text: 'none yet' }));
   }
 
@@ -178,7 +210,7 @@ export class Kitchen {
       order.contact?.notes && order.type !== 'Delivery' ? h('p', { class: 'kds-note', text: order.contact.notes }) : null,
       h('footer', { class: 'kds-actions' },
         order.status === 'Accepted' ? h('button', { class: 'btn kds-start', onclick: () => this.move(order, 'Preparing'), text: 'Start' }) : null,
-        h('button', { class: 'btn btn-primary kds-bump', onclick: () => this.move(order, 'Ready'), text: 'Ready' })));
+        h('button', { class: 'btn btn-primary kds-bump', onclick: () => (this.bySection ? this.partReady(order) : this.move(order, 'Ready')), text: 'Ready' })));
   }
 
   // ---------- Actions ----------
@@ -188,6 +220,18 @@ export class Kitchen {
       const updated = await api.post(`/api/orders/${order.id}/status`, { status });
       this.onEvent({ kind: 'OrderUpdated', order: updated });
       if (status === 'Ready') toast(`Order ${order.number} ready.`, 'ok', 2000);
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Could not change the order.', 'error', 6000);
+      try { await this.reload(); } catch { /* shown when the hub is back */ }
+    }
+  }
+
+  /** This screen's part is done (screens showing some sections); the order is Ready when every section is done. */
+  async partReady(order) {
+    try {
+      const view = Kitchen.fromView(await api.post(`/api/kitchen/orders/${order.id}/ready`));
+      if (view) this.apply(view);
+      toast(view?.status === 'Ready' ? `Order ${order.number} ready.` : `Order ${order.number}: your part is ready${view?.waitingFor?.length ? ` (waiting for ${view.waitingFor.join(', ')})` : ''}.`, 'ok', 2500);
     } catch (e) {
       toast(e instanceof ApiError ? e.message : 'Could not change the order.', 'error', 6000);
       try { await this.reload(); } catch { /* shown when the hub is back */ }
@@ -209,6 +253,16 @@ export class Kitchen {
       }));
       if (!target) return;
     } else if (!(await confirmDialog(`Recall order ${target.number}?`, 'It goes back on the board as preparing.', 'Recall'))) {
+      return;
+    }
+
+    if (this.bySection) {
+      try {
+        const view = Kitchen.fromView(await api.post(`/api/kitchen/orders/${target.id}/recall`));
+        if (view) this.apply(view);
+      } catch (e) {
+        toast(e instanceof ApiError ? e.message : 'Could not recall the order.', 'error', 6000);
+      }
       return;
     }
 

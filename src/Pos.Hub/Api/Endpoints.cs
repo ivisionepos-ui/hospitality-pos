@@ -649,6 +649,34 @@ public static class Endpoints
             Results.Ok(shop.Save(details, Caller(http).Staff!.Id))))
             .ForStaff(Permission.ManageDevices);
 
+        // Kitchen screens per section (More → Kitchen screens): each screen shows all food or only its sections.
+        api.MapGet("/settings/kitchen-screens", (KitchenScreenService screens) => Handle(() => Results.Ok(screens.Get())))
+            .ForStaff(Permission.ManageDevices);
+
+        api.MapPut("/settings/kitchen-screens", (HttpContext http, KitchenScreenService screens, List<KitchenScreenChoice> request) => Handle(() =>
+            Results.Ok(screens.Save(request, Caller(http).Staff!.Id))))
+            .ForStaff(Permission.ManageDevices);
+
+        api.MapGet("/kitchen/screen", (HttpContext http, KitchenScreenService screens) => Handle(() =>
+            Results.Ok(screens.For(DeviceOf(http)))))
+            .ForStaff();
+
+        api.MapGet("/kitchen/orders", (HttpContext http, KitchenScreenService screens) => Handle(() =>
+            Results.Ok(screens.Orders(DeviceOf(http)))))
+            .ForStaff();
+
+        api.MapGet("/kitchen/orders/{orderId:guid}", (HttpContext http, KitchenScreenService screens, Guid orderId) => Handle(() =>
+            screens.Order(DeviceOf(http), orderId) is { } view ? Results.Ok(view) : Results.NoContent()))
+            .ForStaff();
+
+        api.MapPost("/kitchen/orders/{orderId:guid}/ready", (HttpContext http, KitchenScreenService screens, Guid orderId) => Handle(() =>
+            screens.PartReady(DeviceOf(http), orderId, Actor(http)) is { } view ? Results.Ok(view) : Results.NoContent()))
+            .ForStaff();
+
+        api.MapPost("/kitchen/orders/{orderId:guid}/recall", (HttpContext http, KitchenScreenService screens, Guid orderId) => Handle(() =>
+            screens.Recall(DeviceOf(http), orderId, Actor(http)) is { } view ? Results.Ok(view) : Results.NoContent()))
+            .ForStaff();
+
         // Eat-in orders: with or without tables (More → Eat-in and tables).
         api.MapGet("/tables", (OrderService orders) => Handle(() => Results.Ok(orders.Tables())))
             .ForStaff();
@@ -791,7 +819,7 @@ public static class Endpoints
             return Results.Ok(OrderView.From(order));
         })).ForStaff();
 
-        api.MapPost("/orders/{orderId:guid}/send-to-kitchen", (HttpContext http, OrderService orders, PrintService print, Guid orderId) => Handle(() =>
+        api.MapPost("/orders/{orderId:guid}/send-to-kitchen", (HttpContext http, OrderService orders, PrintService print, KitchenScreenService screens, Guid orderId) => Handle(() =>
         {
             var sent = orders.Change(orderId, o =>
             {
@@ -806,6 +834,11 @@ public static class Endpoints
                 if (lines.Count > 0 && print.Settings.AutoPrintKitchen)
                 {
                     print.QueueKitchen(o, lines, sentBefore ? KitchenTicketKind.Additional : KitchenTicketKind.New);
+                }
+
+                if (lines.Count > 0)
+                {
+                    screens.ItemsSent(o, lines, Actor(http)); // sections that got new items have work again
                 }
 
                 return lines;

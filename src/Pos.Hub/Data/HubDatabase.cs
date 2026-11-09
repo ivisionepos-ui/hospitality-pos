@@ -223,6 +223,14 @@ public sealed class HubDatabase : IDisposable
             );
             CREATE INDEX ix_drawer_opens_day ON drawer_opens (business_date);
             """),
+        (12, """
+            CREATE TABLE kitchen_part_ready (
+                order_id    TEXT NOT NULL,
+                station_id  TEXT NOT NULL,
+                at          TEXT NOT NULL,
+                PRIMARY KEY (order_id, station_id)
+            );
+            """),
     ];
 
     private readonly SqliteConnection _connection;

@@ -315,6 +315,17 @@ Shop name, address, postcode, phone, VAT number and receipt message are entered 
 distances). Until then the values under `Printing` → `ReceiptText` and `Delivery:ShopPostcode` in appsettings.json
 are used. Language `en` (default), `ar` or `both` stays in appsettings.json. UK VAT receipts must show the VAT number when the business is VAT registered.
 
+### Kitchen screens per section
+
+**More → Kitchen screens** (owner): each kitchen screen shows **All food**, or only the food of chosen **sections**.
+The sections are the kitchen printers (More → Printers), with the same rules, so the pizza screen shows exactly what
+the pizza printer prints (meal deals split as "(part)", removed items shown as REMOVED). A section taps **Ready** for
+its own part; until the others finish, the order shows in its ready bar as "012 · waiting for Grill". The order
+becomes **Ready** (and the till is told) when every section that has a screen and items on the order is done; a
+screen showing all food marks the whole order ready. **Recall** puts that section's part back. Items added later
+reopen only the sections that got them, and an order already ready goes back to preparing. Each step is in the
+order's history ("Pizza part ready"). The screen uses the setting after its next log-in.
+
 ### Tills with their own receipt printer and drawer
 
 **More → Printers → Tills with their own printer** (owner): tick a till and choose its printer: **USB printer on that
@@ -510,6 +521,9 @@ active staff cannot share a name; PINs are 4–8 digits, not easy (1111, 1234) a
 | PUT | /api/menu/modifier-groups/{id} | manager | Add or save a group of extras |
 | PUT | /api/settings/printers | owner | `tills: [{ deviceId, printer }]` gives tills their own receipt printer and drawer |
 | POST | /api/settings/printers/test, /test-drawer | owner | `{ target, kitchenId?, tillId? }` / `{ tillId? }`: test one printer or drawer |
+| GET / PUT | /api/settings/kitchen-screens | owner | `[{ deviceId, stationIds }]` (empty = all food) and the sections there are |
+| GET | /api/kitchen/screen, /api/kitchen/orders[/{id}] | kitchen | What this screen shows; today's orders with only its items, `doneHere`, `waitingFor` |
+| POST | /api/kitchen/orders/{id}/ready, /recall | kitchen | This screen's part ready (order Ready when all sections are done) / back on the screen |
 | GET | /api/tables | staff | Tables on or off, and each table with its open eat-in order |
 | GET / PUT | /api/settings/tables | staff / owner | Eat-in setting: `{ useTables, count }` or `{ useTables, tables: [names] }` |
 | POST | /api/orders/{id}/table | staff | Move an open eat-in order to another table: `{ table }` |

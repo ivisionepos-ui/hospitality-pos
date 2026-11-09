@@ -57,6 +57,9 @@ public sealed record PrintJob(Guid Id, PrintJobKind Kind, PrintTarget Target, Gu
 {
     /// <summary>The kitchen printer, for kitchen tickets (none = the first kitchen printer).</summary>
     public Guid? KitchenId { get; init; }
+
+    /// <summary>The till that asked: receipts, Z reports and drawer openings go to its own printer when it has one.</summary>
+    public Guid? DeviceId { get; init; }
 }
 
 /// <summary>A print job and how it went, for the "failed prints" screen.</summary>
@@ -100,11 +103,11 @@ public sealed class PrintService(
     public bool HasReceipt(Guid orderId) => db.Run(() => db.Scalar(
         "SELECT 1 FROM print_jobs WHERE order_id = $o AND kind IN ('Receipt', 'ReceiptCopy') LIMIT 1;", ("$o", orderId.ToString())) is not null);
 
-    /// <summary>Queues a receipt. If one was printed before for this order, it is marked COPY.</summary>
-    public PrintJob QueueReceipt(Guid orderId)
+    /// <summary>Queues a receipt on the till's printer (its own, or the shop's). If one was printed before for this order, it is marked COPY.</summary>
+    public PrintJob QueueReceipt(Guid orderId, Guid? deviceId = null)
     {
         var printedBefore = HasReceipt(orderId);
-        return Save(new PrintJob(NewId(), printedBefore ? PrintJobKind.ReceiptCopy : PrintJobKind.Receipt, PrintTarget.Receipt, orderId, [], null));
+        return Save(new PrintJob(NewId(), printedBefore ? PrintJobKind.ReceiptCopy : PrintJobKind.Receipt, PrintTarget.Receipt, orderId, [], null) { DeviceId = deviceId });
     }
 
     /// <summary>
@@ -126,26 +129,29 @@ public sealed class PrintService(
     }
 
     /// <summary>Queues the Z report slip for a day whose Z report has been taken.</summary>
-    public PrintJob QueueZReport(DateOnly businessDate) =>
+    public PrintJob QueueZReport(DateOnly businessDate, Guid? deviceId = null) =>
         tills.FindZReport(businessDate) is null
             ? throw new KeyNotFoundException("No Z report has been taken for that day.")
-            : Save(new PrintJob(NewId(), PrintJobKind.ZReport, PrintTarget.Receipt, null, [], businessDate));
+            : Save(new PrintJob(NewId(), PrintJobKind.ZReport, PrintTarget.Receipt, null, [], businessDate) { DeviceId = deviceId });
 
-    /// <summary>True when the receipt printer is a thermal printer that can open a cash drawer.</summary>
+    /// <summary>True when the shop receipt printer is a thermal printer that can open a cash drawer.</summary>
     public bool HasDrawer => settings.Receipt.IsEscPos;
 
+    /// <summary>True when this till's receipt printer (its own, or the shop's) can open a cash drawer.</summary>
+    public bool HasDrawerFor(Guid? deviceId) => settings.ReceiptFor(deviceId).IsEscPos;
+
     /// <summary>
-    /// Opens the cash drawer through the print queue (so it never interrupts a printout). Does nothing when the receipt
-    /// printer cannot open a drawer. Returns true when the drawer was asked to open.
+    /// Opens the till's cash drawer (on its own printer, or the shop's) through the print queue, so it never
+    /// interrupts a printout. Does nothing when that printer cannot open a drawer. Returns true when asked to open.
     /// </summary>
-    public bool QueueDrawer()
+    public bool QueueDrawer(Guid? deviceId = null)
     {
-        if (!HasDrawer)
+        if (!HasDrawerFor(deviceId))
         {
             return false;
         }
 
-        Save(new PrintJob(NewId(), PrintJobKind.DrawerKick, PrintTarget.Receipt, null, [], null));
+        Save(new PrintJob(NewId(), PrintJobKind.DrawerKick, PrintTarget.Receipt, null, [], null) { DeviceId = deviceId });
         return true;
     }
 
@@ -190,9 +196,9 @@ public sealed class PrintService(
     });
 
     /// <summary>A receipt as it would print (for the till's preview), as PNG or PDF, without printing it.</summary>
-    public byte[] PreviewReceipt(Guid orderId, bool pdf)
+    public byte[] PreviewReceipt(Guid orderId, bool pdf, Guid? deviceId = null)
     {
-        var printer = settings.Receipt;
+        var printer = settings.ReceiptFor(deviceId);
         var document = ReceiptDocument(orderId, isCopy: false);
         return pdf ? renderer.RenderPdf(document, printer.WidthDots, printer.PaperWidthMm) : renderer.RenderPng(document, printer.WidthDots);
     }
@@ -236,11 +242,11 @@ public sealed class PrintService(
             string? output;
             if (row.Job.Kind == PrintJobKind.DrawerKick)
             {
-                output = outputs.OpenDrawer(settings.Receipt) ? "cash drawer" : "(no cash drawer)";
+                output = outputs.OpenDrawer(settings.ReceiptFor(row.Job.DeviceId)) ? "cash drawer" : "(no cash drawer)";
             }
             else
             {
-                var printer = row.Job.Target == PrintTarget.Kitchen ? settings.KitchenPrinter(row.Job.KitchenId).Printer : settings.Receipt;
+                var printer = row.Job.Target == PrintTarget.Kitchen ? settings.KitchenPrinter(row.Job.KitchenId).Printer : settings.ReceiptFor(row.Job.DeviceId);
                 output = outputs.Send(Document(row.Job), printer, row.Job.Id);
             }
 

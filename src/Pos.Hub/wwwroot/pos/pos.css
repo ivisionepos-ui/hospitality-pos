@@ -550,3 +550,7 @@ h1, h2, h3 { margin: 0; }
 .table-current { outline: 3px solid var(--accent, #1d4ed8); }
 .table-chip { margin-left: auto; font-weight: 700; }
 .kds-table { font-weight: 800; padding: 2px 8px; border-radius: 6px; background: #111827; color: #fff; }
+
+/* Tills with their own printer */
+.till-printers { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.till-printer { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); }

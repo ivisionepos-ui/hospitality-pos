@@ -158,8 +158,20 @@ public sealed class PrintFailureTests : HubTestBase
         Assert.Equal(2, failed.Attempts);
         Assert.NotNull(failed.LastError);
 
-        var events = await TillOnly.GetJson<CatchUpResult>("/api/live/events?since=0");
-        Assert.Contains(events.Events, e => e.Kind == LiveEventKinds.PrintFailed && e.Summary!.Contains("kitchen ticket", StringComparison.Ordinal));
+        // The tills are told just after the job is marked failed, so allow a moment for the message to be recorded
+        // (checking straight away failed now and then when the test machine was busy).
+        var told = false;
+        for (var i = 0; i < 50 && !told; i++)
+        {
+            var events = await TillOnly.GetJson<CatchUpResult>("/api/live/events?since=0");
+            told = events.Events.Any(e => e.Kind == LiveEventKinds.PrintFailed && e.Summary!.Contains("kitchen ticket", StringComparison.Ordinal));
+            if (!told)
+            {
+                await Task.Delay(50);
+            }
+        }
+
+        Assert.True(told, "The tills were not told that the kitchen ticket failed.");
 
         Assert.Equal(HttpStatusCode.NoContent, (await Cashier.Post($"/api/print-jobs/{failed.Job.Id}/retry", new { })).StatusCode);
         var again = await WaitFor(PrintJobStatus.Failed, after: failed);

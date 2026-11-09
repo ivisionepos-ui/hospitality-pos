@@ -73,3 +73,15 @@ Receipt and kitchen printers, cash drawer
   item once (+ also here). Tap twice for "not here" (x).
   The cash drawer cable goes into the receipt printer's DK socket. Press "Test drawer".
   Give a network printer a fixed address in the router, like the hub PC.
+
+Each till with its own receipt printer and cash drawer
+  On the till PC that has the USB printer (not the hub PC), double-click
+  "Share this till's receipt printer (till PCs, once)" and type the printer's
+  number. It shows the name to use, e.g. \\TILL-2\TillPrinter.
+  On the hub's till: More > Printers > "Tills with their own printer": tick the
+  till, choose "USB printer on that till", type that name, then press
+  "Test Till 2's printer" and "Test Till 2's drawer".
+  The hub PC's own USB printer is set as the "Receipt printer" at the top (or tick
+  Till 1 and choose it there). A till that is not ticked uses the receipt printer.
+  Receipts, the drawer, No sale and the Z report from that till use its printer.
+  If the hub cannot reach the shared printer, a network receipt printer always works.

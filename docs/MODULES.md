@@ -37,6 +37,7 @@
 | Address lookup choice (Google / Royal Mail online / local file) with owner settings screen, keys kept on the hub, Test button, automatic fallback to the local file, single Find address box with group drill-down, distance from the service's location | 3 | Done 2026-11-04 | 6 hub tests + 1 browser test against stand-ins of both services | **Live test with real Google and AddressNow keys needed in the shop** |
 | Hub restart safety: database waits for work in progress before closing; data-folder lock always released on stop | 2 | Done 2026-11-04 | 3 clean full runs | Fixed the occasional restart test failures |
 | Address files: Royal Mail PAF CSV loaded into the hub (folder at start-up or upload from the till), postcode → every address pick list with filter, fills street/flat/business/town, offline-capable | 3 | Done 2026-11-04 | 5 hub tests + 1 browser test; owner's real B12 file loaded: 7,844 addresses in 443 postcodes (13 PO-box rows skipped) | One full-suite run had a load-related failure in a printing test; 10/10 repeat runs passed — watch (seen once more on 2026-11-05 together with a live-update test, both on 5–10 s waits; 3/3 full re-runs passed) |
+| Tills with their own receipt printer and drawer: per-till printer (USB shared from the till PC, network, or off), receipts/drawer/no sale/paid in-out/Z report on the till that asked, others use the shop printer, test page and drawer per till, double-click file to share a till's USB printer | 3 | Done 2026-11-09 | 6 hub tests + 1 browser test | **Printer sharing from a till PC to be tried on the shop's Windows PCs** |
 | Eat-in with or without tables: setting (no tables / tables numbered or named), Which table? picker with busy tables, add to a busy table's order, move table, table on kitchen screen, tickets and receipt, hub checks | 3 | Done 2026-11-08 | 7 hub tests + 1 browser test | To try on the shop's printers (TABLE line size) |
 | Order type chosen for every new order (no default): red prompt on the order, "What type of order?" box when an item is tapped first, type asked again after each order; hub refuses orders without source and type | 3 | Done 2026-11-07 | 2 hub tests + 1 browser test (item tapped first, Cancel adds nothing, asked again for the next order; no error messages) | Found and fixed while testing: a price check still running when an order was sent showed an error message |
 | Collection and delivery orders require the customer's name and phone number (till blocks Send/Pay, customer panel opens by itself, hub refuses on create and on correction) | 3 | Done 2026-11-07 | 5 hub tests + 2 browser tests updated (collection with missing name, missing phone) | |
@@ -53,10 +54,9 @@
 | Hub additions for the till: order quote, sample menu, paid/balance on orders, receipt printed when fully paid | 3 | Done 2026-11-03 | 4 hub tests | |
 | Backups: hourly / start-up / after Z report / on demand; checked zip of database snapshot, PIN key and certificates; second copy folder; keep 48 h then daily for 30 days; restore command; live warning on failure; one hub per data folder; copy before schema upgrades | 2 | Done 2026-11-03 | 13 passing, plus restore run on the real program | Owner to set a USB/second-disk copy folder |
 
-Total: 563 automated tests passing (274 business-rule tests + 267 hub tests + 22 till-screen browser tests), including 1,000 random orders checking that totals and VAT always reconcile.
+Total: 570 automated tests passing (274 business-rule tests + 273 hub tests + 23 till-screen browser tests), including 1,000 random orders checking that totals and VAT always reconcile.
 
 ## Not yet covered (next modules)
-- Per-till receipt printers and drawers (now one receipt printer for the shop)
 - Kitchen screens per station (each screen showing only its own food)
 - Group headings on receipts ("STARTERS", "DRINKS")
 - Windows Device Agent installer that installs the shop CA automatically

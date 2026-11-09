@@ -23,9 +23,9 @@ public sealed class CashDrawerService(HubDatabase db, PrintService print, OrderS
             throw new ArgumentException("Say why the drawer is being opened.");
         }
 
-        if (!print.HasDrawer)
+        if (!print.HasDrawerFor(deviceId))
         {
-            throw new InvalidOperationException("No cash drawer is set up. The drawer plugs into a thermal receipt printer: choose it in More → Printers.");
+            throw new InvalidOperationException("No cash drawer is set up for this till. The drawer plugs into a thermal receipt printer: choose it in More → Printers.");
         }
 
         db.RunInTransaction(() =>
@@ -34,7 +34,7 @@ public sealed class CashDrawerService(HubDatabase db, PrintService print, OrderS
                 "INSERT INTO drawer_opens (at, business_date, device_id, staff_id, approved_by, reason) VALUES ($at, $d, $dev, $s, $a, $r);",
                 ("$at", clock.GetUtcNow().UtcDateTime.ToString("O", CultureInfo.InvariantCulture)), ("$d", orders.Today().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
                 ("$dev", deviceId.ToString()), ("$s", staffId.ToString()), ("$a", approvedBy.ToString()), ("$r", why.Length > 120 ? why[..120] : why));
-            print.QueueDrawer();
+            print.QueueDrawer(deviceId);
             return 0;
         });
     }

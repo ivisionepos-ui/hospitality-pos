@@ -172,7 +172,7 @@ public static class Endpoints
         api.MapPost("/shifts/paid-in", (HttpContext http, TillService tills, PrintService print, CashMovementRequest request) => Handle(() =>
         {
             var shift = tills.MoveCash(TillId(http), CashMovementType.PaidIn, Gbp(request.AmountPence), request.Reason, Caller(http).Staff!.Id, CashApprover(http));
-            DrawerForCash(print, duplicate: false);
+            DrawerForCash(print, duplicate: false, TillId(http));
             return Results.Ok(shift);
         }))
             .ForStaff();
@@ -180,7 +180,7 @@ public static class Endpoints
         api.MapPost("/shifts/paid-out", (HttpContext http, TillService tills, PrintService print, CashMovementRequest request) => Handle(() =>
         {
             var shift = tills.MoveCash(TillId(http), CashMovementType.PaidOut, Gbp(request.AmountPence), request.Reason, Caller(http).Staff!.Id, CashApprover(http));
-            DrawerForCash(print, duplicate: false);
+            DrawerForCash(print, duplicate: false, TillId(http));
             return Results.Ok(shift);
         }))
             .ForStaff();
@@ -203,8 +203,8 @@ public static class Endpoints
         {
             var result = tills.TakeCash(orderId, TillId(http), Caller(http).Staff!.Id, request.PaymentId, Gbp(request.TenderedPence),
                 request.AmountPence is { } a ? Gbp(a) : null, request.ForLineIds);
-            DrawerForCash(print, result.WasDuplicate);
-            ReceiptWhenPaid(print, orderId, result.Ledger, result.WasDuplicate);
+            DrawerForCash(print, result.WasDuplicate, TillId(http));
+            ReceiptWhenPaid(print, orderId, result.Ledger, result.WasDuplicate, TillId(http));
             return Results.Ok(new PaymentResponse(result.Payment, View(result.Ledger), result.WasDuplicate));
         })).ForStaff(Permission.TakeOrders);
 
@@ -212,7 +212,7 @@ public static class Endpoints
         {
             var result = tills.TakeCard(orderId, TillId(http), Caller(http).Staff!.Id, request.PaymentId, Gbp(request.AmountPence),
                 request.TipPence is { } t ? Gbp(t) : null, request.Reference, request.ForLineIds);
-            ReceiptWhenPaid(print, orderId, result.Ledger, result.WasDuplicate);
+            ReceiptWhenPaid(print, orderId, result.Ledger, result.WasDuplicate, TillId(http));
             return Results.Ok(new PaymentResponse(result.Payment, View(result.Ledger), result.WasDuplicate));
         })).ForStaff(Permission.TakeOrders);
 
@@ -223,7 +223,7 @@ public static class Endpoints
             var result = tills.Refund(orderId, paymentId, TillId(http), Caller(http).Staff!.Id, approver, Gbp(request.AmountPence), request.Reason, request.RefundId);
             if (result.Payment.Method == PaymentMethod.Cash)
             {
-                DrawerForCash(print, result.WasDuplicate);
+                DrawerForCash(print, result.WasDuplicate, TillId(http));
             }
 
             return Results.Ok(new PaymentResponse(result.Payment, View(result.Ledger), result.WasDuplicate));
@@ -270,21 +270,21 @@ public static class Endpoints
 
     private static void MapPrinting(RouteGroupBuilder api)
     {
-        api.MapPost("/orders/{orderId:guid}/print-receipt", (OrderService orders, PrintService print, Guid orderId) => Handle(() =>
+        api.MapPost("/orders/{orderId:guid}/print-receipt", (HttpContext http, OrderService orders, PrintService print, Guid orderId) => Handle(() =>
         {
             _ = orders.Get(orderId);
-            return Results.Ok(print.QueueReceipt(orderId));
+            return Results.Ok(print.QueueReceipt(orderId, DeviceOf(http)));
         })).ForStaff(Permission.TakeOrders);
 
         // Receipt preview for the till screen (not printed, not counted as a print).
-        api.MapGet("/orders/{orderId:guid}/receipt", (PrintService print, Guid orderId, string? format) => Handle(() =>
+        api.MapGet("/orders/{orderId:guid}/receipt", (HttpContext http, PrintService print, Guid orderId, string? format) => Handle(() =>
         {
             var pdf = string.Equals(format, "pdf", StringComparison.OrdinalIgnoreCase);
-            return Results.File(print.PreviewReceipt(orderId, pdf), pdf ? "application/pdf" : "image/png");
+            return Results.File(print.PreviewReceipt(orderId, pdf, DeviceOf(http)), pdf ? "application/pdf" : "image/png");
         })).ForStaff(Permission.TakeOrders);
 
-        api.MapPost("/reports/z/print", (PrintService print, TillService tills, HubSettings hub, TimeProvider clock, ZReportRequest? request) => Handle(() =>
-            Results.Ok(print.QueueZReport(request?.BusinessDate ?? BusinessDay.For(clock.GetUtcNow(), hub.TimeZone, hub.DayStartsAt)))))
+        api.MapPost("/reports/z/print", (HttpContext http, PrintService print, TillService tills, HubSettings hub, TimeProvider clock, ZReportRequest? request) => Handle(() =>
+            Results.Ok(print.QueueZReport(request?.BusinessDate ?? BusinessDay.For(clock.GetUtcNow(), hub.TimeZone, hub.DayStartsAt), DeviceOf(http)))))
             .ForStaff(Permission.ViewReports);
 
         api.MapGet("/print-jobs", (PrintService print, PrintJobStatus? status) => Handle(() => Results.Ok(print.List(status))))
@@ -670,12 +670,12 @@ public static class Endpoints
             .ForStaff(Permission.ManageDevices);
 
         api.MapPost("/settings/printers/test", (PrinterSetupService printers, ShopDetailsService shop, TestPrintRequest request) => Handle(() =>
-            Results.Ok(new { output = printers.TestPrint(request.Target, shop.Get().BusinessName, request.KitchenId) })))
+            Results.Ok(new { output = printers.TestPrint(request.Target, shop.Get().BusinessName, request.KitchenId, request.TillId) })))
             .ForStaff(Permission.ManageDevices);
 
-        api.MapPost("/settings/printers/test-drawer", (PrinterSetupService printers) => Handle(() =>
+        api.MapPost("/settings/printers/test-drawer", (PrinterSetupService printers, TestDrawerRequest? request) => Handle(() =>
         {
-            printers.TestDrawer();
+            printers.TestDrawer(request?.TillId);
             return Results.NoContent();
         })).ForStaff(Permission.ManageDevices);
 
@@ -783,7 +783,7 @@ public static class Endpoints
                 // Normally the receipt printed when the order was paid; print one now only if it never was.
                 if (request.Status == OrderStatus.Completed && print.Settings.AutoPrintReceipt && !print.HasReceipt(o.Id))
                 {
-                    print.QueueReceipt(o.Id);
+                    print.QueueReceipt(o.Id, DeviceOf(http));
                 }
 
                 return o;
@@ -800,7 +800,7 @@ public static class Endpoints
                 // Delivery: the receipt goes in the bag with the food, showing what the driver collects.
                 if (lines.Count > 0 && o.Type == Pos.Domain.Tax.OrderType.Delivery && print.Settings.AutoPrintReceipt && !print.HasReceipt(o.Id))
                 {
-                    print.QueueReceipt(o.Id);
+                    print.QueueReceipt(o.Id, DeviceOf(http));
                 }
 
                 if (lines.Count > 0 && print.Settings.AutoPrintKitchen)
@@ -865,19 +865,22 @@ public static class Endpoints
 
     /// <summary>Prints the receipt automatically the moment an order becomes fully paid (once).</summary>
     /// <summary>Opens the cash drawer for cash in or out (not again for a resent request).</summary>
-    private static void DrawerForCash(PrintService print, bool duplicate)
+    /// <summary>The device making the request (any kind): receipts it asks for print on its own printer when it has one.</summary>
+    private static Guid DeviceOf(HttpContext http) => Caller(http).Device.Id;
+
+    private static void DrawerForCash(PrintService print, bool duplicate, Guid tillId)
     {
         if (!duplicate && print.Settings.OpenDrawerOnCash)
         {
-            print.QueueDrawer();
+            print.QueueDrawer(tillId); // this till's drawer (its own printer, or the shop's)
         }
     }
 
-    private static void ReceiptWhenPaid(PrintService print, Guid orderId, OrderPayments ledger, bool duplicate)
+    private static void ReceiptWhenPaid(PrintService print, Guid orderId, OrderPayments ledger, bool duplicate, Guid tillId)
     {
         if (!duplicate && print.Settings.AutoPrintReceipt && ledger.IsSettled && ledger.Paid.MinorUnits > 0 && !print.HasReceipt(orderId))
         {
-            print.QueueReceipt(orderId);
+            print.QueueReceipt(orderId, tillId); // on the till that took the payment
         }
     }
 

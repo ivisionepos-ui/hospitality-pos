@@ -315,6 +315,16 @@ Shop name, address, postcode, phone, VAT number and receipt message are entered 
 distances). Until then the values under `Printing` → `ReceiptText` and `Delivery:ShopPostcode` in appsettings.json
 are used. Language `en` (default), `ar` or `both` stays in appsettings.json. UK VAT receipts must show the VAT number when the business is VAT registered.
 
+### Tills with their own receipt printer and drawer
+
+**More → Printers → Tills with their own printer** (owner): tick a till and choose its printer: **USB printer on that
+till** (shared in Windows with the double-click file *Share this till's receipt printer (till PCs, once)*, name like
+`\\TILL-2\TillPrinter`), **Network printer**, or **Off**. Receipts (paid, reprint, preview, delivery bag), cash
+drawer openings (cash payments and refunds, paid in/out, No sale) and the printed Z report go to the printer of the
+till that asked; a till not ticked uses the shop receipt printer. Test buttons for each till's printer and drawer.
+The hub prints to a shared printer through Windows printer sharing, so the hub PC must be able to reach the till PC
+on the shop network; a network receipt printer avoids that.
+
 ### Menu spreadsheet (Excel)
 
 The quickest way to put a whole menu on the till. **More → Menu spreadsheet (Excel)** (staff who can edit the menu):
@@ -498,6 +508,8 @@ active staff cannot share a name; PINs are 4–8 digits, not easy (1111, 1234) a
 | POST / PUT | /api/menu/categories[/{id}] | manager | Add a category / save its panel |
 | POST | /api/menu/categories/{id}/move | manager | Move a category tab |
 | PUT | /api/menu/modifier-groups/{id} | manager | Add or save a group of extras |
+| PUT | /api/settings/printers | owner | `tills: [{ deviceId, printer }]` gives tills their own receipt printer and drawer |
+| POST | /api/settings/printers/test, /test-drawer | owner | `{ target, kitchenId?, tillId? }` / `{ tillId? }`: test one printer or drawer |
 | GET | /api/tables | staff | Tables on or off, and each table with its open eat-in order |
 | GET / PUT | /api/settings/tables | staff / owner | Eat-in setting: `{ useTables, count }` or `{ useTables, tables: [names] }` |
 | POST | /api/orders/{id}/table | staff | Move an open eat-in order to another table: `{ table }` |

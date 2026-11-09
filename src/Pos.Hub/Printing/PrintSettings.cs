@@ -121,6 +121,22 @@ public sealed class PrintSettings
         set => _kitchens = value is { Count: > 0 } ? value : null;
     }
 
+    private IReadOnlyDictionary<Guid, PrinterSettings> _tillReceipts = new Dictionary<Guid, PrinterSettings>();
+
+    /// <summary>
+    /// Tills with their own receipt printer (and the cash drawer plugged into it), by till device id.
+    /// A till not listed uses the shop receipt printer.
+    /// </summary>
+    public IReadOnlyDictionary<Guid, PrinterSettings> TillReceipts
+    {
+        get => _tillReceipts;
+        set => _tillReceipts = value ?? new Dictionary<Guid, PrinterSettings>();
+    }
+
+    /// <summary>The receipt printer for a till: its own, or the shop receipt printer.</summary>
+    public PrinterSettings ReceiptFor(Guid? deviceId) =>
+        deviceId is { } id && _tillReceipts.TryGetValue(id, out var own) ? own : Receipt;
+
     /// <summary>A kitchen printer by id; the first one if it no longer exists.</summary>
     public KitchenStation KitchenPrinter(Guid? id) => Kitchens.FirstOrDefault(k => k.Id == id) ?? Kitchens[0];
 

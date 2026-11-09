@@ -11,6 +11,13 @@ const CONNECTIONS = [
   ['Pdf', 'Save as PDF', 'No printer: each printout is saved as a PDF file on the hub PC (for trying the system).'],
   ['None', 'Off', 'Nothing is printed.'],
 ];
+// A till's own receipt printer: on the network, or USB on that till PC shared in Windows
+// ("Share this till's receipt printer" double-click file), so the hub can reach it.
+const TILL_CONNECTIONS = [
+  ['EscPosWindows', 'USB printer on that till', 'Plugged into the till PC and shared with the double-click file "Share this till\'s receipt printer". Name: \\\\TILL-PC-NAME\\TillPrinter'],
+  ['EscPosNetwork', 'Network printer', 'A thermal printer on the shop network (cable or Wi-Fi), used by this till.'],
+  ['None', 'Off', 'This till prints no receipts and has no drawer.'],
+];
 const isThermal = output => output === 'EscPosNetwork' || output === 'EscPosWindows';
 const TYPES = [
   ['EscPos', 'Epson, Xprinter and most (ESC/POS)'],
@@ -18,10 +25,11 @@ const TYPES = [
 ];
 const problemText = e => (e instanceof ApiError ? e.message : 'Could not reach the hub.');
 
-function printerCard(title, choice, installed, isReceipt, setup) {
+function printerCard(title, choice, installed, isReceipt, setup, forTill = false) {
   const card = h('section', { class: 'printer-card', 'aria-label': title });
+  const connections = forTill ? TILL_CONNECTIONS : CONNECTIONS;
   const render = () => {
-    const info = CONNECTIONS.find(c => c[0] === choice.output);
+    const info = connections.find(c => c[0] === choice.output);
     const needsName = choice.output === 'Windows' || choice.output === 'EscPosWindows';
     const name = h('input', { class: 'text-input', type: 'text', maxlength: 200, value: choice.printerName ?? '', list: `${title}-installed`, 'aria-label': `${title}: Windows printer name`, placeholder: 'Name as Windows shows it' });
     name.addEventListener('input', () => { choice.printerName = name.value; });
@@ -37,11 +45,11 @@ function printerCard(title, choice, installed, isReceipt, setup) {
         onclick: () => { set(v); render(); }, text,
       }))));
     mount(card,
-      h('h3', { class: 'menu-heading', text: title }),
-      seg('Connected by', CONNECTIONS.map(([v, text]) => [v, text]), choice.output, v => { choice.output = v; }),
+      forTill ? null : h('h3', { class: 'menu-heading', text: title }),
+      seg('Connected by', connections.map(([v, text]) => [v, text]), choice.output, v => { choice.output = v; }),
       h('p', { class: 'field-hint', text: info?.[2] ?? '' }),
       choice.output === 'EscPosNetwork' ? h('label', { class: 'field' }, h('span', { class: 'field-label', text: 'Printer address (printed on its self-test page)' }), address) : null,
-      needsName ? h('label', { class: 'field' }, h('span', { class: 'field-label', text: 'Windows printer name' }), name,
+      needsName ? h('label', { class: 'field' }, h('span', { class: 'field-label', text: forTill && choice.output === 'EscPosWindows' ? 'Shared printer name (e.g. \\\\TILL-2\\TillPrinter)' : 'Windows printer name' }), name,
         h('datalist', { id: `${title}-installed` }, installed.map(p => h('option', { value: p })))) : null,
       needsName && !installed.length ? h('p', { class: 'field-hint', text: 'The list of installed printers shows when the hub runs on Windows.' }) : null,
       isThermal(choice.output) ? seg('Printer type', TYPES, choice.commands ?? 'EscPos', v => { choice.commands = v; if (v === 'StarGraphic') choice.drawerPin = 2; }) : null,
@@ -50,7 +58,7 @@ function printerCard(title, choice, installed, isReceipt, setup) {
       isThermal(choice.output) ? h('label', { class: 'check' }, cut, h('span', { text: 'Cut the paper after each printout' })) : null,
       isReceipt && isThermal(choice.output) ? h('div', { class: 'drawer-box' },
         h('strong', { text: 'Cash drawer (plugs into this printer)' }),
-        h('label', { class: 'check' }, onCash, h('span', { text: 'Open it for cash payments, cash refunds and paid in/out' })),
+        forTill ? null : h('label', { class: 'check' }, onCash, h('span', { text: 'Open it for cash payments, cash refunds and paid in/out' })),
         choice.commands === 'StarGraphic' ? null : seg('Drawer socket', [[2, 'Pin 2 (usual)'], [5, 'Pin 5']], choice.drawerPin, v => { choice.drawerPin = v; })) : null);
   };
   render();
@@ -109,8 +117,9 @@ function printsWhat(k, label, menu) {
 export async function printersDialog() {
   let data;
   let menu;
+  let devices;
   try {
-    [data, menu] = await busy(() => Promise.all([api.get('/api/settings/printers'), api.get('/api/menu')]));
+    [data, menu, devices] = await busy(() => Promise.all([api.get('/api/settings/printers'), api.get('/api/menu'), api.get('/api/devices')]));
   } catch (e) {
     toast(problemText(e), 'error');
     return;
@@ -121,8 +130,11 @@ export async function printersDialog() {
     products: [...menu.products].sort((a, b) => a.sortOrder - b.sortOrder),
   };
   const setup = structuredClone(data.setup);
+  setup.tills ??= [];
+  const tills = devices.filter(d => (d.type === 'Till' || d.type === 'BackOffice') && d.isActive); // the hub PC (set up first) is often a till too
   await openDialog(close => {
     const kitchenList = h('div', { class: 'kitchen-list' });
+    const tillList = h('div', { class: 'till-printers' });
     const save = async () => {
       const saved = await busy(() => api.put('/api/settings/printers', setup));
       Object.assign(setup, structuredClone(saved));
@@ -163,7 +175,29 @@ export async function printersDialog() {
           kitchenList.querySelectorAll('.kitchen-name input')[setup.kitchens.length - 1]?.focus();
         },
       }) : h('p', { class: 'field-hint', text: 'At most 10 kitchen printers.' }));
+    // Tills with their own receipt printer and drawer. A till not ticked uses the shop receipt printer above.
+    const renderTills = () => mount(tillList,
+      h('h3', { class: 'menu-heading', text: 'Tills with their own printer' }),
+      h('p', { class: 'field-hint', text: 'Tick a till that has its own receipt printer and cash drawer. Its receipts, Z report and drawer use that printer; other tills use the receipt printer above.' }),
+      tills.length ? tills.map(d => {
+        const own = setup.tills.find(t => t.deviceId === d.id);
+        const tick = h('input', { type: 'checkbox', checked: !!own, 'aria-label': `${d.name} has its own receipt printer` });
+        tick.addEventListener('change', () => {
+          if (tick.checked) setup.tills.push({ deviceId: d.id, printer: { output: 'EscPosWindows', printerName: '', address: '', paperWidthMm: 80, cut: true, drawerPin: 2, commands: 'EscPos' } });
+          else setup.tills = setup.tills.filter(t => t.deviceId !== d.id);
+          renderTills();
+        });
+        return h('section', { class: 'till-printer', 'aria-label': `${d.name} printer` },
+          h('label', { class: 'check' }, tick, h('strong', { text: `${d.name}: its own receipt printer and drawer` })),
+          own ? [
+            printerCard(`${d.name} printer`, own.printer, data.installed, true, setup, true),
+            h('div', { class: 'printer-tests' },
+              h('button', { class: 'btn btn-small', onclick: run(async () => { await save(); const r = await busy(() => api.post('/api/settings/printers/test', { target: 'Receipt', tillId: d.id })); toast(`Test page sent to ${r.output}.`, 'ok', 6000); }), text: `Test ${d.name}'s printer` }),
+              h('button', { class: 'btn btn-small', onclick: run(async () => { await save(); await busy(() => api.post('/api/settings/printers/test-drawer', { tillId: d.id })); toast('Drawer opened.', 'ok'); }), text: `Test ${d.name}'s drawer` })),
+          ] : null);
+      }) : h('p', { class: 'field-hint', text: 'No tills registered yet.' }));
     renderKitchens();
+    renderTills();
     return {
       title: 'Printers',
       wide: true,
@@ -173,7 +207,8 @@ export async function printersDialog() {
           printerCard('Receipt printer', setup.receipt, data.installed, true, setup),
           h('div', { class: 'printer-tests' },
             h('button', { class: 'btn btn-small', onclick: run(async () => { await save(); const r = await busy(() => api.post('/api/settings/printers/test', { target: 'Receipt' })); toast(`Test page sent to ${r.output}.`, 'ok', 6000); }), text: 'Test receipt printer' }),
-            h('button', { class: 'btn btn-small', onclick: run(async () => { await save(); await busy(() => api.post('/api/settings/printers/test-drawer')); toast('Drawer opened.', 'ok'); }), text: 'Test drawer' }))),
+            h('button', { class: 'btn btn-small', onclick: run(async () => { await save(); await busy(() => api.post('/api/settings/printers/test-drawer', {})); toast('Drawer opened.', 'ok'); }), text: 'Test drawer' })),
+          tillList),
         h('div', { class: 'printers-col' },
           h('h3', { class: 'menu-heading', text: 'Kitchen printers' }),
           h('p', { class: 'field-hint', text: 'Each kitchen printer prints only the food it is set for, e.g. Pizzas on the pizza printer, Drinks on the drinks printer. One item can print on several printers. A meal deal is split between them.' }),

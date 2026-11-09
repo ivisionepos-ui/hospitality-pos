@@ -89,14 +89,23 @@ public sealed record PrinterChoice(PrintOutputType Output, string? PrinterName, 
 /// <param name="ExcludedProductIds">Single items it does not print although their category is chosen ("not here").</param>
 public sealed record KitchenPrinterChoice(Guid Id, string Name, PrinterChoice Printer, KitchenPrintMode Mode, IReadOnlyList<Guid> CategoryIds, IReadOnlyList<Guid> ProductIds, IReadOnlyList<Guid>? ExcludedProductIds = null);
 
+/// <summary>A till's own receipt printer, with the cash drawer plugged into it.</summary>
+/// <param name="DeviceId">The till.</param>
+/// <param name="Printer">How its printer is connected.</param>
+public sealed record TillPrinterChoice(Guid DeviceId, PrinterChoice Printer);
+
 /// <summary>The receipt printer, the kitchen printers and the drawer rule.</summary>
-/// <param name="Receipt">Customer receipt printer (the cash drawer plugs into it).</param>
+/// <param name="Receipt">Customer receipt printer (the cash drawer plugs into it); used by tills without their own.</param>
 /// <param name="Kitchens">Kitchen printers, first one first (it also prints anything no other printer chose).</param>
 /// <param name="OpenDrawerOnCash">Open the drawer for cash payments, cash refunds and paid in/out.</param>
-public sealed record PrinterSetup(PrinterChoice Receipt, IReadOnlyList<KitchenPrinterChoice> Kitchens, bool OpenDrawerOnCash)
+/// <param name="Tills">Tills with their own receipt printer and drawer (receipts, drawer and Z report from that till).</param>
+public sealed record PrinterSetup(PrinterChoice Receipt, IReadOnlyList<KitchenPrinterChoice> Kitchens, bool OpenDrawerOnCash, IReadOnlyList<TillPrinterChoice>? Tills = null)
 {
     /// <summary>Most kitchen printers.</summary>
     public const int MaxKitchens = 10;
+
+    /// <summary>Most tills with their own printer.</summary>
+    public const int MaxTills = 20;
 
     /// <summary>Checks and tidies everything; throws <see cref="ArgumentException"/> with a clear reason.</summary>
     public PrinterSetup Checked()
@@ -143,7 +152,19 @@ public sealed record PrinterSetup(PrinterChoice Receipt, IReadOnlyList<KitchenPr
                 k.Mode == KitchenPrintMode.Chosen ? categories : [], k.Mode == KitchenPrintMode.Chosen ? products : [], k.Mode == KitchenPrintMode.Chosen ? excluded : []));
         }
 
-        return new PrinterSetup(Receipt.Checked("receipt"), kitchens, OpenDrawerOnCash);
+        var tills = (Tills ?? []).Where(t => t.DeviceId != Guid.Empty).ToList();
+        if (tills.Count > MaxTills)
+        {
+            throw new ArgumentException($"At most {MaxTills} tills can have their own printer.");
+        }
+
+        if (tills.GroupBy(t => t.DeviceId).Any(g => g.Count() > 1))
+        {
+            throw new ArgumentException("A till is listed twice.");
+        }
+
+        return new PrinterSetup(Receipt.Checked("receipt"), kitchens, OpenDrawerOnCash,
+            [.. tills.Select(t => new TillPrinterChoice(t.DeviceId, (t.Printer ?? throw new ArgumentException("Choose how the till's printer is connected.")).Checked("till")))]);
     }
 }
 
@@ -165,7 +186,8 @@ public sealed class PrinterSetupService(HubDatabase db, PrintSettings settings, 
     public PrinterSetup Get() => new(
         PrinterChoice.From(settings.Receipt),
         [.. settings.Kitchens.Select(k => new KitchenPrinterChoice(k.Id, k.Name, PrinterChoice.From(k.Printer), k.Mode, [.. k.CategoryIds], [.. k.ProductIds], [.. k.ExcludedProductIds]))],
-        settings.OpenDrawerOnCash);
+        settings.OpenDrawerOnCash,
+        [.. settings.TillReceipts.Select(t => new TillPrinterChoice(t.Key, PrinterChoice.From(t.Value)))]);
 
     /// <summary>Saves and uses new choices (no restart).</summary>
     public PrinterSetup Save(PrinterSetup setup, Guid byUserId)
@@ -214,10 +236,15 @@ public sealed class PrinterSetupService(HubDatabase db, PrintSettings settings, 
     }
 
     /// <summary>Prints a test page now on one printer. Returns where it went; throws with a clear reason if it cannot.</summary>
-    public string TestPrint(PrintTarget target, string shopName, Guid? kitchenId = null)
+    /// <param name="target">Receipt or kitchen.</param>
+    /// <param name="shopName">Printed at the top.</param>
+    /// <param name="kitchenId">The kitchen printer.</param>
+    /// <param name="tillId">For a receipt printer: the till whose own printer to test (none = the shop receipt printer).</param>
+    public string TestPrint(PrintTarget target, string shopName, Guid? kitchenId = null, Guid? tillId = null)
     {
         var station = target == PrintTarget.Kitchen ? settings.KitchenPrinter(kitchenId) : null;
-        var printer = station?.Printer ?? settings.Receipt;
+        var ownTill = station is null && tillId is { } t && settings.TillReceipts.ContainsKey(t);
+        var printer = station?.Printer ?? settings.ReceiptFor(ownTill ? tillId : null);
         if (printer.Output == PrintOutputType.None)
         {
             throw new InvalidOperationException("This printer is switched off. Choose how it is connected first.");
@@ -227,7 +254,7 @@ public sealed class PrinterSetupService(HubDatabase db, PrintSettings settings, 
         var page = new PrintDocument($"Printer test {target}",
         [
             new PrintText(shopName, PrintAlign.Center, PrintSize.Large, Bold: true),
-            new PrintText(station is null ? "RECEIPT PRINTER TEST" : $"{station.Name.ToUpperInvariant()} PRINTER TEST", PrintAlign.Center, Bold: true, Inverted: true),
+            new PrintText(station is not null ? $"{station.Name.ToUpperInvariant()} PRINTER TEST" : ownTill ? "TILL RECEIPT PRINTER TEST" : "RECEIPT PRINTER TEST", PrintAlign.Center, Bold: true, Inverted: true),
             new PrintSpace(0.5),
             new PrintText($"Printed {now} (UTC)", PrintAlign.Center, PrintSize.Small),
             new PrintRule(),
@@ -240,10 +267,10 @@ public sealed class PrinterSetupService(HubDatabase db, PrintSettings settings, 
         return outputs.Send(page with { Title = $"Printer test {station?.Name ?? "Receipt"}" }, printer, Guid.NewGuid()) ?? "(not printed)";
     }
 
-    /// <summary>Opens the cash drawer now (test). Throws if the receipt printer cannot open one.</summary>
-    public void TestDrawer()
+    /// <summary>Opens the cash drawer now (test): the till's own drawer, or the shop's. Throws if the printer cannot open one.</summary>
+    public void TestDrawer(Guid? tillId = null)
     {
-        if (!outputs.OpenDrawer(settings.Receipt))
+        if (!outputs.OpenDrawer(settings.ReceiptFor(tillId)))
         {
             throw new InvalidOperationException("The cash drawer plugs into a thermal receipt printer. Choose a network or USB thermal printer for receipts first.");
         }
@@ -268,5 +295,11 @@ public sealed class PrinterSetupService(HubDatabase db, PrintSettings settings, 
             };
         })];
         settings.OpenDrawerOnCash = setup.OpenDrawerOnCash;
+        settings.TillReceipts = (setup.Tills ?? []).ToDictionary(t => t.DeviceId, t =>
+        {
+            var printer = new PrinterSettings { Folder = settings.Receipt.Folder };
+            t.Printer.ApplyTo(printer);
+            return printer;
+        });
     }
 }

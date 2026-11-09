@@ -1481,3 +1481,51 @@ test('eat-in with tables: owner turns tables on, the till asks which table, a bu
   assert.deepEqual(next.errors, []);
   await next.context().close();
 });
+
+test('a till with its own receipt printer: its test page, drawer and no sale go to its printer, not the shop one', async () => {
+  const net = require('node:net');
+  const received = [];
+  const server = net.createServer(socket => { const parts = []; socket.on('data', d => parts.push(d)); socket.on('end', () => received.push(Buffer.concat(parts))); });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const address = `127.0.0.1:${server.address().port}`;
+  const waitFor = async n => { for (let i = 0; i < 100 && received.length < n; i++) await new Promise(r => setTimeout(r, 50)); assert.ok(received.length >= n, `printouts: ${received.length}`); };
+  const kick = [0x1B, 0x40, 0x1B, 0x70, 0x00, 0x19, 0xFA];
+
+  const owner = await tillPage(shop.till1);
+  await login(owner, '4826');
+  await owner.getByRole('button', { name: 'More', exact: true }).click();
+  await top(owner).getByRole('button', { name: 'Printers' }).click();
+  await top(owner).getByRole('checkbox', { name: 'Till 2 has its own receipt printer' }).check();
+  const card = top(owner).getByLabel('Till 2 printer', { exact: true });
+  await card.getByRole('radio', { name: 'USB printer on that till' }).waitFor(); // the usual way, chosen first
+  await card.getByText('Shared printer name (e.g. \\\\TILL-2\\TillPrinter)').waitFor();
+  await card.getByRole('radio', { name: 'Network printer' }).click();
+  await card.getByLabel('Till 2 printer: address').fill(address);
+  await shot(owner, 'ui-till-printer');
+  await top(owner).getByRole('button', { name: "Test Till 2's drawer" }).click();
+  await owner.getByText('Drawer opened.').waitFor();
+  await waitFor(1);
+  assert.deepEqual([...received[0]], kick);
+  await top(owner).getByRole('button', { name: 'Save' }).click();
+  await owner.getByText('Printers saved. New printouts use them.').waitFor();
+  await owner.context().close();
+
+  // A cashier on Till 2 opens the drawer: Till 2's own drawer.
+  const page = await tillPage(shop.till2);
+  await login(page, '5931');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Open drawer (no sale)' }).click();
+  await top(page).getByRole('button', { name: 'Check the float' }).click();
+  await pin(page, '7402');
+  await top(page).getByRole('button', { name: 'Approve' }).click();
+  await page.getByText('Drawer opened. It is recorded as a no sale.').waitFor();
+  await waitFor(2);
+  assert.deepEqual([...received[1]], kick);
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+
+  // Back to the shop printer for Till 2.
+  const setup = (await call('GET', '/api/settings/printers', { device: shop.owner.device, token: shop.owner.token })).setup;
+  await call('PUT', '/api/settings/printers', { device: shop.owner.device, token: shop.owner.token }, { ...setup, tills: [] });
+  server.close();
+});

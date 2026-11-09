@@ -1594,3 +1594,90 @@ test('kitchen screens per section: the pizza screen shows only pizza, marks its 
   await call('PUT', '/api/settings/kitchen-screens', owner, []);
   await call('PUT', '/api/settings/printers', owner, before);
 });
+
+test('website: the owner connects the website, a customer orders for collection, the till accepts it, the customer sees the ready time', async () => {
+  // The online ordering service, run locally (the same code as on Cloudflare, with Node's SQLite for its database).
+  const { start } = await import(path.join(__dirname, '..', '..', 'online', 'dev', 'local.mjs'));
+  const online = await start({ shopKey: 'not-set-yet-0000000000000000000000000000' });
+  try {
+    const owner = { device: shop.owner.device, token: shop.owner.token };
+    const till = await tillPage(shop.till1);
+    await login(till, '4826');
+    await till.getByRole('button', { name: 'More', exact: true }).click();
+    await top(till).getByRole('button', { name: 'Website (online orders)' }).click();
+    await top(till).getByText('Not connected.').waitFor();
+    await top(till).getByRole('checkbox', { name: 'Connect this shop to its website' }).check();
+    await top(till).getByLabel('Website address').fill(online.url);
+    await top(till).getByRole('button', { name: 'Make a new key' }).click();
+    const key = await top(till).locator('.key-box code').innerText();
+    assert.ok(key.length >= 40);
+    online.env.SHOP_KEY = key; // the same key goes on the website
+    await top(till).getByRole('checkbox', { name: /Take website orders now/ }).check();
+    await shot(till, 'ui-website-settings');
+    await top(till).getByRole('button', { name: 'Save' }).click();
+    await till.getByText('Website settings saved.', { exact: false }).waitFor();
+
+    // Open all day for the test (the owner sets real times on the same screen).
+    const settings = (await call('GET', '/api/settings/online', owner)).settings;
+    const allDay = Object.fromEntries(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(d => [d, [{ open: '00:00', close: '00:00' }]]));
+    await call('PUT', '/api/settings/online', owner, { ...settings, hours: allDay, shopKey: null });
+
+    // Within a few seconds the hub has sent the menu and checked in.
+    let shopInfo;
+    for (let i = 0; i < 60; i++) {
+      shopInfo = await (await fetch(`${online.url}/api/shop`)).json();
+      if (shopInfo.ordering?.open) break;
+      await new Promise(r => setTimeout(r, 250));
+    }
+    assert.equal(shopInfo.ordering.open, true, JSON.stringify(shopInfo.ordering));
+
+    // A customer on a phone orders garlic bread for collection.
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+    const phone = await context.newPage();
+    phone.errors = [];
+    phone.on('pageerror', e => phone.errors.push(e.message));
+    await phone.goto(online.url);
+    await phone.getByText('Open now · taking orders').waitFor();
+    await shot(phone, 'ui-website-menu');
+    await phone.getByRole('button', { name: /^Garlic bread £/ }).click();
+    await phone.getByRole('button', { name: /^Add 1 to basket/ }).click();
+    await phone.getByRole('button', { name: /^View basket \(1\)/ }).click();
+    await phone.getByRole('button', { name: /^Checkout/ }).click();
+    await phone.getByRole('button', { name: /^Place order/ }).click();
+    await phone.getByText('Enter your name.').waitFor();
+    await phone.getByLabel('Your name').fill('Amira Khan');
+    await phone.getByLabel('Phone number').fill('07700 900555');
+    await shot(phone, 'ui-website-checkout');
+    assert.equal(await phone.locator('.totals').innerText(), 'Food and drink\n£3.50\nTo pay on collection\n£3.50');
+    await phone.getByRole('button', { name: /^Place order/ }).click();
+    await phone.waitForURL(/\/order\?id=/);
+    await phone.getByText(/The shop has your order \(number \d+\)/).waitFor({ timeout: 30000 });
+
+    // The till flashes "Website order …"; staff accept it, ready in 15 minutes.
+    const button = till.locator('.web-alert');
+    await button.waitFor({ timeout: 15000 });
+    await button.click();
+    await top(till).getByText('Amira Khan').waitFor();
+    await top(till).getByRole('radio', { name: '15 min' }).click();
+    await shot(till, 'ui-website-order-on-till');
+    await top(till).getByRole('button', { name: 'Accept and send to kitchen' }).click();
+    await till.getByText(/accepted\. The customer sees it ready in about 15 minutes/).waitFor();
+    const order = (await call('GET', '/api/orders', owner)).filter(o => o.source === 'Website').at(-1);
+    assert.equal(order.status, 'Accepted');
+    assert.deepEqual([order.contact.name, order.contact.phone], ['Amira Khan', '07700900555']);
+    assert.ok(order.lines.every(l => l.sentToKitchen));
+
+    // The customer's page shows when it will be ready.
+    await phone.getByText(/Accepted\. It should be ready about \d\d:\d\d\./).waitFor({ timeout: 30000 });
+    await shot(phone, 'ui-website-order-status');
+    assert.deepEqual(phone.errors, []);
+    assert.deepEqual(till.errors, []);
+    await context.close();
+    await till.context().close();
+
+    // Disconnect again for anything after this test.
+    await call('PUT', '/api/settings/online', owner, { ...settings, enabled: false, shopKey: null });
+  } finally {
+    await online.close();
+  }
+});

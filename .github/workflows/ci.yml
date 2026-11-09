@@ -23,6 +23,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 22
+      - name: Online ordering service tests
+        run: node --no-warnings --test online/test/online.test.mjs
       - name: Install Playwright and Chromium
         run: |
           npm install --prefix tests/ui --no-audit --no-fund

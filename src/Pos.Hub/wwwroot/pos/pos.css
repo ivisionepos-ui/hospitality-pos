@@ -559,3 +559,21 @@ h1, h2, h3 { margin: 0; }
 .kitchen-screens { display: flex; flex-direction: column; gap: 12px; }
 .kitchen-screen-row { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); }
 .kds-ready-waiting { opacity: .75; border-style: dashed; }
+
+/* Website orders waiting on the till */
+.web-alert { background: #f59e0b; color: #111827; font-weight: 800; }
+@media (prefers-reduced-motion: no-preference) { .web-alert { animation: web-pulse 1.2s ease-in-out infinite; } }
+@keyframes web-pulse { 50% { background: #fde68a; } }
+.dialog-web-order { width: min(620px, 96vw); }
+.web-lines { margin: 4px 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.web-customer { margin: 0; }
+.dialog-website { width: min(820px, 96vw); }
+.website-settings { display: flex; flex-direction: column; gap: 12px; }
+.web-status { margin: 0; padding: 8px 12px; border-radius: var(--radius); background: #f3f4f6; font-weight: 600; }
+.web-status-ok { background: #dcfce7; color: #166534; }
+.key-box code { font-size: .95rem; word-break: break-all; user-select: all; }
+.hours { display: flex; flex-direction: column; gap: 6px; }
+.hours-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hours-day { width: 96px; font-weight: 600; }
+.time-input { width: 120px; }
+.web-row { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }

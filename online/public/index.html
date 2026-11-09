@@ -1,1 +1,33 @@
-<!doctype html><title>Test</title>
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Order online</title>
+  <meta name="description" content="Order online for collection or delivery. Pay when you collect or when it arrives.">
+  <meta name="theme-color" content="#b91c1c">
+  <link rel="stylesheet" href="/app.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="shop-head">
+    <div class="wrap">
+      <h1 id="shop-name">Order online</h1>
+      <p id="shop-status" class="status" role="status">Loading the menu…</p>
+      <p id="shop-info" class="shop-info"></p>
+    </div>
+  </header>
+  <nav id="cats" class="cats" aria-label="Menu sections"></nav>
+  <main id="menu" class="wrap menu" aria-live="polite"></main>
+  <p id="allergen-note" class="wrap allergen-note"></p>
+  <footer class="wrap site-foot">
+    <a href="/privacy">Privacy</a> · Pay when you collect or when your order arrives.
+  </footer>
+  <div id="basket-bar" class="basket-bar" hidden>
+    <button id="basket-open" class="btn btn-primary basket-btn" type="button"></button>
+  </div>
+  <dialog id="sheet" class="sheet" aria-labelledby="sheet-title">
+    <form method="dialog" class="sheet-inner" id="sheet-form"></form>
+  </dialog>
+</body>
+</html>

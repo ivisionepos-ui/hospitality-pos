@@ -1,5 +1,5 @@
-// Rules shared by the online service and the website: prices, delivery charges, opening hours, phone numbers.
-// They mirror the hub's rules so the customer sees the same figures; the shop's till has the final say.
+// Rules shared by the online service (src/worker.js) and the website pages (served as /rules.js): prices, delivery charges,
+// opening hours, postcodes and phone numbers. They mirror the hub's rules so the customer sees the same figures; the shop's till has the final say.
 
 /** Pence → "£12.50". */
 export const pounds = pence => `£${(pence / 100).toFixed(2)}`;

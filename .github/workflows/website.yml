@@ -1,0 +1,40 @@
+# Puts the online ordering website live on Cloudflare (free plan). Run it from GitHub: Actions → Website → Run workflow.
+# It needs, in Settings → Secrets and variables → Actions:
+#   secrets   CLOUDFLARE_API_TOKEN (template "Edit Cloudflare Workers", plus D1 edit), CLOUDFLARE_ACCOUNT_ID, SHOP_KEY
+#   variable  D1_DATABASE_ID (the id of the "pos-online" D1 database)
+# See online/README.md for the steps.
+name: Website
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Test the online service first
+        run: node --no-warnings --test online/test/online.test.mjs
+      - name: Use this shop's database
+        run: sed -i "s/REPLACE-WITH-YOUR-DATABASE-ID/${{ vars.D1_DATABASE_ID }}/" online/wrangler.toml
+      - name: Create or update the database tables (safe to repeat)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: online
+          command: d1 execute pos-online --remote --file=schema.sql
+      - name: Put the website live and set the shop key
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: online
+          command: deploy
+          secrets: |
+            SHOP_KEY
+        env:
+          SHOP_KEY: ${{ secrets.SHOP_KEY }}

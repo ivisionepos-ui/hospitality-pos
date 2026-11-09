@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { after, before, beforeEach, test } from 'node:test';
 import { start } from '../dev/local.mjs';
-import { deliveryQuote, isOpen, miles, postcode, priceBasket, ukPhone } from '../src/rules.js';
+import { deliveryQuote, isOpen, miles, postcode, priceBasket, ukPhone } from '../public/rules.js';
 
 const KEY = 'test-shop-key-0123456789abcdef0123456789';
 const ALWAYS = Object.fromEntries(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(d => [d, [{ open: '00:00', close: '00:00' }]]));

@@ -11,6 +11,7 @@ import { moreDialog } from './more.js';
 import { payDialog } from './pay.js';
 import { discountDialog, refundDialog } from './discounts.js';
 import { driversDialog } from './drivers.js';
+import { WebOrders } from './weborders.js';
 
 const ORDER_MODES = [
   { id: 'counter', label: 'Takeaway', source: 'Counter', type: 'Takeaway' },
@@ -18,7 +19,7 @@ const ORDER_MODES = [
   { id: 'phone', label: 'Collection', source: 'Phone', type: 'Takeaway' },
   { id: 'delivery', label: 'Delivery', source: 'Phone', type: 'Delivery' },
 ];
-const modeLabel = (source, type) => ORDER_MODES.find(m => m.source === source && m.type === type)?.label ?? type;
+const modeLabel = (source, type) => (source === 'Website' ? (type === 'Delivery' ? 'Website delivery' : 'Website collection') : ORDER_MODES.find(m => m.source === source && m.type === type)?.label ?? type);
 const CLOSED = ['Completed', 'Cancelled', 'Rejected'];
 const VOID_REASONS = ['Customer changed mind', 'Entered by mistake', 'Out of stock'];
 
@@ -268,6 +269,7 @@ export class Till {
     try {
       const orders = await api.get('/api/orders');
       this.openCount = orders.filter(o => !CLOSED.includes(o.status)).length;
+      (this.web ??= new WebOrders(() => this.refreshOpenCount())).update(orders);
       const badge = this.root.querySelector('.orders-count');
       if (badge) badge.textContent = this.openCount ? String(this.openCount) : '';
     } catch { /* shown when the hub is reachable again */ }
@@ -311,6 +313,7 @@ export class Till {
         h('div', { class: 'brand' }, h('strong', { text: this.ctx.device?.name ?? 'Till' })),
         h('span', { class: `live ${this.live ? 'live-on' : 'live-off'}`, text: this.live ? 'Live' : 'Connecting…' }),
         h('div', { class: 'topbar-actions' },
+          (this.web ??= new WebOrders(() => this.refreshOpenCount())).button,
           h('button', { class: 'top-btn', onclick: () => this.showOrders() }, 'Orders ', h('span', { class: 'orders-count', text: this.openCount ? String(this.openCount) : '' })),
           h('button', { class: 'top-btn', onclick: async () => { await driversDialog(); this.refreshOpenCount(); }, text: 'Drivers' }),
           h('button', { class: 'top-btn', onclick: () => moreDialog(this) , text: 'More' }),

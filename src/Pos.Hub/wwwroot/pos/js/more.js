@@ -172,6 +172,93 @@ async function addressFiles() {
 }
 
 /** Owner: shop name and address for receipts, and the postcode delivery distances are measured from. */
+const DAY_NAMES = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+
+/** More → Website (owner): connect to the online ordering service, opening times, collection and delivery. */
+async function websiteSettings() {
+  let view;
+  try {
+    view = await busy(() => api.get('/api/settings/online'));
+  } catch (e) {
+    toast(e.message ?? 'Could not reach the hub.', 'error');
+    return;
+  }
+
+  const s = structuredClone(view.settings);
+  let newKey = null;
+  await openDialog(close => {
+    const body = h('div', { class: 'website-settings' });
+    const field = (label, el, hint) => h('label', { class: 'field' }, h('span', { class: 'field-label', text: label }), el, hint ? h('span', { class: 'field-hint', text: hint }) : null);
+    const check = (label, key, onChange) => {
+      const box = h('input', { type: 'checkbox', checked: !!s[key] });
+      box.addEventListener('change', () => { s[key] = box.checked; onChange?.(); });
+      return h('label', { class: 'check' }, box, h('span', { text: label }));
+    };
+    const textBox = (key, attrs = {}) => {
+      const el = h(attrs.multiline ? 'textarea' : 'input', { class: 'text-input', type: attrs.type ?? 'text', value: s[key] ?? '', placeholder: attrs.placeholder ?? '', maxlength: attrs.max ?? 200, 'aria-label': attrs.label });
+      if (attrs.multiline) el.value = s[key] ?? '';
+      el.addEventListener('input', () => { s[key] = attrs.type === 'number' ? Number(el.value) : el.value; });
+      return el;
+    };
+    const status = view.status;
+    const render = () => mount(body,
+      h('p', { class: `web-status ${status.connected ? 'web-status-ok' : ''}`, role: 'status', text: !s.enabled ? 'Not connected.'
+        : status.connected ? `Connected. Last check ${new Date(status.lastContact).toLocaleTimeString('en-GB')}. Website orders today: ${status.ordersToday}.`
+          : status.problem ?? 'Not connected yet. Save, then wait a few seconds.' }),
+      status.problem && status.connected ? h('p', { class: 'form-problem', text: status.problem }) : null,
+      check('Connect this shop to its website', 'enabled', render),
+      field('Website address', textBox('serviceUrl', { placeholder: 'https://order.myshop.co.uk', label: 'Website address', max: 200 })),
+      h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Shop key' }),
+        h('p', { class: 'field-hint', text: view.hasKey && !newKey ? 'A shop key is saved (it is never shown again). Make a new one only if the website asks.' : 'The same secret key goes on the website (see the website set-up guide).' }),
+        newKey ? h('p', { class: 'key-box' }, h('code', { text: newKey }), h('br'), h('span', { class: 'field-hint', text: 'Copy this key now and put it on the website. It is saved when you press Save.' })) : null,
+        h('button', { class: 'btn btn-small', type: 'button', text: 'Make a new key', onclick: async () => {
+          newKey = (await busy(() => api.post('/api/settings/online/new-key'))).key;
+          s.shopKey = newKey;
+          render();
+        } })),
+      check('Take website orders now (untick on a busy night)', 'takeOrders'),
+      h('h3', { class: 'menu-heading', text: 'Opening times (UK time)' }),
+      h('div', { class: 'hours' }, Object.keys(DAY_NAMES).map(day => {
+        const slot = (s.hours[day] ?? [])[0];
+        const closed = h('input', { type: 'checkbox', checked: !slot, 'aria-label': `${DAY_NAMES[day]}: closed` });
+        const open = h('input', { class: 'text-input time-input', type: 'time', value: slot?.open ?? '17:00', 'aria-label': `${DAY_NAMES[day]}: opens`, disabled: !slot });
+        const shut = h('input', { class: 'text-input time-input', type: 'time', value: slot?.close ?? '23:00', 'aria-label': `${DAY_NAMES[day]}: closes`, disabled: !slot });
+        const set = () => { s.hours[day] = closed.checked ? [] : [{ open: open.value, close: shut.value }]; open.disabled = shut.disabled = closed.checked; };
+        closed.addEventListener('change', set);
+        open.addEventListener('change', set);
+        shut.addEventListener('change', set);
+        return h('div', { class: 'hours-row' }, h('span', { class: 'hours-day', text: DAY_NAMES[day] }), open, h('span', { text: 'to' }), shut, h('label', { class: 'check' }, closed, h('span', { text: 'Closed' })));
+      })),
+      h('p', { class: 'field-hint', text: 'A closing time before the opening time runs past midnight (e.g. 17:00 to 01:00).' }),
+      h('h3', { class: 'menu-heading', text: 'Collection and delivery' }),
+      h('div', { class: 'web-row' }, check('Collection', 'collection'), field('Usually ready in (minutes)', textBox('collectionMinutes', { type: 'number', label: 'Collection minutes', max: 3 }))),
+      h('div', { class: 'web-row' }, check('Delivery (uses the shop\'s delivery charges)', 'delivery'), field('Usually delivered in (minutes)', textBox('deliveryMinutes', { type: 'number', label: 'Delivery minutes', max: 3 }))),
+      field('Allergy note on the website', textBox('allergenNote', { multiline: true, label: 'Allergy note', max: 300 })),
+      h('p', { class: 'field-hint', text: 'Pay on collection or delivery. The menu (items, sizes, extras, sold out) goes to the website by itself whenever it changes; meal deals are not on the website yet.' }));
+    const save = async () => {
+      try {
+        const saved = await busy(() => api.put('/api/settings/online', { ...s, shopKey: s.shopKey || null }));
+        toast(saved.settings.enabled ? 'Website settings saved. The till checks in with the website every few seconds.' : 'Website settings saved.', 'ok', 5000);
+        close();
+      } catch (e) {
+        toast(e.message, 'error', 8000);
+      }
+    };
+    render();
+    return {
+      title: 'Website (online orders)',
+      wide: true,
+      class: 'dialog-website',
+      body,
+      actions: [
+        h('button', { class: 'btn', onclick: () => close(), text: 'Cancel' }),
+        h('button', { class: 'btn', onclick: async () => { try { await busy(() => api.post('/api/settings/online/publish')); toast('Menu sent to the website.', 'ok'); } catch (e) { toast(e.message, 'error', 8000); } }, text: 'Send menu now' }),
+        h('button', { class: 'btn btn-primary', onclick: save, text: 'Save' }),
+      ],
+    };
+  });
+}
+
 /** More → Kitchen screens (owner): each kitchen screen shows all food, or only some kitchen sections (e.g. Pizza). */
 async function kitchenScreensSettings() {
   let setup;
@@ -497,6 +584,7 @@ export function moreDialog(till) {
             can('ManageDevices') ? item('Shop details', shopDetails) : null,
             can('ManageDevices') ? item('Eat-in and tables', eatInSettings) : null,
             can('ManageDevices') ? item('Kitchen screens', kitchenScreensSettings) : null,
+            can('ManageDevices') ? item('Website (online orders)', websiteSettings) : null,
             can('ViewReports') ? item('Sales reports', salesReportsDialog, true) : null,
             can('ViewReports') ? item('X report (this till)', xReport) : null,
             can('ViewReports') ? item('End of day (Z report)', zReport) : null,

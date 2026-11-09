@@ -2,7 +2,7 @@
 // Customers: GET /api/shop, GET /api/menu, POST /api/delivery-check, POST /api/orders, GET /api/orders/{id}?t=token.
 // The shop's hub (with the shop key): PUT /hub/publish, POST /hub/poll.
 // The website pages themselves are static files (public/), served by Cloudflare before this code runs.
-import { deliveryQuote, isOpen, miles, postcode, priceBasket, ukPhone } from './rules.js';
+import { deliveryQuote, isOpen, miles, postcode, priceBasket, ukPhone } from '../public/rules.js';
 
 const MAX_BODY = 64 * 1024;        // a customer's order is a few KB
 const MAX_PUBLISH = 2 * 1024 * 1024; // a big menu is well under this

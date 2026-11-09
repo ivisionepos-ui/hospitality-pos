@@ -231,6 +231,17 @@ public sealed class HubDatabase : IDisposable
                 PRIMARY KEY (order_id, station_id)
             );
             """),
+        (13, """
+            CREATE TABLE online_orders (
+                cloud_id         TEXT PRIMARY KEY,
+                order_id         TEXT,
+                received_at      TEXT NOT NULL,
+                rejected_reason  TEXT,
+                ready_minutes    INTEGER NOT NULL,
+                sent_status      TEXT,
+                sent_ready_at    TEXT
+            );
+            """),
     ];
 
     private readonly SqliteConnection _connection;

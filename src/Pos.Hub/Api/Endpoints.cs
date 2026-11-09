@@ -649,6 +649,26 @@ public static class Endpoints
             Results.Ok(shop.Save(details, Caller(http).Staff!.Id))))
             .ForStaff(Permission.ManageDevices);
 
+        // Website (More → Website): connection to the online ordering service, opening times, collection and delivery.
+        api.MapGet("/settings/online", (Online.OnlineOrderService online) => Handle(() => Results.Ok(online.View())))
+            .ForStaff(Permission.ManageDevices);
+
+        api.MapPut("/settings/online", (HttpContext http, Online.OnlineOrderService online, Online.OnlineSettings request) => Handle(() =>
+            Results.Ok(online.Save(request, Caller(http).Staff!.Id))))
+            .ForStaff(Permission.ManageDevices);
+
+        api.MapPost("/settings/online/new-key", () => Handle(() => Results.Ok(new { key = Online.OnlineSettings.NewKey() })))
+            .ForStaff(Permission.ManageDevices);
+
+        api.MapPost("/settings/online/publish", (Online.OnlineOrderService online, CancellationToken cancel) => HandleAsync(async () =>
+        {
+            await online.PublishNowAsync(cancel).ConfigureAwait(false);
+            return Results.Ok(online.View());
+        })).ForStaff(Permission.ManageDevices);
+
+        api.MapGet("/online/status", (Online.OnlineOrderService online) => Handle(() => Results.Ok(online.Status())))
+            .ForStaff();
+
         // Kitchen screens per section (More → Kitchen screens): each screen shows all food or only its sections.
         api.MapGet("/settings/kitchen-screens", (KitchenScreenService screens) => Handle(() => Results.Ok(screens.Get())))
             .ForStaff(Permission.ManageDevices);

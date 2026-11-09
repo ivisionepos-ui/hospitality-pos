@@ -303,7 +303,7 @@ public sealed class AccessService
     });
 
     /// <summary>A staff member's name, or "Unknown".</summary>
-    public string StaffName(Guid staffId) => _db.Run(() =>
+    public string StaffName(Guid staffId) => staffId == Online.OnlineOrderService.WebsiteUserId ? "Website" : _db.Run(() =>
         _db.Scalar("SELECT name FROM staff WHERE id = $id;", ("$id", staffId.ToString())) as string ?? "Unknown");
 
     /// <summary>All staff, active first, by name.</summary>

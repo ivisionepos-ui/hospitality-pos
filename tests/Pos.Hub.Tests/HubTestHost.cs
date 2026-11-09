@@ -89,6 +89,7 @@ internal sealed class HubTestHost : WebApplicationFactory<Program>
         builder.UseSetting("Printing:RetrySeconds", "0.1");
         builder.UseSetting("Printing:MaxAttempts", "2");
         builder.UseSetting("Delivery:ShopPostcode", FakePostcodes.Shop);
+        builder.UseSetting("Online:BackgroundSync", "false"); // tests check in with the website themselves
         foreach (var (key, value) in Settings)
         {
             builder.UseSetting(key, value);

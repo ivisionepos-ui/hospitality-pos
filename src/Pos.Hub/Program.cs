@@ -42,6 +42,15 @@ builder.Services.AddHostedService<BackupWorker>();
 builder.Services.AddSingleton<MenuService>();
 builder.Services.AddSingleton<TableService>();
 builder.Services.AddSingleton<KitchenScreenService>();
+builder.Services.AddSingleton<Pos.Hub.Online.OnlineHttp>();
+builder.Services.AddSingleton(sp => new Pos.Hub.Online.OnlineOrderService(
+    sp.GetRequiredService<HubDatabase>(), sp.GetRequiredService<OrderService>(), sp.GetRequiredService<MenuService>(),
+    sp.GetRequiredService<ShopDetailsService>(), sp.GetRequiredService<Pos.Hub.Delivery.DeliveryService>(), sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<Pos.Hub.Online.OnlineHttp>().Handler));
+if (!string.Equals(builder.Configuration["Online:BackgroundSync"], "false", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddHostedService<Pos.Hub.Online.OnlineWorker>(); // checks in with the website every 5 seconds when connected
+}
 builder.Services.AddSingleton<Pos.Hub.MenuSheets.MenuImportService>();
 builder.Services.AddSingleton(sp => sp.GetRequiredService<IConfiguration>().GetSection("Delivery").Get<Pos.Hub.Delivery.DeliverySettings>() ?? new Pos.Hub.Delivery.DeliverySettings());
 builder.Services.AddSingleton<Pos.Hub.Delivery.IPostcodeLookup>(sp =>

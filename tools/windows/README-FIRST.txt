@@ -85,3 +85,15 @@ Each till with its own receipt printer and cash drawer
   Till 1 and choose it there). A till that is not ticked uses the receipt printer.
   Receipts, the drawer, No sale and the Z report from that till use its printer.
   If the hub cannot reach the shared printer, a network receipt printer always works.
+
+Online ordering website (free)
+  Customers order on your own web address for collection or delivery and pay
+  when they collect or when it arrives. Putting it live is done once, from any
+  computer: follow online/README.md in the source code (about 30 minutes; a
+  free Cloudflare account and your domain name).
+  Then on the hub's till: More > Website (online orders): tick Connect, type the
+  website address, check opening times, tick "Take website orders now", Save.
+  A website order makes the till beep and a red "Website order" button flash.
+  Tap it: choose the ready time and "Accept and send to kitchen", or "Turn down"
+  with a reason. The customer sees your answer on their phone.
+  The website only takes orders while this hub PC is on and connected.

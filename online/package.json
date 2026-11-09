@@ -1,0 +1,10 @@
+{
+  "name": "pos-online",
+  "private": true,
+  "description": "Online ordering for the shop: a Cloudflare Worker with a D1 database, and the customer website.",
+  "type": "module",
+  "scripts": {
+    "test": "node --no-warnings --test test/",
+    "local": "node --no-warnings dev/local.mjs 8787"
+  }
+}

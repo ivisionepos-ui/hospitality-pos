@@ -1,0 +1,20 @@
+# Cloudflare settings for the online ordering service (free Workers plan).
+# Put live: see online/README.md. The shop key is a secret: wrangler secret put SHOP_KEY (never in this file).
+name = "pos-online"
+main = "src/worker.js"
+compatibility_date = "2026-06-01"
+
+# The website pages (public/) are served directly; /api/* and /hub/* run the code.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*", "/hub/*"]
+not_found_handling = "404-page"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pos-online"
+database_id = "REPLACE-WITH-YOUR-DATABASE-ID"
+
+[observability]
+enabled = true

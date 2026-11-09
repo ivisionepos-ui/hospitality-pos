@@ -24,6 +24,7 @@ src/
     Backups/             Automatic checked backups, second copy, tidy-up, restore; one-hub-per-data-folder lock
     Data/                Database (schema upgrades, WAL), order and menu storage
     Api/                 Web API routes and request/response formats
+online/                  Ordering website for customers (Cloudflare Worker + D1, free plan); see online/README.md
 tests/
   Pos.Domain.Tests/      Automated tests for Pos.Domain
   Pos.Hub.Tests/         End-to-end tests: real HTTP calls to a real hub with a real database
@@ -36,7 +37,7 @@ docs/
   CODING-STANDARDS.md    Naming and coding rules
 ```
 
-Projects still to come: `Pos.Cloud.Api`, `Pos.Sync`, customer display, back office and ordering website.
+Projects still to come: `Pos.Cloud.Api`, `Pos.Sync`, customer display and back office.
 
 ## Requirements
 

@@ -9,25 +9,52 @@
   <link rel="stylesheet" href="/app.css">
   <script type="module" src="/app.js"></script>
 </head>
-<body>
-  <header class="shop-head">
-    <div class="wrap">
-      <h1 id="shop-name">Order online</h1>
-      <p id="shop-status" class="status" role="status">Loading the menu…</p>
-      <p id="shop-info" class="shop-info"></p>
+<body class="menu-page">
+  <header class="topbar">
+    <div class="wrap topbar-in">
+      <a class="brand" href="/" id="brand">Order online</a>
+      <button id="top-basket" class="top-basket" type="button" aria-label="Basket, 0 items"><span aria-hidden="true">🛒</span> <span id="top-count">0</span></button>
     </div>
   </header>
-  <nav id="cats" class="cats" aria-label="Menu sections"></nav>
-  <main id="menu" class="wrap menu" aria-live="polite"></main>
-  <p id="allergen-note" class="wrap allergen-note"></p>
-  <footer class="wrap site-foot">
-    <a href="/privacy">Privacy</a> · Pay when you collect or when your order arrives.
-  </footer>
+
+  <section class="hero">
+    <div class="wrap hero-in">
+      <div class="logo" id="logo" aria-hidden="true"></div>
+      <div class="hero-text">
+        <h1 id="shop-name">Order online</h1>
+        <p id="shop-address" class="hero-address"></p>
+        <p id="shop-status" class="status" role="status">Loading the menu…</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap layout">
+    <main class="menu-col">
+      <ul id="facts" class="facts" aria-label="About ordering"></ul>
+      <div id="last-order"></div>
+      <div class="search">
+        <label for="search" class="visually-hidden">Search the menu</label>
+        <input id="search" type="search" placeholder="Search the menu" autocomplete="off" maxlength="40">
+      </div>
+      <nav id="cats" class="cats" aria-label="Menu sections"></nav>
+      <div id="menu" class="menu" aria-live="polite"></div>
+      <p id="allergen-note" class="allergen-note"></p>
+      <footer class="site-foot">
+        <a href="/privacy">Privacy</a> · Pay when you collect or when your order arrives.
+      </footer>
+    </main>
+    <aside id="basket-panel" class="basket-panel" aria-label="Your order"></aside>
+  </div>
+
   <div id="basket-bar" class="basket-bar" hidden>
     <button id="basket-open" class="btn btn-primary basket-btn" type="button"></button>
   </div>
+
   <dialog id="sheet" class="sheet" aria-labelledby="sheet-title">
     <form method="dialog" class="sheet-inner" id="sheet-form"></form>
+  </dialog>
+  <dialog id="basket-sheet" class="sheet sheet-full" aria-label="Your order">
+    <div class="sheet-inner" id="basket-sheet-body"></div>
   </dialog>
 </body>
 </html>

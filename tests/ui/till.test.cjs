@@ -1598,7 +1598,7 @@ test('kitchen screens per section: the pizza screen shows only pizza, marks its 
 test('website: the owner connects the website, a customer orders for collection, the till accepts it, the customer sees the ready time', async () => {
   // The online ordering service, run locally (the same code as on Cloudflare, with Node's SQLite for its database).
   const { start } = await import(path.join(__dirname, '..', '..', 'online', 'dev', 'local.mjs'));
-  const online = await start({ shopKey: 'not-set-yet-0000000000000000000000000000' });
+  const online = await start({ shopKey: 'not-set-yet-0000000000000000000000000000', postcodeService: postcodeBase });
   try {
     const owner = { device: shop.owner.device, token: shop.owner.token };
     const till = await tillPage(shop.till1);
@@ -1639,17 +1639,62 @@ test('website: the owner connects the website, a customer orders for collection,
     await phone.goto(online.url);
     await phone.getByText('Open now · taking orders').waitFor();
     await shot(phone, 'ui-website-menu');
+
+    // On a computer the order stays on the right of the menu.
+    const wide = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
+    const desk = await wide.newPage();
+    desk.errors = [];
+    desk.on('pageerror', e => desk.errors.push(e.message));
+    await desk.goto(online.url);
+    await desk.getByText('Open now · taking orders').waitFor();
+    assert.equal(await desk.locator('#basket-bar').isHidden(), true);
+    await desk.getByRole('button', { name: 'Add Garlic bread', exact: true }).click();
+    await desk.locator('#basket-panel').getByText('Garlic bread').waitFor();
+    await shot(desk, 'ui-website-desktop');
+    assert.doesNotMatch(await desk.locator('body').innerText(), /\bnull\b|undefined/);
+    assert.deepEqual(desk.errors, []);
+    await wide.close();
+
+    // Search narrows the menu; clearing it brings everything back.
+    const allItems = await phone.locator('.item').count();
+    await phone.getByPlaceholder('Search the menu').fill('garlic');
+    const found = await phone.locator('.item').allInnerTexts();
+    assert.ok(found.length >= 1 && found.length < allItems && found.every(t => /garlic/i.test(t)), found.join(' | '));
+    await phone.getByPlaceholder('Search the menu').fill('');
+    assert.equal(await phone.locator('.item').count(), allItems);
+
+    // An item with required choices points at the missing choice instead of adding it.
+    const withChoices = phone.locator('.item', { has: phone.locator('.item-price', { hasText: /^from / }) }).first();
+    if (await withChoices.count()) {
+      await withChoices.locator('.item-main').click();
+      await phone.getByRole('button', { name: /^Add to order/ }).click();
+      await phone.locator('.choice-group.missing').first().waitFor();
+      await shot(phone, 'ui-website-item');
+      await phone.getByRole('button', { name: 'Close' }).click();
+      assert.equal(await phone.locator('#basket-bar').isHidden(), true);
+    }
+
+    // Garlic bread: the pop-up adds one, the round "+" adds another straight away.
     await phone.getByRole('button', { name: /^Garlic bread £/ }).click();
-    await phone.getByRole('button', { name: /^Add 1 to basket/ }).click();
-    await phone.getByRole('button', { name: /^View basket \(1\)/ }).click();
-    await phone.getByRole('button', { name: /^Checkout/ }).click();
-    await phone.getByRole('button', { name: /^Place order/ }).click();
+    await phone.getByRole('button', { name: /^Add to order · £3\.50/ }).click();
+    await phone.getByRole('button', { name: 'Add Garlic bread', exact: true }).click();
+    await phone.getByRole('button', { name: /View basket/ }).click();
+    await phone.locator('#basket-sheet output', { hasText: '2' }).waitFor();
+    await shot(phone, 'ui-website-basket');
+    assert.doesNotMatch(await phone.locator('#basket-sheet').innerText(), /\bnull\b|undefined/);
+    await phone.locator('#basket-sheet').getByRole('button', { name: 'One less Garlic bread' }).click();
+    await phone.locator('#basket-sheet').getByRole('button', { name: /^Collection/ }).click();
+    await phone.locator('#basket-sheet').getByRole('button', { name: /^Go to checkout £3\.50/ }).click();
+    await phone.waitForURL(/\/checkout/);
+    await phone.getByRole('button', { name: /^Place my order/ }).click();
     await phone.getByText('Enter your name.').waitFor();
-    await phone.getByLabel('Your name').fill('Amira Khan');
-    await phone.getByLabel('Phone number').fill('07700 900555');
+    await phone.getByLabel('Full name').fill('Amira Khan');
+    await phone.getByLabel('Mobile number').fill('07700 900555');
     await shot(phone, 'ui-website-checkout');
-    assert.equal(await phone.locator('.totals').innerText(), 'Food and drink\n£3.50\nTo pay on collection\n£3.50');
-    await phone.getByRole('button', { name: /^Place order/ }).click();
+    assert.doesNotMatch(await phone.locator('body').innerText(), /\bnull\b|undefined/);
+    assert.equal(await phone.locator('.field.bad').count(), 0); // corrected boxes are no longer red
+    assert.equal(await phone.locator('.totals').innerText(), 'Subtotal\n£3.50\nTotal\n£3.50');
+    await phone.getByRole('button', { name: /^Place my order/ }).click();
     await phone.waitForURL(/\/order\?id=/);
     await phone.getByText(/The shop has your order \(number \d+\)/).waitFor({ timeout: 30000 });
 
@@ -1670,6 +1715,49 @@ test('website: the owner connects the website, a customer orders for collection,
     // The customer's page shows when it will be ready.
     await phone.getByText(/Accepted\. It should be ready about \d\d:\d\d\./).waitFor({ timeout: 30000 });
     await shot(phone, 'ui-website-order-status');
+    assert.doesNotMatch(await phone.locator('body').innerText(), /\bnull\b|undefined/);
+
+    // A delivery order: below the minimum the checkout button stays off; then the address, postcode check and fee.
+    await phone.goto(online.url);
+    await phone.getByRole('button', { name: /^Margherita/ }).click();
+    await phone.getByRole('radio', { name: /^14"/ }).check();
+    await phone.getByRole('button', { name: /^Add to order/ }).click();
+    await phone.getByRole('button', { name: /View basket/ }).click();
+    const sheetBox = phone.locator('#basket-sheet');
+    await sheetBox.getByRole('button', { name: /^Delivery/ }).click();
+    await sheetBox.getByText(/^Spend £0\.01 more for delivery/).waitFor();
+    assert.equal(await sheetBox.getByRole('button', { name: /^Go to checkout/ }).getAttribute('aria-disabled'), 'true');
+    await sheetBox.getByRole('button', { name: 'Close' }).click();
+    await phone.getByRole('button', { name: 'Add Onion rings' }).click();
+    await phone.getByRole('button', { name: /View basket/ }).click();
+    await sheetBox.getByRole('button', { name: /^Go to checkout £14\.98/ }).click();
+    await phone.waitForURL(/\/checkout/);
+    assert.equal(await phone.getByLabel('Full name').inputValue(), 'Amira Khan'); // remembered from last time
+    await phone.getByRole('button', { name: /^Place my order/ }).click();
+    await phone.getByText('Enter your house number and street.').waitFor();
+    await phone.getByLabel('House number and street').fill('9 Test Road');
+    await phone.getByLabel('Postcode').fill('ls2 9jt');
+    await phone.getByLabel('Postcode').press('Tab');
+    await phone.getByText(/We deliver to LS2 9JT/).waitFor();
+    const fee = await phone.locator('.totals dd').nth(1).innerText();
+    assert.match(fee, /^(Free|£\d+\.\d\d)$/);
+    await shot(phone, 'ui-website-checkout-delivery');
+    await phone.getByRole('button', { name: /^Place my order/ }).click();
+    await phone.waitForURL(/\/order\?id=/);
+    await phone.getByText(/The shop has your order/).waitFor({ timeout: 30000 });
+
+    // The shop turns it down; the customer sees why.
+    await button.waitFor({ timeout: 15000 });
+    await button.click();
+    await top(till).getByText('9 Test Road, LS2 9JT').waitFor();
+    await top(till).getByRole('button', { name: 'Turn down' }).click();
+    await top(till).getByRole('button', { name: 'Too far to deliver' }).click(); // a suggestion sends straight away
+    await phone.getByText('Sorry, the shop could not take your order: Too far to deliver').waitFor({ timeout: 30000 });
+    const delivery = (await call('GET', '/api/orders', owner)).filter(o => o.source === 'Website').at(-1);
+    assert.equal(delivery.type, 'Delivery');
+    assert.equal(delivery.status, 'Rejected');
+    assert.equal(await phone.locator('.totals dd').nth(1).innerText(), fee);
+
     assert.deepEqual(phone.errors, []);
     assert.deepEqual(till.errors, []);
     await context.close();

@@ -5,18 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Your order</title>
   <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#b91c1c">
   <link rel="stylesheet" href="/app.css">
   <script type="module" src="/order.js"></script>
 </head>
-<body>
-  <main class="wrap">
-    <section class="track" aria-live="polite">
-      <h1 id="title">Your order</h1>
+<body class="order-page">
+  <header class="topbar">
+    <div class="wrap topbar-in">
+      <a class="back" href="/" aria-label="Back to the menu">←</a>
+      <span class="brand" id="brand">Your order</span>
+      <span></span>
+    </div>
+  </header>
+  <main class="wrap narrow">
+    <section class="card track" aria-live="polite">
+      <p id="title" class="track-title">Your order</p>
+      <p id="eta" class="eta" hidden></p>
       <p id="headline" class="big">Loading…</p>
-      <ol id="steps" class="steps"></ol>
-      <div id="details"></div>
-      <p><a href="/">Back to the menu</a></p>
+      <ol id="steps" class="progress"></ol>
     </section>
+    <section class="card" id="details-card" hidden>
+      <h2>Order details</h2>
+      <div id="details"></div>
+    </section>
+    <p id="help" class="muted center"></p>
+    <p class="center"><a class="btn" href="/">Back to the menu</a></p>
   </main>
 </body>
 </html>

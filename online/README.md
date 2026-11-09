@@ -10,6 +10,10 @@ Customer's phone ──▶ order.yourshop.co.uk (Cloudflare Worker + D1 database
                       Shop hub (till PC) ──▶ tills (Website order 015: accept / turn down) ──▶ kitchen
 ```
 
+* **Layout**: the way customers know from the big takeaway apps, in the shop's own name and colour: Delivery/Collection
+  switch, search, section bar, a round "+" on every item, a pop-up for sizes and extras (Required / Optional), the
+  basket beside the menu on a computer or a "View basket" bar on a phone, a checkout page, and an order tracker.
+  The colour is `--brand` at the top of `public/app.css`.
 * **Menu**: sent by the hub by itself whenever it changes (items, sizes, extras, sold out, allergens). Meal deals are
   not on the website yet.
 * **Orders are taken only** while the hub is checking in (shop PC on, internet up), "Take website orders now" is ticked,

@@ -30,8 +30,13 @@ Customer's phone ──▶ order.yourshop.co.uk (Cloudflare Worker + D1 database
 You need: the domain name, a free Cloudflare account, and this GitHub repository.
 
 1. **Cloudflare account and domain**: sign up at cloudflare.com (free). *Add a domain* → your domain → Free plan.
-   Cloudflare shows two *nameservers*: put them in place of the current ones where you bought the domain. (If the domain
-   already has a website or email, Cloudflare copies those settings over; check they are listed before changing.)
+   Cloudflare copies the domain's current settings: check the list has your **email (MX) records** if the domain has
+   email, and **delete any `A` / `CNAME` records for the bare domain and `www`** that point to the old host or a parking
+   page (they would block step 7). Cloudflare then shows two *nameservers*.
+   *GoDaddy*: first, in Domain Settings → DNS → **DNSSEC**, turn it off if it is on. Then Domain Settings → DNS →
+   **Nameservers** → *Change nameservers* → *I'll use my own nameservers* → enter Cloudflare's two → Save → Continue
+   (GoDaddy may send a code to confirm). Cloudflare emails you when the domain is active (usually within an hour,
+   at most 48 hours).
 2. **Database**: in Cloudflare, *Storage & databases → D1 → Create database*, name it `pos-online`. Copy its **database
    ID**.
 3. **API token**: *My profile → API tokens → Create token → "Edit Cloudflare Workers"* template; add the permission
@@ -43,7 +48,8 @@ You need: the domain name, a free Cloudflare account, and this GitHub repository
 6. **Deploy**: *Actions → Website → Run workflow*. When it is green, the website is at
    `https://pos-online.<your-account>.workers.dev`.
 7. **Your address**: Cloudflare → *Workers & Pages → pos-online → Settings → Domains & Routes → Add → Custom domain*,
-   e.g. `order.yourshop.co.uk` (or the bare domain).
+   e.g. `order.yourshop.co.uk`, or the bare domain. For a bare domain add **both** `yourdomain.uk` and
+   `www.yourdomain.uk`.
 8. **Connect the shop**: on the till, *More → Website*: tick *Connect*, type the website address, check the opening
    times, collection and delivery, tick *Take website orders now*, Save. Within a few seconds the screen says
    *Connected* and the menu is on the website.

@@ -34,6 +34,9 @@ public static class LiveEventKinds
 
     /// <summary>A backup, or its second copy, could not be made (tills only).</summary>
     public const string BackupFailed = "BackupFailed";
+
+    /// <summary>The owner cleared the test sales: tills and kitchen screens start again from an empty list.</summary>
+    public const string SalesCleared = "SalesCleared";
 }
 
 /// <summary>
@@ -111,6 +114,10 @@ public sealed class LiveUpdates(HubDatabase db, IHubContext<LiveHub> hub, TimePr
     /// <summary>Records a menu change. Call inside the transaction that saves the menu.</summary>
     public void MenuChanged(long version, string summary) =>
         Record(LiveEventKinds.MenuChanged, null, version, summary, forKitchen: true, forDisplay: true);
+
+    /// <summary>The test sales were cleared (tills and kitchen screens reload).</summary>
+    public void SalesCleared(string summary) =>
+        Record(LiveEventKinds.SalesCleared, null, null, summary, forKitchen: true, forDisplay: false);
 
     /// <summary>Number of the latest event.</summary>
     public long LastSeq() => db.Run(() =>

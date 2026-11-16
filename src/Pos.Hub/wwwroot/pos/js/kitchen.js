@@ -87,6 +87,7 @@ export class Kitchen {
   }
 
   onEvent(event) {
+    if (event.kind === 'SalesCleared') { location.reload(); return; } // the test orders are gone
     if (event.kind === 'MenuChanged' || !event.order) return;
     if (this.bySection) { this.refreshOne(event.order.id); return; }
     this.apply(event.order);

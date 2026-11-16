@@ -1948,3 +1948,49 @@ test('website: the owner connects the website, a customer orders for collection,
     await online.close();
   }
 });
+
+// Must stay the last test: it clears every sale and switches the shop to live.
+test('testing or live: the owner clears the test sales (other tills start again), then goes live and clearing is gone', async () => {
+  assert.ok((await ordersToday()).length > 0);
+  const page = await tillPage(shop.till1);
+  await login(page, '4826');
+  const other = await tillPage(shop.till2);
+  await login(other, '5931');
+
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Testing or live (clear test sales)' }).click();
+  await top(page).getByText('TESTING', { exact: true }).waitFor();
+  await top(page).getByLabel('Type CLEAR to confirm').fill('clear');
+  await top(page).getByRole('button', { name: 'Clear test sales' }).click();
+  await page.getByText('Type CLEAR to confirm.').waitFor(); // nothing happens without the exact word
+  assert.ok((await ordersToday()).length > 0);
+  await top(page).getByLabel('Type CLEAR to confirm').fill('CLEAR');
+  await shot(page, 'ui-trading-testing');
+  const reloaded = page.waitForEvent('load');
+  const otherReloaded = other.waitForEvent('load');
+  await top(page).getByRole('button', { name: 'Clear test sales' }).click();
+  await page.getByText(/Test sales cleared: \d+ orders and \d+ payments removed/).waitFor();
+  await other.getByText('The owner cleared the test sales').waitFor(); // the other till starts again too
+  await Promise.all([reloaded, otherReloaded]);
+  assert.deepEqual(await ordersToday(), []);
+  await page.getByRole('button', { name: 'More', exact: true }).waitFor();
+  await page.locator('.orders-count:empty').waitFor({ state: 'attached' }); // no open orders left
+
+  // Going live needs the exact words; afterwards the dialog only says LIVE.
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Testing or live (clear test sales)' }).click();
+  await top(page).getByText(/cleared before|Test sales cleared before/i).waitFor();
+  await top(page).getByLabel('Type GO LIVE to confirm').fill('GO LIVE');
+  await top(page).getByRole('button', { name: 'Go live' }).click();
+  await page.getByText('The shop is live.').waitFor();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Testing or live (clear test sales)' }).click();
+  await top(page).getByText('LIVE', { exact: true }).waitFor();
+  assert.equal(await top(page).getByRole('button', { name: 'Clear test sales' }).count(), 0);
+  await shot(page, 'ui-trading-live');
+  await assert.rejects(call('POST', '/api/settings/trading/clear-test-data', shop.owner, { confirm: 'CLEAR', alsoCustomers: false }), /409/);
+
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+  await other.context().close();
+});

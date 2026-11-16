@@ -44,6 +44,7 @@ builder.Services.AddSingleton<TableService>();
 builder.Services.AddSingleton<KitchenScreenService>();
 builder.Services.AddSingleton<CustomerDisplayService>();
 builder.Services.AddSingleton<ItemButtonService>();
+builder.Services.AddSingleton<TradingService>();
 builder.Services.AddSingleton<Pos.Hub.Online.OnlineHttp>();
 builder.Services.AddSingleton(sp => new Pos.Hub.Online.OnlineOrderService(
     sp.GetRequiredService<HubDatabase>(), sp.GetRequiredService<OrderService>(), sp.GetRequiredService<MenuService>(),

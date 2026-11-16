@@ -311,6 +311,83 @@ async function kitchenScreensSettings() {
   });
 }
 
+/**
+ * More → Testing or live (owner). While testing, the owner can clear the test sales so order numbers and reports start
+ * from zero (a backup is taken first). Going live is one-way: after it no sale can be deleted (UK law: sales records
+ * are kept at least six years, and tools that delete sales are illegal).
+ */
+async function tradingDialog() {
+  let status;
+  try {
+    status = await busy(() => api.get('/api/settings/trading'));
+  } catch (e) {
+    toast(e.message ?? 'Could not reach the hub.', 'error');
+    return;
+  }
+
+  const when = iso => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const history = status.cleared.length ? h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Test sales cleared before' }),
+    h('ul', { class: 'plain-list' }, status.cleared.map(c => h('li', { text: `${when(c.at)} by ${c.byName}: ${c.orders} orders, ${c.payments} payments${c.customers ? `, ${c.customers} customers` : ''} (backup ${c.backup ?? 'none'})` })))) : null;
+
+  if (status.live) {
+    await openDialog(close => ({
+      title: 'Testing or live',
+      class: 'dialog-narrow',
+      body: [
+        h('p', { class: 'trading-badge trading-live', text: 'LIVE' }),
+        h('p', { text: `Trading for real since ${when(status.wentLiveAt)} (${status.wentLiveBy}).` }),
+        h('p', { class: 'field-hint', text: 'Sales can no longer be deleted: UK law requires sales records to be kept for at least six years. Each day still starts from order 001 and each Z report counts that day only.' }),
+        history,
+      ],
+      actions: [h('button', { class: 'btn btn-primary', onclick: () => close(), text: 'Close' })],
+    }));
+    return;
+  }
+
+  const confirmClear = h('input', { class: 'text-input', type: 'text', autocomplete: 'off', 'aria-label': 'Type CLEAR to confirm', placeholder: 'Type CLEAR' });
+  const confirmLive = h('input', { class: 'text-input', type: 'text', autocomplete: 'off', 'aria-label': 'Type GO LIVE to confirm', placeholder: 'Type GO LIVE' });
+  const customers = h('input', { type: 'checkbox' });
+  await openDialog(close => {
+    const clear = async () => {
+      try {
+        const done = await busy(() => api.post('/api/settings/trading/clear-test-data', { confirm: confirmClear.value, alsoCustomers: customers.checked }));
+        close();
+        toast(`Test sales cleared: ${done.orders} orders and ${done.payments} payments removed. Starting from zero.`, 'ok', 8000);
+        // Every till and kitchen screen, this one included, is told to start again over the live connection.
+      } catch (e) {
+        toast(e.message, 'error', 8000);
+      }
+    };
+    const goLive = async () => {
+      try {
+        await busy(() => api.post('/api/settings/trading/go-live', { confirm: confirmLive.value }));
+        close();
+        toast('The shop is live. From now on no sale can be deleted.', 'ok', 8000);
+      } catch (e) {
+        toast(e.message, 'error', 8000);
+      }
+    };
+    return {
+      title: 'Testing or live',
+      class: 'dialog-narrow',
+      body: [
+        h('p', { class: 'trading-badge trading-testing', text: 'TESTING' }),
+        h('section', { class: 'trading-part' },
+          h('h3', { text: 'Clear test sales and start from zero' }),
+          h('p', { class: 'field-hint', text: 'Removes every order, payment, till session (cash count), Z report and printout made while testing. Order numbers and reports start again from zero. Your menu, staff, tills, printers and settings stay. A backup is made first.' }),
+          h('label', { class: 'check' }, customers, h('span', { text: 'Also remove customers (names, phones, addresses) saved while testing' })),
+          h('div', { class: 'trading-row' }, confirmClear, h('button', { class: 'btn btn-danger', onclick: clear, text: 'Clear test sales' }))),
+        h('section', { class: 'trading-part' },
+          h('h3', { text: 'Go live' }),
+          h('p', { class: 'field-hint', text: 'Do this on your first real trading day, after clearing the test sales. It cannot be undone: from then on no sale can ever be deleted (UK law requires sales records to be kept for at least six years).' }),
+          h('div', { class: 'trading-row' }, confirmLive, h('button', { class: 'btn btn-primary', onclick: goLive, text: 'Go live' }))),
+        history,
+      ],
+      actions: [h('button', { class: 'btn', onclick: () => close(), text: 'Close' })],
+    };
+  });
+}
+
 /** More → Item buttons (owner or manager): button size and whether prices show, for this till or every till. */
 async function itemButtonsSettings(till) {
   const current = till.itemButtons ?? { showPrices: true, size: 'Normal' };
@@ -684,7 +761,8 @@ export function moreDialog(till) {
             item('Failed printouts', failedPrints),
             can('ViewReports') ? item('Back up now', backupNow) : null,
             can('ManageDevices') ? item('Address lookup', addressLookup) : null,
-            can('ManageDevices') ? item('Address files', addressFiles) : null)),
+            can('ManageDevices') ? item('Address files', addressFiles) : null,
+            can('ManageDevices') ? item('Testing or live (clear test sales)', tradingDialog) : null)),
         h('p', { class: 'version', text: `Version ${window.posVersion ?? ''} · ${till.ctx.me.staff.name} (${till.ctx.me.staff.role})` }),
       ],
     };

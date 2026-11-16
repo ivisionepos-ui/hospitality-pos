@@ -69,6 +69,18 @@ public static class Endpoints
                 : throw new AccessDeniedException("NotADisplay", "This device is not a customer display.", 403);
         })).ForDisplays();
 
+        // More → Testing or live (owner): clear the test sales while testing; go live (after which no sale can be deleted).
+        api.MapGet("/settings/trading", (TradingService trading) => Handle(() => Results.Ok(trading.Status())))
+            .ForStaff(Permission.ManageDevices); // owner only
+
+        api.MapPost("/settings/trading/clear-test-data", (HttpContext http, TradingService trading, ClearTestDataRequest request) => Handle(() =>
+            Results.Ok(trading.ClearTestData(request, Caller(http).Staff!.Id, Caller(http).Staff!.Name))))
+            .ForStaff(Permission.ManageDevices); // owner only
+
+        api.MapPost("/settings/trading/go-live", (HttpContext http, TradingService trading, GoLiveRequest request) => Handle(() =>
+            Results.Ok(trading.GoLive(request, Caller(http).Staff!.Id, Caller(http).Staff!.Name))))
+            .ForStaff(Permission.ManageDevices); // owner only
+
         // More → Item buttons: this till's button size and whether prices show (owner or manager).
         api.MapGet("/settings/item-buttons", (HttpContext http, ItemButtonService buttons) => Handle(() =>
             Results.Ok(buttons.For(DeviceOf(http)))))

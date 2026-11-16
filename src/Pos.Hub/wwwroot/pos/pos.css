@@ -641,3 +641,13 @@ h1, h2, h3 { margin: 0; }
   .cd-right { flex: none; }
 }
 @media (prefers-reduced-motion: reduce) { .cd-fade, .cd-line-added { animation: none; } }
+
+/* ---------- More → Testing or live ---------- */
+.trading-badge { align-self: flex-start; justify-self: start; width: max-content; display: inline-block; margin: 0 0 4px; padding: 4px 12px; border-radius: 999px; font-weight: 800; letter-spacing: .06em; font-size: .85rem; }
+.trading-testing { background: #fef3c7; color: #92400e; }
+.trading-live { background: #dcfce7; color: #166534; }
+.trading-part { border-top: 1px solid var(--line, #e5e7eb); padding-top: 10px; margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.trading-part h3 { margin: 0; font-size: 1.05rem; }
+.trading-row { display: flex; gap: 8px; }
+.trading-row .text-input { flex: 1; }
+.plain-list { margin: 4px 0 0; padding-left: 18px; font-size: .9rem; }

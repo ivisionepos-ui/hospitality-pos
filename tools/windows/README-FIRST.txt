@@ -112,3 +112,10 @@ Customer display (the screen facing the customer)
 Item buttons (many items on the menu)
   More > Item buttons (size, prices): make the item buttons Small, Normal or
   Large and show or hide the prices, for this till or every till.
+
+Before your first real day: clear the test sales, then go live
+  More > Testing or live (owner). "Clear test sales" removes every order,
+  payment, till session and Z report made while trying the system (type CLEAR;
+  a backup is made first). Menu, staff, tills and settings stay.
+  Then "Go live" (type GO LIVE). This cannot be undone: after it no sale can
+  be deleted, because UK law requires sales records to be kept six years.

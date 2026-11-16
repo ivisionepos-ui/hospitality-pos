@@ -235,6 +235,10 @@ export class Till {
   /** Something changed on the hub (another till, the kitchen, a printer). */
   async onEvent(event) {
     switch (event.kind) {
+      case 'SalesCleared':
+        toast('The owner cleared the test sales. Starting again from zero…', 'info', 4000);
+        setTimeout(() => location.reload(), 1500);
+        break;
       case 'MenuChanged':
         await this.loadMenu();
         if (this.editor) {

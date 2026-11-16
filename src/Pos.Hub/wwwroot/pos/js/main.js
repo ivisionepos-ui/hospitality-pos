@@ -6,6 +6,8 @@ import { loginScreen, pairScreen, setupScreen } from './screens.js';
 import { Kitchen } from './kitchen.js';
 import { DriverScreen } from './drivers.js';
 import { Till } from './till.js';
+import { CustomerDisplay } from './display.js';
+import { displayFeed } from './displayfeed.js';
 
 const root = document.getElementById('app');
 let live = null;
@@ -39,6 +41,17 @@ async function boot() {
     const onHubPc = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
     if (!setup.isSetUp && onHubPc) setupScreen(root, boot);
     else pairScreen(root, boot, setup.isSetUp ? null : 'The shop is not set up yet. Do the first-time set-up on the hub PC first.');
+    return;
+  }
+
+  // A customer display has no log-in: it shows its till's order and nothing else.
+  if (credentials.device.type === 'CustomerDisplay') {
+    till = new CustomerDisplay(root);
+    await till.start();
+    live = new LiveConnection(() => {}, connected => till?.setLive(connected))
+      .on('display', state => till?.show(state))
+      .on('display-reload', () => till?.reload());
+    live.start();
     return;
   }
 
@@ -92,6 +105,7 @@ let loggingOut = false;
 
 async function logout() {
   loggingOut = true;
+  if (credentials.device?.type !== 'CustomerDisplay') await displayFeed.clear(); // the display goes back to its welcome screen
   try { await api.post('/api/auth/logout'); } catch { /* the session ends anyway */ }
   loggingOut = false;
   credentials.session = null;

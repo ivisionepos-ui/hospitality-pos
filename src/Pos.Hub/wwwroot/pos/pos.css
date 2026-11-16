@@ -577,3 +577,58 @@ h1, h2, h3 { margin: 0; }
 .hours-day { width: 96px; font-weight: 600; }
 .time-input { width: 120px; }
 .web-row { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
+
+/* ---------- Customer display (faces the customer; sized from the screen so it fits a 7" or a 24" screen) ---------- */
+.cd-body { cursor: none; }
+.cd { position: relative; height: 100dvh; display: flex; background: #0f172a; color: #f8fafc; overflow: hidden; }
+.cd-offline { position: absolute; right: 1.5vmin; bottom: 1.5vmin; font-size: 2vmin; color: #fbbf24; }
+.cd-offline[hidden] { display: none; }
+
+.cd-idle { flex-direction: column; align-items: center; justify-content: center; gap: 2.5vmin; text-align: center; padding: 6vmin;
+  background: radial-gradient(ellipse at top, #1e3a8a, #0f172a 70%); }
+.cd-shop { margin: 0; font-size: 3.6vmin; letter-spacing: .08em; text-transform: uppercase; color: #93c5fd; }
+.cd-welcome { margin: 0; font-size: 8vmin; font-weight: 800; line-height: 1.1; }
+.cd-message { margin: 0; font-size: 4.6vmin; color: #fde68a; min-height: 1.3em; }
+.cd-fade { animation: cd-fade .8s ease; }
+@keyframes cd-fade { from { opacity: 0; transform: translateY(1vmin); } to { opacity: 1; transform: none; } }
+.cd-clock { margin: 2vmin 0 0; font-size: 3.4vmin; color: #cbd5e1; font-variant-numeric: tabular-nums; }
+.cd-note { margin: 0; font-size: 2.2vmin; color: #94a3b8; }
+
+.cd-order { background: #f8fafc; color: #0f172a; }
+.cd-left { flex: 1.6; min-width: 0; display: flex; flex-direction: column; }
+.cd-head { display: flex; justify-content: space-between; gap: 2vmin; padding: 2.4vmin 3vmin; background: #0f172a; color: #e2e8f0; font-size: 2.8vmin; font-weight: 700; }
+.cd-lines { list-style: none; margin: 0; padding: 1vmin 3vmin 3vmin; overflow-y: auto; flex: 1; }
+.cd-line { display: grid; grid-template-columns: 6vmin 1fr auto; gap: 2vmin; align-items: baseline; padding: 1.6vmin 0; border-bottom: 1px solid #e2e8f0; font-size: 3.4vmin; }
+.cd-line-new { background: #ecfdf5; margin: 0 -3vmin; padding-left: 3vmin; padding-right: 3vmin; }
+.cd-line-added { animation: cd-fade .5s ease; }
+.cd-line-removed { color: #94a3b8; text-decoration: line-through; }
+.cd-qty { font-weight: 800; text-align: right; }
+.cd-name { font-weight: 600; }
+.cd-name small { display: block; font-size: .7em; font-weight: 400; color: #475569; }
+.cd-price { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cd-right { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 2.4vmin; padding: 4vmin; background: #0f172a; color: #f8fafc; }
+.cd-totals { display: grid; grid-template-columns: 1fr auto; gap: 1.4vmin 2vmin; margin: 0; font-size: 3.2vmin; }
+.cd-totals dt, .cd-totals dd { margin: 0; }
+.cd-totals dd { text-align: right; font-variant-numeric: tabular-nums; }
+.cd-totals .cd-t-small { font-size: .75em; color: #94a3b8; }
+.cd-totals .cd-t-total { font-size: 2em; font-weight: 800; padding-top: 1.6vmin; border-top: 2px solid #334155; }
+.cd-totals .cd-t-due { color: #fde68a; font-weight: 700; }
+.cd-topay, .cd-change, .cd-thanks-change { display: flex; flex-direction: column; align-items: center; padding: 2.4vmin; border-radius: 2vmin; }
+.cd-topay { background: #fde68a; color: #0f172a; }
+.cd-change { background: #22c55e; color: #052e16; }
+.cd-topay span, .cd-change span { font-size: 3vmin; font-weight: 700; }
+.cd-topay strong, .cd-change strong { font-size: 8vmin; line-height: 1.1; font-variant-numeric: tabular-nums; }
+
+.cd-thanks { flex-direction: column; align-items: center; justify-content: center; gap: 3vmin; text-align: center; background: radial-gradient(ellipse at top, #166534, #052e16 70%); }
+.cd-thanks-big { margin: 0; font-size: 13vmin; font-weight: 900; }
+.cd-thanks-number { margin: 0; font-size: 4.4vmin; }
+.cd-thanks-number strong { font-size: 1.6em; }
+.cd-thanks-change { background: #f8fafc; color: #052e16; padding: 2.4vmin 6vmin; }
+.cd-thanks-change span { font-size: 3vmin; font-weight: 700; }
+.cd-thanks-change strong { font-size: 9vmin; line-height: 1.1; font-variant-numeric: tabular-nums; }
+
+@media (orientation: portrait) {
+  .cd-order { flex-direction: column; }
+  .cd-right { flex: none; }
+}
+@media (prefers-reduced-motion: reduce) { .cd-fade, .cd-line-added { animation: none; } }

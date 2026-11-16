@@ -239,7 +239,7 @@ export async function changeMyPin(me, logout) {
   logout();
 }
 
-const DEVICE_TYPES = { Till: 'Till', KitchenScreen: 'Kitchen screen' };
+const DEVICE_TYPES = { Till: 'Till', KitchenScreen: 'Kitchen screen', CustomerDisplay: 'Customer display', BackOffice: 'Office PC' };
 
 /** Registered tills and screens (owner): see them, remove a lost or replaced one. */
 export async function devicesDialog() {

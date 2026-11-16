@@ -53,11 +53,12 @@ export function pairScreen(root, done, note) {
   const name = h('input', { class: 'text-input', type: 'text', maxlength: 40, value: 'Till 2' });
   const problem = h('p', { class: 'form-problem', role: 'alert', text: note ?? '' });
   let type = 'Till';
+  const KINDS = [['Till', 'Till', 'Till 2'], ['KitchenScreen', 'Kitchen screen', 'Kitchen 1'], ['CustomerDisplay', 'Customer display', 'Customer display 1']];
   const kinds = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'This device is a' });
-  const renderKinds = () => mount(kinds, [['Till', 'Till'], ['KitchenScreen', 'Kitchen screen']].map(([id, label]) => h('button', {
+  const renderKinds = () => mount(kinds, KINDS.map(([id, label, defaultName]) => h('button', {
     type: 'button', class: `seg-btn ${type === id ? 'seg-on' : ''}`, role: 'radio', 'aria-checked': String(type === id),
     onclick: () => {
-      if (name.value === (type === 'Till' ? 'Till 2' : 'Kitchen 1')) name.value = id === 'Till' ? 'Till 2' : 'Kitchen 1';
+      if (KINDS.some(k => k[2] === name.value)) name.value = defaultName; // swap the suggested name, keep a typed one
       type = id;
       renderKinds();
     },
@@ -69,7 +70,7 @@ export function pairScreen(root, done, note) {
     if (!/^\d{6}$/.test(code.value.trim())) { problem.textContent = 'The code has 6 digits.'; return; }
     try {
       const device = await busy(() => api.post('/api/devices/pair', { code: code.value.trim(), name: name.value.trim() || 'Till', type }, { noSession: true }));
-      credentials.device = { ...device, name: name.value.trim() || 'Till' };
+      credentials.device = { ...device, name: name.value.trim() || 'Till', type };
       credentials.session = null;
       done();
     } catch (err) {

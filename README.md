@@ -37,7 +37,7 @@ docs/
   CODING-STANDARDS.md    Naming and coding rules
 ```
 
-Projects still to come: `Pos.Cloud.Api`, `Pos.Sync`, customer display and back office.
+Projects still to come: `Pos.Cloud.Api`, `Pos.Sync` and back office.
 
 ## Requirements
 
@@ -241,6 +241,17 @@ Tills and screens keep one live connection open to the hub (SignalR over WebSock
 Tills and the back office get every event; kitchen screens get accepted orders and menu changes; customer displays
 get menu changes. Events are saved in the same database transaction as the change, and only sent once it is saved,
 so a screen never sees something that did not happen. A removed device is disconnected at once.
+
+### Customer displays
+
+A customer display is registered like any screen (type *Customer display*) and needs no staff log-in. It follows one
+till (More → Customer displays; a shop with one till needs no choice). The till sends what it shows
+(`POST /api/display/state`: stage idle/order/pay/thanks, lines, totals, to pay, change) and the hub passes it at once
+to the displays following that till as a `display` live message; nothing is saved. A display asks `GET /api/display`
+when it starts and after every reconnection. A display device may call only those two routes and the live connection:
+every other route answers 403 `DisplayOnly`, so a screen facing the public can never read orders, customers or the
+menu settings, nor take a staff log-in. On a till's second screen, *Open customer display (second screen).bat* opens
+Edge full screen on the second monitor with its own profile (so it registers as its own device).
 
 ### Printing
 

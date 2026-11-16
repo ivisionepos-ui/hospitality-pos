@@ -18,6 +18,13 @@ export class LiveConnection {
     this.retry = 0;
     this.socket = null;
     this.pinger = null;
+    this.handlers = {}; // other live messages, e.g. "display" for customer displays
+  }
+
+  /** Calls fn with the message's argument whenever the hub sends a message with this name (not numbered: no catch-up). */
+  on(target, fn) {
+    this.handlers[target] = fn;
+    return this;
   }
 
   start() {
@@ -72,6 +79,8 @@ export class LiveConnection {
       if (event.seq <= this.lastSeq) return;
       if (event.seq > this.lastSeq + 1) await this.catchUp(); // a gap: fetch the missing ones first
       if (event.seq === this.lastSeq + 1) this.deliver(event);
+    } else if (message.type === 1 && this.handlers[message.target]) {
+      try { this.handlers[message.target](message.arguments?.[0]); } catch (e) { console.error(e); }
     } else if (message.type === 7) {
       this.socket.close();
     }

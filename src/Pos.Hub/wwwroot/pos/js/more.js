@@ -99,7 +99,7 @@ async function addTill() {
   const [code, health] = await busy(() => Promise.all([api.post('/api/devices/pairing-code'), api.get('/api/health')]));
   const addresses = health.networkAddresses ?? [];
   await openDialog(close => ({
-    title: 'Add a till or kitchen screen',
+    title: 'Add a till or screen',
     wide: true,
     body: h('div', { class: 'add-device' },
       h('ol', { class: 'steps' },
@@ -110,7 +110,10 @@ async function addTill() {
         h('li', {},
           h('strong', { text: 'Tablet or Android box: ' }),
           `install the shop certificate once (see the README), then open the address above in the browser.`),
-        h('li', {}, 'On the new device choose Till or Kitchen screen and enter this code:',
+        h('li', {},
+          h('strong', { text: 'Customer display on a till\'s second screen: ' }),
+          'on that till PC double-click "Open customer display (second screen)". It opens on the second screen.'),
+        h('li', {}, 'On the new device choose Till, Kitchen screen or Customer display and enter this code:',
           h('p', { class: 'pair-code', text: code.code }),
           h('p', { class: 'field-hint', text: `The code works until ${timeText(code.expiresAt)}. Certificate check code: ${health.caCheckCode}` }))),
       h('p', { class: 'field-hint', text: 'If the new device cannot connect: on THIS PC (the hub), double-click "Allow tills to connect" once, and make sure both are on the same network.' })),
@@ -303,6 +306,55 @@ async function kitchenScreensSettings() {
       title: 'Kitchen screens',
       class: 'dialog-narrow',
       body,
+      actions: [h('button', { class: 'btn', onclick: () => close(), text: 'Cancel' }), h('button', { class: 'btn btn-primary', onclick: save, text: 'Save' })],
+    };
+  });
+}
+
+/** More → Customer displays (owner): which till each display follows, the welcome line and the messages shown between orders. */
+async function customerDisplaysSettings() {
+  let setup;
+  try {
+    setup = await busy(() => api.get('/api/settings/customer-displays'));
+  } catch (e) {
+    toast(e.message ?? 'Could not reach the hub.', 'error');
+    return;
+  }
+
+  const links = new Map(setup.displays.map(d => [d.id, d.tillId ?? '']));
+  const welcome = h('input', { class: 'text-input', type: 'text', maxlength: 80, value: setup.welcome ?? '', placeholder: 'Welcome to …', 'aria-label': 'Welcome line' });
+  const messages = Array.from({ length: 5 }, (_, i) => h('input', {
+    class: 'text-input', type: 'text', maxlength: 80, value: setup.messages[i] ?? '', 'aria-label': `Message ${i + 1}`,
+    placeholder: ['e.g. Try our new mixed grill', 'e.g. Free delivery on orders over £20', 'e.g. Order online at …', '', ''][i],
+  }));
+  await openDialog(close => {
+    const save = async () => {
+      try {
+        await busy(() => api.put('/api/settings/customer-displays', {
+          welcome: welcome.value, messages: messages.map(m => m.value).filter(v => v.trim()),
+          links: [...links].filter(([, tillId]) => tillId).map(([displayId, tillId]) => ({ displayId, tillId })),
+        }));
+        toast('Customer displays saved. They change at once.', 'ok', 5000);
+        close();
+      } catch (e) {
+        toast(e.message, 'error', 6000);
+      }
+    };
+
+    return {
+      title: 'Customer displays',
+      class: 'dialog-narrow',
+      body: h('div', { class: 'customer-displays' },
+        h('p', { class: 'field-hint', text: 'A customer display shows the order on its till as it is rung up, the total, what is left to pay and the change. Between orders it shows the welcome line and your messages in turn.' }),
+        !setup.displays.length ? h('p', { class: 'empty-note', text: 'No customer displays yet. Add one with More → Add a till or screen.' }) : null,
+        setup.displays.map(d => {
+          const select = h('select', { class: 'text-input', 'aria-label': `${d.name} follows`, onchange: e => links.set(d.id, e.target.value) },
+            h('option', { value: '', text: setup.tills.length === 1 ? `${setup.tills[0].name} (the only till)` : 'Choose a till' }),
+            setup.tills.map(t => h('option', { value: t.id, selected: links.get(d.id) === t.id, text: t.name })));
+          return h('label', { class: 'field' }, h('span', { class: 'field-label', text: `${d.name} shows the order on` }), select);
+        }),
+        h('label', { class: 'field' }, h('span', { class: 'field-label', text: 'Welcome line (between orders)' }), welcome),
+        h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Messages, shown in turn (up to 5)' }), messages)),
       actions: [h('button', { class: 'btn', onclick: () => close(), text: 'Cancel' }), h('button', { class: 'btn btn-primary', onclick: save, text: 'Save' })],
     };
   });
@@ -584,6 +636,7 @@ export function moreDialog(till) {
             can('ManageDevices') ? item('Shop details', shopDetails) : null,
             can('ManageDevices') ? item('Eat-in and tables', eatInSettings) : null,
             can('ManageDevices') ? item('Kitchen screens', kitchenScreensSettings) : null,
+            can('ManageDevices') ? item('Customer displays', customerDisplaysSettings) : null,
             can('ManageDevices') ? item('Website (online orders)', websiteSettings) : null,
             can('ViewReports') ? item('Sales reports', salesReportsDialog, true) : null,
             can('ViewReports') ? item('X report (this till)', xReport) : null,

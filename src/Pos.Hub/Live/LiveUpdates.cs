@@ -245,6 +245,7 @@ public sealed class LiveHub(LiveUpdates live) : Microsoft.AspNetCore.SignalR.Hub
 
         live.Connected(device.Id, Context);
         await Groups.AddToGroupAsync(Context.ConnectionId, LiveUpdates.GroupFor(device.Type)).ConfigureAwait(false);
+        await Groups.AddToGroupAsync(Context.ConnectionId, CustomerDisplayService.DeviceGroup(device.Id)).ConfigureAwait(false); // messages for this device only
         await base.OnConnectedAsync().ConfigureAwait(false);
     }
 

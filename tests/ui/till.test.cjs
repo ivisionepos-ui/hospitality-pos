@@ -1,3 +1,18 @@
+  // Same items and same total on both, within 5 seconds of the change (the display is updated over the network).
+  const matches = async () => {
+    let tillSide;
+    let shown;
+    for (const until = Date.now() + 5000; Date.now() < until; await till.waitForTimeout(100)) {
+      tillSide = { total: (await till.locator('.total-total span').last().innerText()).trim(), lines: await till.locator('.line:not(.line-void) .line-name').allInnerTexts() };
+      shown = {
+        total: ((await display.locator('dd.cd-t-total').allInnerTexts())[0] ?? '').trim(),
+        lines: await display.locator('.cd-line:not(.cd-line-removed) .cd-name').evaluateAll(els => els.map(e => e.firstChild.textContent)),
+      };
+      if (!tillSide.total.includes('…') && JSON.stringify(tillSide) === JSON.stringify(shown)) return;
+    }
+    assert.deepEqual(shown, tillSide);
+  };
+
 // End-to-end tests of the till screen: a real hub, a real browser (Chromium via Playwright).
 // Run from the repository root after a Release build:  node --test tests/ui/
 // Needs Node 22+ and Playwright with Chromium (npm install in tests/ui, then npx playwright install chromium).
@@ -735,7 +750,8 @@ test('owner opens Add a till or screen: the code and the steps for another PC ar
   await login(owner, '4826');
   await owner.getByRole('button', { name: 'More', exact: true }).click();
   await top(owner).getByRole('button', { name: 'Add a till or screen' }).click();
-  await top(owner).getByText('Add a till or kitchen screen').waitFor();
+  await top(owner).locator('.dialog-title, h2', { hasText: 'Add a till or screen' }).first().waitFor();
+  await top(owner).getByText('Open customer display (second screen)', { exact: false }).waitFor();
   assert.match(await top(owner).locator('.pair-code').innerText(), /^\d{6}$/);
   await top(owner).getByText('Connect this PC to the hub', { exact: false }).waitFor();
   await top(owner).getByText(/Certificate check code: [0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}/).waitFor();
@@ -1593,6 +1609,122 @@ test('kitchen screens per section: the pizza screen shows only pizza, marks its 
   // Back as it was for anything after this test.
   await call('PUT', '/api/settings/kitchen-screens', owner, []);
   await call('PUT', '/api/settings/printers', owner, before);
+});
+
+test('customer display: register it, the owner links it to Till 2; it matches the till on every change, shows the change, says thank you, then welcome', async () => {
+  const owner = { device: shop.owner.device, token: shop.owner.token };
+  const { code } = await call('POST', '/api/devices/pairing-code', owner);
+
+  // A new screen registers itself as a customer display: no PIN, straight to the welcome screen.
+  const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const display = await context.newPage();
+  display.errors = [];
+  display.on('pageerror', e => display.errors.push(e.message));
+  open.add(display);
+  await display.goto(`${base}/pos/`);
+  await display.getByText('Register this device').waitFor();
+  await display.getByRole('radio', { name: 'Customer display' }).click();
+  assert.equal(await display.getByLabel('Name').inputValue(), 'Customer display 1');
+  await display.getByLabel('Code').fill(code);
+  await display.getByRole('button', { name: 'Register' }).click();
+  await display.locator('.cd-idle').waitFor();
+  await display.getByText('Not linked to a till yet').waitFor(); // two tills: the owner chooses
+
+  // A customer display cannot read orders (customers' names and phones) even with its own key.
+  const key = await display.evaluate(() => JSON.parse(localStorage.getItem('pos.device')));
+  await assert.rejects(call('GET', '/api/orders', { device: key }), /403/);
+
+  // The owner links it to Till 2 and writes the welcome line and messages; the display changes at once.
+  const ownerTill = await tillPage(shop.till1);
+  await login(ownerTill, '4826');
+  await ownerTill.getByRole('button', { name: 'More', exact: true }).click();
+  await top(ownerTill).getByRole('button', { name: 'Customer displays' }).click();
+  await top(ownerTill).getByLabel('Customer display 1 follows').selectOption({ label: 'Till 2' });
+  await top(ownerTill).getByLabel('Welcome line').fill('Welcome to Test Kebabs');
+  await top(ownerTill).getByLabel('Message 1').fill('Try our mixed grill');
+  await top(ownerTill).getByLabel('Message 2').fill('Free delivery over £20');
+  await shot(ownerTill, 'ui-display-settings');
+  await top(ownerTill).getByRole('button', { name: 'Save' }).click();
+  await ownerTill.getByText('Customer displays saved').waitFor();
+  await display.getByText('Welcome to Test Kebabs').waitFor();
+  await display.locator('.cd-message', { hasText: /Try our mixed grill|Free delivery over £20/ }).waitFor();
+  assert.equal(await display.getByText('Not linked to a till yet').count(), 0);
+  await shot(display, 'ui-display-idle');
+  await ownerTill.context().close();
+
+  // The display shows exactly what Till 2 shows, after every change.
+  const till = await tillPage(shop.till2);
+  await login(till, '5931');
+  // Same items and same total on both, within 5 seconds of the change (the display is updated over the network).
+  const matches = async () => {
+    let tillSide;
+    let shown;
+    for (const until = Date.now() + 5000; Date.now() < until; await till.waitForTimeout(100)) {
+      tillSide = { total: (await till.locator('.total-total span').last().innerText()).trim(), lines: await till.locator('.line:not(.line-void) .line-name').allInnerTexts() };
+      shown = {
+        total: ((await display.locator('dd.cd-t-total').allInnerTexts())[0] ?? '').trim(),
+        lines: await display.locator('.cd-line:not(.cd-line-removed) .cd-name').evaluateAll(els => els.map(e => e.firstChild.textContent)),
+      };
+      if (!tillSide.total.includes('…') && JSON.stringify(tillSide) === JSON.stringify(shown)) return;
+    }
+    assert.deepEqual(shown, tillSide);
+  };
+
+  await pick(till, 'Kebabs', 'Doner kebab');
+  await top(till).getByRole('button', { name: /Large/ }).click();
+  await top(till).getByRole('button', { name: /Chilli/ }).click();
+  await top(till).getByRole('button', { name: /^Add/ }).click();
+  await till.locator('.total-total', { hasText: /£\d/ }).waitFor();
+  await display.locator('.cd-order').waitFor();
+  await display.locator('.cd-head').getByText('Takeaway', { exact: true }).waitFor();
+  await matches();
+  await pick(till, 'Sides', 'Cheesy chips');
+  await top(till).getByRole('button', { name: /Large/ }).click();
+  await top(till).getByRole('button', { name: /^Add/ }).click();
+  await till.locator('.line', { hasText: 'Cheesy chips' }).waitFor();
+  await matches();
+  if (!(await till.locator('.line-on', { hasText: 'Cheesy chips' }).count())) await till.locator('.line', { hasText: 'Cheesy chips' }).click();
+  await till.getByRole('button', { name: 'One more' }).click();
+  await till.locator('.line-on .line-qty', { hasText: '2' }).waitFor();
+  await display.locator('.cd-line', { hasText: 'Cheesy chips' }).locator('.cd-qty', { hasText: '2' }).waitFor();
+  await matches();
+  await shot(display, 'ui-display-order');
+  await till.getByRole('button', { name: 'Remove' }).click();
+  await till.locator('.line', { hasText: 'Cheesy chips' }).waitFor({ state: 'detached' });
+  await matches();
+  assert.equal(await display.locator('.cd-line').count(), 1);
+
+  // Paying: the display shows what is left to pay, then "Thank you" with the order number and the change.
+  await till.getByRole('button', { name: /^Pay £/ }).click();
+  await openTillIfAsked(till);
+  await top(till).getByRole('button', { name: 'Cash', exact: true }).click();
+  const toPay = (await display.locator('.cd-topay strong').innerText()).trim();
+  assert.match(toPay, /^£\d+\.\d\d$/);
+  await top(till).getByRole('button', { name: '£20.00' }).click();
+  const change = (await till.locator('.change-amount').innerText()).trim();
+  await display.getByText('Thank you!').waitFor();
+  assert.equal((await display.locator('.cd-thanks-change strong').innerText()).trim(), change);
+  const number = (await ordersToday()).at(-1).number;
+  await display.locator('.cd-thanks-number strong', { hasText: String(number) }).waitFor();
+  await shot(display, 'ui-display-thanks');
+  await top(till).getByRole('button', { name: 'Done' }).click();
+  await till.getByText('Paid. Receipt printing.').waitFor();
+  await till.locator('.lines-empty').waitFor();
+  assert.equal(await display.getByText('Thank you!').count(), 1); // stays a moment although the till is empty again
+  await display.getByText('Welcome to Test Kebabs').waitFor({ timeout: 15000 });
+
+  // Logging out mid-order puts the display back to its welcome screen.
+  await pick(till, 'Sides', 'Cheesy chips');
+  await top(till).getByRole('button', { name: /Large/ }).click();
+  await top(till).getByRole('button', { name: /^Add/ }).click();
+  await display.locator('.cd-order').waitFor();
+  await till.getByRole('button', { name: 'Log out' }).click();
+  await display.locator('.cd-idle').waitFor();
+
+  assert.deepEqual(display.errors, []);
+  assert.deepEqual(till.errors, []);
+  await context.close();
+  await till.context().close();
 });
 
 test('website: the owner connects the website, a customer orders for collection, the till accepts it, the customer sees the ready time', async () => {

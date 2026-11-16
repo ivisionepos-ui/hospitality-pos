@@ -2,6 +2,7 @@
 import { api, ApiError } from './api.js';
 import { h, mount, money, newId, penceText, text, toast } from './dom.js';
 import { amountDialog, busy, keypad, openDialog } from './dialogs.js';
+import { displayFeed } from './displayfeed.js';
 
 /** Makes sure this till has an open shift, offering to open one. Resolves true when there is one. */
 export async function ensureShift() {
@@ -59,7 +60,15 @@ export async function payDialog(order) {
     const target = () => (split === 'equal' ? (shares[0] ?? balance()) : split === 'items' ? itemsAmount : balance());
     const extra = () => (split === 'equal' ? { amountPence: target() } : split === 'items' ? { forLineIds: [...chosen] } : {});
 
-    const showSummary = () => mount(summary,
+    // The customer display shows what is left to pay, and the change from the last cash payment until the next one.
+    let lastChange = null;
+    const showOnDisplay = () => displayFeed.pay({
+      orderNumber: String(order.number), toPay: money(ledger.balance), change: lastChange,
+      totals: [{ label: 'Total', value: money(ledger.total), kind: 'total' },
+        ...(ledger.paid.minorUnits ? [{ label: 'Paid', value: money(ledger.paid), kind: null }] : [])],
+    });
+
+    const showSummary = () => (showOnDisplay(), mount(summary,
       h('div', { class: 'pay-row' }, h('span', { text: 'Total' }), h('strong', { text: money(ledger.total) })),
       ledger.paid.minorUnits ? h('div', { class: 'pay-row' }, h('span', { text: 'Paid' }), h('span', { text: money(ledger.paid) })) : null,
       h('div', { class: 'pay-row pay-due' }, h('span', { text: 'To pay' }), h('strong', { text: money(ledger.balance) })),
@@ -70,7 +79,7 @@ export async function payDialog(order) {
           class: `seg-btn ${split === id ? 'seg-on' : ''}`, role: 'radio', 'aria-checked': String(split === id),
           onclick: () => { split = id; refresh(); }, text: label,
         }))),
-      splitPanel);
+      splitPanel));
 
     // Equal shares are worked out from what is left, between the people who have not paid yet.
     const refresh = async () => {
@@ -129,6 +138,9 @@ export async function payDialog(order) {
         pendingKey = '';
         ledger = result.order;
         const change = result.payment.change?.minorUnits ?? 0;
+        lastChange = change > 0 ? penceText(change) : null;
+        if (ledger.balance.minorUnits <= 0) displayFeed.thanks({ change: lastChange, orderNumber: String(order.number) });
+        else showOnDisplay();
         if (change > 0) await changeDialog(change);
         if (ledger.balance.minorUnits <= 0) {
           toast('Paid. Receipt printing.', 'ok');

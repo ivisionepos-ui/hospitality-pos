@@ -12,6 +12,7 @@ import { payDialog } from './pay.js';
 import { discountDialog, refundDialog } from './discounts.js';
 import { driversDialog } from './drivers.js';
 import { WebOrders } from './weborders.js';
+import { displayFeed } from './displayfeed.js';
 
 const ORDER_MODES = [
   { id: 'counter', label: 'Takeaway', source: 'Counter', type: 'Takeaway' },
@@ -467,9 +468,11 @@ export class Till {
         this.customerBox());
 
     const rows = [];
+    const shown = []; // the same lines for the customer display
+    const row = line => { shown.push(line); return this.lineRow(line); };
     if (saved) {
       for (const line of saved.lines) {
-        rows.push(this.lineRow({
+        rows.push(row({
           kind: 'saved', key: line.id, quantity: line.quantity, name: text(line.name), size: line.size ? text(line.size) : null,
           details: [...line.extras.map(e => extraText(text(e))), ...line.dealItems.map(d => [d.size ? text(d.size) : null, text(d.name)].filter(Boolean).join(' ')
             + (d.extras?.length ? ` (${d.extras.map(text).join(', ')})` : ''))],
@@ -480,7 +483,7 @@ export class Till {
 
     draft.forEach((line, i) => {
       const quoted = this.quote?.lines[i];
-      rows.push(this.lineRow({
+      rows.push(row({
         kind: 'draft', key: line.key, quantity: line.quantity, name: line.name, size: line.size, details: line.details, note: line.note,
         price: quoted ? money(quoted.lineTotal) : penceText(line.unitPence * line.quantity), isNew: !!saved,
       }));
@@ -488,6 +491,7 @@ export class Till {
 
     const list = h('ol', { class: 'lines' }, rows.length ? rows : h('li', { class: 'lines-empty', text: 'Tap items to add them.' }));
     mount(this.ticketEl, head, list, this.lineTools(), this.totals(), this.actions());
+    this.showOnDisplay(shown);
     const selectedEl = list.querySelector('.line-on');
     (selectedEl ?? list.lastElementChild)?.scrollIntoView({ block: 'nearest' });
   }
@@ -534,7 +538,8 @@ export class Till {
     this.draftChanged();
   }
 
-  totals() {
+  /** The totals as [label, value, kind] rows: shown on the till and on the customer display. */
+  totalRows() {
     const saved = this.saved;
     const rows = [];
     if (saved) {
@@ -556,6 +561,32 @@ export class Till {
       if (q) rows.push(['incl. VAT', penceText(vat), 'small']);
     }
 
+    return rows;
+  }
+
+  /** Sends the order on screen to the customer display (never the customer's phone or address). */
+  showOnDisplay(shown) {
+    const saved = this.saved;
+    const visible = shown.filter(l => !l.voided || saved);
+    const mode = saved ? modeLabel(saved.source, saved.type) : this.mode?.label ?? null;
+    const table = saved?.table ?? (this.mode?.type === 'EatIn' ? this.draft.table : null);
+    displayFeed.order({
+      stage: visible.length ? 'order' : 'idle',
+      orderNumber: saved ? String(saved.number) : null,
+      orderType: [mode, table ? `Table ${table}` : null].filter(Boolean).join(' · ') || null,
+      lines: visible.map(l => ({
+        quantity: l.quantity, name: [l.size, l.name].filter(Boolean).join(' '),
+        details: [...(l.details ?? []), l.note ? `“${l.note}”` : null].filter(Boolean), price: l.price || null, removed: !!l.voided,
+      })),
+      totals: visible.length ? this.totalRows().map(([label, value, kind]) => ({ label, value, kind: kind ?? null })) : [],
+      toPay: null,
+      change: null,
+    });
+  }
+
+  totals() {
+    const saved = this.saved;
+    const rows = this.totalRows();
     const block = this.saved ? null : this.deliveryProblem();
     const canDiscount = saved ? !CLOSED.includes(saved.status) : this.draft.lines.length > 0 && !block;
     return h('div', { class: 'totals' },

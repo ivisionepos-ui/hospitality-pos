@@ -11,7 +11,11 @@ namespace Pos.Hub.Security;
 /// and for anything that changes data a staff member must be logged in on that device
 /// (Authorization: Bearer token) with the right permission.
 /// </summary>
-public sealed class AccessFilter(bool staffRequired, Permission? permission) : IEndpointFilter
+/// <remarks>
+/// A customer display faces the public, so it may call only the routes marked <see cref="AccessExtensions.ForDisplays"/>:
+/// never the order list, customers, the menu editor or a staff log-in.
+/// </remarks>
+public sealed class AccessFilter(bool staffRequired, Permission? permission, bool displaysAllowed = false) : IEndpointFilter
 {
     private const string CallerKey = "pos.caller";
 
@@ -28,6 +32,11 @@ public sealed class AccessFilter(bool staffRequired, Permission? permission) : I
             || access.AuthenticateDevice(deviceId, headers["X-Device-Key"]) is not { } device)
         {
             return Deny("DeviceNotRegistered", "This device is not registered with the hub.", StatusCodes.Status401Unauthorized);
+        }
+
+        if (device.Type == DeviceType.CustomerDisplay && !displaysAllowed)
+        {
+            return Deny("DisplayOnly", "A customer display can only show the order on its till.", StatusCodes.Status403Forbidden);
         }
 
         StaffMember? staff = null;
@@ -122,6 +131,10 @@ public static class AccessExtensions
     /// <summary>Any registered device may call this (e.g. reading the menu).</summary>
     public static RouteHandlerBuilder ForDevices(this RouteHandlerBuilder route) =>
         route.AddEndpointFilter(new AccessFilter(staffRequired: false, permission: null));
+
+    /// <summary>Customer displays may call this as well as every other registered device (live connection, what to show).</summary>
+    public static RouteHandlerBuilder ForDisplays(this RouteHandlerBuilder route) =>
+        route.AddEndpointFilter(new AccessFilter(staffRequired: false, permission: null, displaysAllowed: true));
 
     /// <summary>A logged-in staff member is required; the handler checks finer permissions.</summary>
     public static RouteHandlerBuilder ForStaff(this RouteHandlerBuilder route) =>

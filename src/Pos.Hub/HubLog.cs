@@ -19,6 +19,10 @@ public static partial class HubLog
     [LoggerMessage(EventId = 4, Level = LogLevel.Warning, Message = "Live event {Seq} could not be sent; screens will catch up.")]
     public static partial void LiveSendFailed(ILogger logger, long seq, Exception exception);
 
+    /// <summary>A customer display could not be updated; it catches up when it reconnects.</summary>
+    [LoggerMessage(EventId = 5, Level = LogLevel.Warning, Message = "Customer display update could not be sent; the display will catch up.")]
+    public static partial void DisplaySendFailed(ILogger logger, Exception exception);
+
     /// <summary>A backup was made and checked.</summary>
     [LoggerMessage(EventId = 20, Level = LogLevel.Information, Message = "Backup made: {File} ({Reason})")]
     public static partial void BackupMade(ILogger logger, string file, string reason);

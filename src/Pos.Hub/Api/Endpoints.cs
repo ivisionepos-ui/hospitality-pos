@@ -42,6 +42,40 @@ public static class Endpoints
         MapMenu(api);
         MapOrders(api);
         MapDrivers(api);
+        MapCustomerDisplays(api);
+    }
+
+    private static void MapCustomerDisplays(RouteGroupBuilder api)
+    {
+        // The till sends what it shows; the displays that follow it show the same at once.
+        api.MapPost("/display/state", (HttpContext http, CustomerDisplayService displays, DisplayState request) => Handle(() =>
+        {
+            var device = Caller(http).Device;
+            if (device.Type is not (DeviceType.Till or DeviceType.BackOffice))
+            {
+                throw new AccessDeniedException("NotATill", "Only a till sends to a customer display.", 403);
+            }
+
+            displays.Show(device.Id, request);
+            return Results.NoContent();
+        })).ForStaff(Permission.TakeOrders);
+
+        // A customer display: what to show now (asked when it starts and after each reconnection).
+        api.MapGet("/display", (HttpContext http, CustomerDisplayService displays) => Handle(() =>
+        {
+            var device = Caller(http).Device;
+            return device.Type == DeviceType.CustomerDisplay
+                ? Results.Ok(displays.For(device.Id))
+                : throw new AccessDeniedException("NotADisplay", "This device is not a customer display.", 403);
+        })).ForDisplays();
+
+        // More → Customer displays (owner): which till each display follows, welcome line and messages.
+        api.MapGet("/settings/customer-displays", (CustomerDisplayService displays) => Handle(() => Results.Ok(displays.Setup())))
+            .ForStaff(Permission.ManageDevices);
+
+        api.MapPut("/settings/customer-displays", (HttpContext http, CustomerDisplayService displays, SaveCustomerDisplaysRequest request) => Handle(() =>
+            Results.Ok(displays.Save(request, Caller(http).Staff!.Id))))
+            .ForStaff(Permission.ManageDevices);
     }
 
     private static void MapSetupAndAccess(RouteGroupBuilder api)
@@ -139,12 +173,12 @@ public static class Endpoints
         // A 60-second pass for opening the live connection at /live (WebSockets), plus the latest event number.
         api.MapPost("/live/ticket", (HttpContext http, Live.LiveUpdates live) => Handle(() =>
             Results.Ok(live.IssueTicket(Caller(http).Device))))
-            .ForDevices();
+            .ForDisplays();
 
         // Events missed while away: ask with the last number you saw; repeat while "more" is true.
         api.MapGet("/live/events", (HttpContext http, Live.LiveUpdates live, long? since) => Handle(() =>
             Results.Ok(live.Since(since ?? 0, Caller(http).Device.Type))))
-            .ForDevices();
+            .ForDisplays();
     }
 
     private static void MapTill(RouteGroupBuilder api)

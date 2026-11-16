@@ -97,3 +97,14 @@ Online ordering website (free)
   Tap it: choose the ready time and "Accept and send to kitchen", or "Turn down"
   with a reason. The customer sees your answer on their phone.
   The website only takes orders while this hub PC is on and connected.
+
+Customer display (the screen facing the customer)
+  Shows the order as it is rung up, the total, what is left to pay, the change,
+  then "Thank you" and your welcome messages between orders.
+  On a till with a second screen: set Windows to "Extend these displays", then
+  double-click "Open customer display (second screen)". The first time, choose
+  "Customer display" and type the code from More > Add a till or screen.
+  A tablet on the counter: open the hub address in its browser and register it
+  the same way. Then on the owner's till: More > Customer displays to choose which
+  till each display follows and write the welcome line and messages.
+  A customer display cannot see other orders, customers or the menu settings.

@@ -29,75 +29,262 @@ public static class Layouts
     /// <summary>
     /// A UK VAT receipt: shop details and VAT number, date and time, items in food-type order
     /// (with sizes, extras, deal choices, notes and offers), totals, VAT by rate, payments and change.
-    /// A reprint is marked COPY.
+    /// A reprint is marked COPY. Which parts print, their order and the item size follow the owner's layout
+    /// (the delivery layout for delivery orders); parts a VAT receipt must have always print.
     /// </summary>
-    public static PrintDocument Receipt(Order order, OrderPayments? payments, ReceiptSettings shop, TimeZoneInfo timeZone, string? servedBy, bool isCopy)
+    public static PrintDocument Receipt(Order order, OrderPayments? payments, ReceiptSettings shop, TimeZoneInfo timeZone, string? servedBy, bool isCopy, ReceiptLayout? layout = null)
     {
         ArgumentNullException.ThrowIfNull(order);
         ArgumentNullException.ThrowIfNull(shop);
         ArgumentNullException.ThrowIfNull(timeZone);
-        var lang = Lang.Parse(shop.Language);
+        var kind = order.Type == OrderType.Delivery ? ReceiptKind.Delivery : ReceiptKind.Receipt;
+        layout ??= ReceiptParts.Standard(kind);
+        var lang = Lang.Parse(layout.Language ?? shop.Language);
+        var itemSize = layout.ItemSize;
         var blocks = new List<PrintBlock>();
-
         if (isCopy)
         {
             blocks.Add(new PrintText("*** COPY ***", PrintAlign.Center, PrintSize.Large, Bold: true));
         }
 
-        blocks.Add(new PrintText(shop.BusinessName, PrintAlign.Center, PrintSize.Large, Bold: true));
-        if (lang.Arabic && !string.IsNullOrWhiteSpace(shop.BusinessNameAr))
+        var parts = new PartWriter(blocks, ReceiptParts.Receipt);
+        var t = order.Totals;
+        foreach (var part in Printed(kind, layout, !string.IsNullOrWhiteSpace(shop.VatNumber)))
         {
-            blocks.Add(new PrintText(shop.BusinessNameAr, PrintAlign.Center, PrintSize.Large, Bold: true));
+            var b = new List<PrintBlock>();
+            switch (part)
+            {
+                case "shopName":
+                    b.Add(new PrintText(shop.BusinessName, PrintAlign.Center, PrintSize.Large, Bold: true));
+                    if (lang.Arabic && !string.IsNullOrWhiteSpace(shop.BusinessNameAr))
+                    {
+                        b.Add(new PrintText(shop.BusinessNameAr, PrintAlign.Center, PrintSize.Large, Bold: true));
+                    }
+
+                    break;
+                case "address":
+                    b.AddRange(shop.AddressLines.Where(a => !string.IsNullOrWhiteSpace(a)).Select(a => new PrintText(a, PrintAlign.Center)));
+                    break;
+                case "phone" when !string.IsNullOrWhiteSpace(shop.Phone):
+                    b.Add(new PrintText($"Tel: {shop.Phone}", PrintAlign.Center));
+                    break;
+                case "vatNumber" when !string.IsNullOrWhiteSpace(shop.VatNumber):
+                    b.Add(new PrintText($"VAT No: {shop.VatNumber}", PrintAlign.Center, PrintSize.Small));
+                    break;
+                case "topText" or "bottomText":
+                    AddText(b, part == "topText" ? layout.TopText : layout.BottomText);
+                    break;
+                case "orderNumber":
+                    b.Add(new PrintText($"Order {order.Number.Display}", PrintAlign.Center, PrintSize.Huge, Bold: true));
+                    break;
+                case "orderType":
+                    b.Add(new PrintText(OrderKind(order), PrintAlign.Center, Bold: true));
+                    break;
+                case "table" when order.Table is { } receiptTable:
+                    b.Add(new PrintText($"Table {receiptTable}", PrintAlign.Center, PrintSize.Large, Bold: true));
+                    break;
+                case "dateTime":
+                    b.Add(new PrintColumns(LocalTime(order.CreatedAt, timeZone), order.Number.Reference, PrintSize.Small));
+                    break;
+                case "servedBy" when !string.IsNullOrWhiteSpace(servedBy):
+                    b.Add(new PrintText($"Served by {servedBy}", PrintAlign.Start, PrintSize.Small));
+                    break;
+                case "customer":
+                    AddContact(b, order, PrintSize.Normal);
+                    break;
+                case "items":
+                    AddReceiptItems(b, order, lang, itemSize);
+                    break;
+                case "totals":
+                    AddTotals(b, t);
+                    break;
+                case "payments":
+                    AddPayments(b, payments);
+                    break;
+                case "amountDue" when order.Type == OrderType.Delivery:
+                    // The driver must see at a glance whether to collect money.
+                    var due = payments?.Balance ?? t.Total;
+                    b.Add(new PrintSpace(0.5));
+                    b.Add(due.MinorUnits > 0
+                        ? new PrintText($"AMOUNT DUE {Money(due)}", PrintAlign.Center, PrintSize.Large, Bold: true, Inverted: true)
+                        : new PrintText("PAID - NOTHING TO COLLECT", PrintAlign.Center, PrintSize.Large, Bold: true));
+                    break;
+                case "vatSummary":
+                    AddVatSummary(b, t);
+                    break;
+                case "footer":
+                    if (!string.IsNullOrWhiteSpace(shop.Footer))
+                    {
+                        b.Add(new PrintText(shop.Footer, PrintAlign.Center));
+                    }
+
+                    if (lang.Arabic && !string.IsNullOrWhiteSpace(shop.FooterAr))
+                    {
+                        b.Add(new PrintText(shop.FooterAr, PrintAlign.Center));
+                    }
+
+                    break;
+            }
+
+            parts.Add(part, b);
         }
 
-        blocks.AddRange(shop.AddressLines.Where(a => !string.IsNullOrWhiteSpace(a)).Select(a => new PrintText(a, PrintAlign.Center)));
-        if (!string.IsNullOrWhiteSpace(shop.Phone))
+        return new PrintDocument($"{(isCopy ? "Receipt copy" : "Receipt")} {order.Number.Display}", blocks);
+    }
+
+    /// <summary>
+    /// A kitchen ticket: order number, how it is going out, time, and the items in food-type order
+    /// with sizes, extras, deal choices and notes, large and with no prices. Parts, order and item size follow the
+    /// owner's kitchen layout.
+    /// </summary>
+    /// <param name="order">The order.</param>
+    /// <param name="lines">The items for this ticket.</param>
+    /// <param name="kind">New, additional or void.</param>
+    /// <param name="shop">Receipt settings (language).</param>
+    /// <param name="timeZone">Shop time zone.</param>
+    /// <param name="station">The kitchen printer's name, printed at the top when there are several (e.g. "PIZZA").</param>
+    /// <param name="layout">The kitchen layout (the standard one if not given).</param>
+    public static PrintDocument KitchenTicket(Order order, IReadOnlyList<OrderLine> lines, KitchenTicketKind kind, ReceiptSettings shop, TimeZoneInfo timeZone, string? station = null, ReceiptLayout? layout = null)
+    {
+        ArgumentNullException.ThrowIfNull(order);
+        ArgumentNullException.ThrowIfNull(lines);
+        ArgumentNullException.ThrowIfNull(shop);
+        layout ??= ReceiptParts.Standard(ReceiptKind.Kitchen);
+        var lang = Lang.Parse(layout.Language ?? shop.Language);
+        var size = layout.ItemSize;
+        var blocks = new List<PrintBlock>();
+        var parts = new PartWriter(blocks, ReceiptParts.Kitchen);
+        foreach (var part in Printed(ReceiptKind.Kitchen, layout, vatRegistered: false))
         {
-            blocks.Add(new PrintText($"Tel: {shop.Phone}", PrintAlign.Center));
+            var b = new List<PrintBlock>();
+            switch (part)
+            {
+                case "ticketType":
+                    b.Add(kind switch
+                    {
+                        KitchenTicketKind.Void => new PrintText("VOID - DO NOT MAKE", PrintAlign.Center, PrintSize.Large, Bold: true, Inverted: true),
+                        KitchenTicketKind.Additional => new PrintText("ADDITIONAL ITEMS", PrintAlign.Center, PrintSize.Large, Bold: true, Inverted: true),
+                        _ => new PrintText("NEW ORDER", PrintAlign.Center, PrintSize.Large, Bold: true),
+                    });
+                    break;
+                case "station" when station is not null:
+                    b.Add(new PrintText(station.ToUpperInvariant(), PrintAlign.Center, PrintSize.Large, Bold: true, Inverted: true));
+                    break;
+                case "orderNumber":
+                    b.Add(new PrintText(order.Number.Display, PrintAlign.Center, PrintSize.Huge, Bold: true));
+                    break;
+                case "orderType":
+                    b.Add(new PrintText(OrderKind(order), PrintAlign.Center, PrintSize.Large, Bold: true));
+                    break;
+                case "table" when order.Table is { } table:
+                    b.Add(new PrintText($"TABLE {table}", PrintAlign.Center, PrintSize.Huge, Bold: true));
+                    break;
+                case "dateTime":
+                    b.Add(new PrintText($"Ordered {LocalTime(order.CreatedAt, timeZone)}", PrintAlign.Center));
+                    break;
+                case "topText" or "bottomText":
+                    AddText(b, part == "topText" ? layout.TopText : layout.BottomText);
+                    break;
+                case "customer":
+                    AddContact(b, order, PrintSize.Normal);
+                    break;
+                case "items":
+                    foreach (var line in lines.OrderBy(l => l.Display.CourseSortOrder).ThenBy(l => l.EntryNumber))
+                    {
+                        b.Add(new PrintText($"{line.Pricing.Quantity} x {Name(line.Display, lang.English)}", Size: size, Bold: true));
+                        AddArabicName(b, line.Display, lang, indent: 1, size);
+                        AddDetails(b, line.Display, lang, indent: 1, showPrices: false, size);
+                        if (line.Note is { } note)
+                        {
+                            b.Add(new PrintText($"** {note} **", Size: size, Bold: true, Indent: 1));
+                        }
+
+                        if (kind == KitchenTicketKind.Void && line.VoidReason is { } reason)
+                        {
+                            b.Add(new PrintText($"Reason: {reason}", Indent: 1));
+                        }
+
+                        b.Add(new PrintSpace(0.4));
+                    }
+
+                    break;
+                case "itemCount":
+                    b.Add(new PrintText($"{lines.Sum(l => l.Pricing.Quantity)} item(s)", PrintAlign.Center, PrintSize.Small));
+                    break;
+            }
+
+            parts.Add(part, b);
         }
 
-        if (!string.IsNullOrWhiteSpace(shop.VatNumber))
+        var title = kind switch
         {
-            blocks.Add(new PrintText($"VAT No: {shop.VatNumber}", PrintAlign.Center, PrintSize.Small));
-        }
+            KitchenTicketKind.Void => "Kitchen void",
+            KitchenTicketKind.Additional => "Kitchen additional",
+            _ => "Kitchen",
+        };
+        return new PrintDocument(station is null ? $"{title} {order.Number.Display}" : $"{title} {order.Number.Display} {station}", blocks);
+    }
 
-        blocks.Add(new PrintRule());
-        blocks.Add(new PrintText($"Order {order.Number.Display}", PrintAlign.Center, PrintSize.Huge, Bold: true));
-        blocks.Add(new PrintText(OrderKind(order), PrintAlign.Center, Bold: true));
-        if (order.Table is { } receiptTable)
+    /// <summary>The parts that print, in order: the shown ones plus any the law or the printout needs.</summary>
+    private static IEnumerable<string> Printed(ReceiptKind kind, ReceiptLayout layout, bool vatRegistered) =>
+        layout.Parts.Where(p => p.Show || ReceiptParts.IsRequired(kind, p.Id, vatRegistered)).Select(p => p.Id);
+
+    /// <summary>Adds parts in order, with a dashed line wherever the next part belongs to another group.</summary>
+    private sealed class PartWriter(List<PrintBlock> blocks, IReadOnlyList<LayoutPartInfo> catalogue)
+    {
+        private string? _group;
+
+        public void Add(string id, List<PrintBlock> part)
         {
-            blocks.Add(new PrintText($"Table {receiptTable}", PrintAlign.Center, PrintSize.Large, Bold: true));
+            if (part.Count == 0)
+            {
+                return;
+            }
+
+            var group = catalogue.First(p => p.Id == id).Group;
+            if (_group is not null && _group != group)
+            {
+                blocks.Add(new PrintRule());
+            }
+
+            _group = group;
+            blocks.AddRange(part);
         }
-        blocks.Add(new PrintColumns(LocalTime(order.CreatedAt, timeZone), order.Number.Reference, PrintSize.Small));
-        if (!string.IsNullOrWhiteSpace(servedBy))
+    }
+
+    private static void AddText(List<PrintBlock> blocks, string? text)
+    {
+        if (!string.IsNullOrWhiteSpace(text))
         {
-            blocks.Add(new PrintText($"Served by {servedBy}", PrintAlign.Start, PrintSize.Small));
+            blocks.AddRange(text.Split('\n').Select(line => new PrintText(line, PrintAlign.Center)));
         }
+    }
 
-        AddContact(blocks, order, PrintSize.Normal);
-        blocks.Add(new PrintRule());
-
+    private static void AddReceiptItems(List<PrintBlock> blocks, Order order, Lang lang, PrintSize size)
+    {
+        var smaller = Smaller(size);
         var priced = PricedByLine(order);
         foreach (var line in order.LinesForReceipt)
         {
             var p = priced[line.Id];
             var vatCode = p.VatRate?.Code ?? string.Join('/', p.Components.Select(c => c.VatRate.Code).Distinct());
-            blocks.Add(new PrintColumns($"{line.Pricing.Quantity} x {Name(line.Display, lang.English)}", $"{Money(p.LineTotal)} {vatCode}", Bold: true));
-            AddArabicName(blocks, line.Display, lang, indent: 1);
-            AddDetails(blocks, line.Display, lang, indent: 1, showPrices: false);
+            blocks.Add(new PrintColumns($"{line.Pricing.Quantity} x {Name(line.Display, lang.English)}", $"{Money(p.LineTotal)} {vatCode}", size, Bold: true));
+            AddArabicName(blocks, line.Display, lang, indent: 1, size);
+            AddDetails(blocks, line.Display, lang, indent: 1, showPrices: false, size);
             if (p.Offer.Promotion is { } offer && p.Saving.MinorUnits > 0)
             {
-                blocks.Add(new PrintColumns($"{offer.Name}", $"-{Money(p.Saving)}", PrintSize.Small, Indent: 1));
+                blocks.Add(new PrintColumns($"{offer.Name}", $"-{Money(p.Saving)}", smaller, Indent: 1));
             }
 
             if (line.Note is { } note)
             {
-                blocks.Add(new PrintText($"* {note}", Size: PrintSize.Small, Indent: 1));
+                blocks.Add(new PrintText($"* {note}", Size: smaller, Indent: 1));
             }
         }
+    }
 
-        blocks.Add(new PrintRule());
-        var t = order.Totals;
+    private static void AddTotals(List<PrintBlock> blocks, PricedOrder t)
+    {
         blocks.Add(new PrintColumns("Subtotal", Money(t.GoodsTotal)));
         if (t.TotalSaving.MinorUnits > 0)
         {
@@ -121,154 +308,74 @@ public static class Layouts
         }
 
         blocks.Add(new PrintColumns("TOTAL", Money(t.Total), PrintSize.Large, Bold: true));
-
-        if (payments is { Payments.Count: > 0 })
-        {
-            blocks.Add(new PrintSpace(0.5));
-            foreach (var payment in payments.Payments)
-            {
-                var name = payment.Method switch
-                {
-                    PaymentMethod.Cash => "Cash",
-                    PaymentMethod.Card => "Card",
-                    PaymentMethod.DeliveryApp => "Paid via app",
-                    _ => "Paid online",
-                };
-                if (payment.IsRefund)
-                {
-                    blocks.Add(new PrintColumns($"Refund to {name.ToLowerInvariant()} ({payment.Reason})", Money(payment.Amount)));
-                    continue;
-                }
-
-                blocks.Add(new PrintColumns(payment.Reference is { } r ? $"{name} (ref {r})" : name, Money(payment.Tendered ?? payment.Amount)));
-                if (payment.Change is { MinorUnits: > 0 } change)
-                {
-                    blocks.Add(new PrintColumns("Change", Money(change), Bold: true));
-                }
-
-                if (payment.Tip.MinorUnits > 0)
-                {
-                    blocks.Add(new PrintColumns("Tip - thank you", Money(payment.Tip)));
-                }
-            }
-
-            if (payments.Balance.MinorUnits > 0)
-            {
-                blocks.Add(new PrintColumns("STILL TO PAY", Money(payments.Balance), PrintSize.Large, Bold: true));
-            }
-        }
-
-        // The driver must see at a glance whether to collect money.
-        if (order.Type == OrderType.Delivery)
-        {
-            var due = payments?.Balance ?? t.Total;
-            blocks.Add(new PrintSpace(0.5));
-            blocks.Add(due.MinorUnits > 0
-                ? new PrintText($"AMOUNT DUE {Money(due)}", PrintAlign.Center, PrintSize.Large, Bold: true, Inverted: true)
-                : new PrintText("PAID - NOTHING TO COLLECT", PrintAlign.Center, PrintSize.Large, Bold: true));
-        }
-
-        if (t.VatSummary.Count > 0)
-        {
-            blocks.Add(new PrintRule());
-            blocks.Add(new PrintColumns("VAT rate", "Net / VAT", PrintSize.Small, Bold: true));
-            foreach (var v in t.VatSummary)
-            {
-                blocks.Add(new PrintColumns($"{v.Rate.Code} {v.Rate.Percent.ToString("0.##", CultureInfo.InvariantCulture)}%", $"{Money(v.Net)} / {Money(v.Vat)}", PrintSize.Small));
-            }
-
-            if (t.OutsideScopeOfVat.MinorUnits > 0)
-            {
-                blocks.Add(new PrintColumns("Outside the scope of VAT", Money(t.OutsideScopeOfVat), PrintSize.Small));
-            }
-        }
-
-        blocks.Add(new PrintRule());
-        if (!string.IsNullOrWhiteSpace(shop.Footer))
-        {
-            blocks.Add(new PrintText(shop.Footer, PrintAlign.Center));
-        }
-
-        if (lang.Arabic && !string.IsNullOrWhiteSpace(shop.FooterAr))
-        {
-            blocks.Add(new PrintText(shop.FooterAr, PrintAlign.Center));
-        }
-
-        return new PrintDocument($"{(isCopy ? "Receipt copy" : "Receipt")} {order.Number.Display}", blocks);
     }
 
-    /// <summary>
-    /// A kitchen ticket: order number, how it is going out, time, and the items in food-type order
-    /// with sizes, extras, deal choices and notes, large and with no prices.
-    /// </summary>
-    /// <param name="order">The order.</param>
-    /// <param name="lines">The items for this ticket.</param>
-    /// <param name="kind">New, additional or void.</param>
-    /// <param name="shop">Receipt settings (language).</param>
-    /// <param name="timeZone">Shop time zone.</param>
-    /// <param name="station">The kitchen printer's name, printed at the top when there are several (e.g. "PIZZA").</param>
-    public static PrintDocument KitchenTicket(Order order, IReadOnlyList<OrderLine> lines, KitchenTicketKind kind, ReceiptSettings shop, TimeZoneInfo timeZone, string? station = null)
+    private static void AddPayments(List<PrintBlock> blocks, OrderPayments? payments)
     {
-        ArgumentNullException.ThrowIfNull(order);
-        ArgumentNullException.ThrowIfNull(lines);
-        ArgumentNullException.ThrowIfNull(shop);
-        var lang = Lang.Parse(shop.Language);
-        var blocks = new List<PrintBlock>
+        if (payments is not { Payments.Count: > 0 })
         {
-            kind switch
-            {
-                KitchenTicketKind.Void => new PrintText("VOID - DO NOT MAKE", PrintAlign.Center, PrintSize.Large, Bold: true, Inverted: true),
-                KitchenTicketKind.Additional => new PrintText("ADDITIONAL ITEMS", PrintAlign.Center, PrintSize.Large, Bold: true, Inverted: true),
-                _ => new PrintText("NEW ORDER", PrintAlign.Center, PrintSize.Large, Bold: true),
-            },
-        };
-        if (station is not null)
-        {
-            blocks.Add(new PrintText(station.ToUpperInvariant(), PrintAlign.Center, PrintSize.Large, Bold: true, Inverted: true));
+            return;
         }
 
-        blocks.AddRange(
-        [
-            new PrintText(order.Number.Display, PrintAlign.Center, PrintSize.Huge, Bold: true),
-            new PrintText(OrderKind(order), PrintAlign.Center, PrintSize.Large, Bold: true),
-            new PrintText($"Ordered {LocalTime(order.CreatedAt, timeZone)}", PrintAlign.Center),
-        ]);
-        if (order.Table is { } table)
+        blocks.Add(new PrintSpace(0.5));
+        foreach (var payment in payments.Payments)
         {
-            blocks.Insert(blocks.Count - 1, new PrintText($"TABLE {table}", PrintAlign.Center, PrintSize.Huge, Bold: true));
-        }
-
-        AddContact(blocks, order, PrintSize.Normal);
-        blocks.Add(new PrintRule());
-
-        foreach (var line in lines.OrderBy(l => l.Display.CourseSortOrder).ThenBy(l => l.EntryNumber))
-        {
-            blocks.Add(new PrintText($"{line.Pricing.Quantity} x {Name(line.Display, lang.English)}", Size: PrintSize.Large, Bold: true));
-            AddArabicName(blocks, line.Display, lang, indent: 1, PrintSize.Large);
-            AddDetails(blocks, line.Display, lang, indent: 1, showPrices: false, PrintSize.Large);
-            if (line.Note is { } note)
+            var name = payment.Method switch
             {
-                blocks.Add(new PrintText($"** {note} **", Size: PrintSize.Large, Bold: true, Indent: 1));
+                PaymentMethod.Cash => "Cash",
+                PaymentMethod.Card => "Card",
+                PaymentMethod.DeliveryApp => "Paid via app",
+                _ => "Paid online",
+            };
+            if (payment.IsRefund)
+            {
+                blocks.Add(new PrintColumns($"Refund to {name.ToLowerInvariant()} ({payment.Reason})", Money(payment.Amount)));
+                continue;
             }
 
-            if (kind == KitchenTicketKind.Void && line.VoidReason is { } reason)
+            blocks.Add(new PrintColumns(payment.Reference is { } r ? $"{name} (ref {r})" : name, Money(payment.Tendered ?? payment.Amount)));
+            if (payment.Change is { MinorUnits: > 0 } change)
             {
-                blocks.Add(new PrintText($"Reason: {reason}", Indent: 1));
+                blocks.Add(new PrintColumns("Change", Money(change), Bold: true));
             }
 
-            blocks.Add(new PrintSpace(0.4));
+            if (payment.Tip.MinorUnits > 0)
+            {
+                blocks.Add(new PrintColumns("Tip - thank you", Money(payment.Tip)));
+            }
         }
 
-        blocks.Add(new PrintRule());
-        blocks.Add(new PrintText($"{lines.Sum(l => l.Pricing.Quantity)} item(s)", PrintAlign.Center, PrintSize.Small));
-        var title = kind switch
+        if (payments.Balance.MinorUnits > 0)
         {
-            KitchenTicketKind.Void => "Kitchen void",
-            KitchenTicketKind.Additional => "Kitchen additional",
-            _ => "Kitchen",
-        };
-        return new PrintDocument(station is null ? $"{title} {order.Number.Display}" : $"{title} {order.Number.Display} {station}", blocks);
+            blocks.Add(new PrintColumns("STILL TO PAY", Money(payments.Balance), PrintSize.Large, Bold: true));
+        }
     }
+
+    private static void AddVatSummary(List<PrintBlock> blocks, PricedOrder t)
+    {
+        if (t.VatSummary.Count == 0)
+        {
+            return;
+        }
+
+        blocks.Add(new PrintColumns("VAT rate", "Net / VAT", PrintSize.Small, Bold: true));
+        foreach (var v in t.VatSummary)
+        {
+            blocks.Add(new PrintColumns($"{v.Rate.Code} {v.Rate.Percent.ToString("0.##", CultureInfo.InvariantCulture)}%", $"{Money(v.Net)} / {Money(v.Vat)}", PrintSize.Small));
+        }
+
+        if (t.OutsideScopeOfVat.MinorUnits > 0)
+        {
+            blocks.Add(new PrintColumns("Outside the scope of VAT", Money(t.OutsideScopeOfVat), PrintSize.Small));
+        }
+    }
+
+    private static PrintSize Smaller(PrintSize size) => size switch
+    {
+        PrintSize.Huge => PrintSize.Large,
+        PrintSize.Large => PrintSize.Normal,
+        _ => PrintSize.Small,
+    };
 
     /// <summary>The Z report as a printed slip.</summary>
     public static PrintDocument ZReport(DayReport report, ReceiptSettings shop, Func<Guid, string> staffName)
@@ -400,7 +507,7 @@ public static class Layouts
     private static void AddDetails(List<PrintBlock> blocks, LineDisplay display, Lang lang, int indent, bool showPrices, PrintSize size = PrintSize.Normal)
     {
         _ = showPrices;
-        var smaller = size == PrintSize.Large ? PrintSize.Normal : PrintSize.Small;
+        var smaller = Smaller(size);
         foreach (var extra in display.Extras)
         {
             blocks.Add(new PrintText(Extra(Text(extra, lang)), Size: smaller, Indent: indent));
@@ -429,7 +536,6 @@ public static class Layouts
             return;
         }
 
-        blocks.Add(new PrintRule());
         if (c.Name is { } name)
         {
             blocks.Add(new PrintText(name, Size: PrintSize.Large, Bold: true));

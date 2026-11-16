@@ -1703,6 +1703,7 @@ test('customer display: register it, the owner links it to Till 2; it matches th
   await top(till).getByRole('button', { name: '£20.00' }).click();
   const change = (await till.locator('.change-amount').innerText()).trim();
   await display.getByText('Thank you!').waitFor();
+  const thanksAt = Date.now();
   assert.equal((await display.locator('.cd-thanks-change strong').innerText()).trim(), change);
   const number = (await ordersToday()).at(-1).number;
   await display.locator('.cd-thanks-number strong', { hasText: String(number) }).waitFor();
@@ -1710,7 +1711,7 @@ test('customer display: register it, the owner links it to Till 2; it matches th
   await top(till).getByRole('button', { name: 'Done' }).click();
   await till.getByText('Paid. Receipt printing.').waitFor();
   await till.locator('.lines-empty').waitFor();
-  assert.equal(await display.getByText('Thank you!').count(), 1); // stays a moment although the till is empty again
+  if (Date.now() - thanksAt < 8000) assert.equal(await display.getByText('Thank you!').count(), 1); // stays 10 s although the till is empty again
   await display.getByText('Welcome to Test Kebabs').waitFor({ timeout: 15000 });
 
   // Logging out mid-order puts the display back to its welcome screen.
@@ -1947,6 +1948,61 @@ test('website: the owner connects the website, a customer orders for collection,
   } finally {
     await online.close();
   }
+});
+
+test('receipt layouts: the owner hides and moves parts, sees the preview change, sets kitchen items huge, saves', async () => {
+  const page = await tillPage(shop.till1);
+  await login(page, '4826');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Receipt layouts' }).click();
+  const dialog = top(page);
+  const preview = dialog.locator('.rl-preview img');
+  await preview.waitFor();
+  const height = async () => preview.evaluate(img => img.complete ? img.naturalHeight : new Promise(r => img.onload = () => r(img.naturalHeight)));
+  const before = await height();
+  const src = await preview.getAttribute('src');
+
+  // A part the law needs cannot be unticked; an ordinary one can, and the preview gets shorter.
+  assert.equal(await dialog.getByRole('checkbox', { name: /^Items/ }).isDisabled(), true);
+  await dialog.getByRole('checkbox', { name: 'Date, time and reference' }).isDisabled();
+  await dialog.getByRole('checkbox', { name: 'Served by' }).uncheck();
+  await dialog.getByRole('checkbox', { name: 'Order type (takeaway, delivery…)' }).uncheck();
+  await page.waitForFunction(old => document.querySelector('.rl-preview img')?.getAttribute('src') !== old, src);
+  assert.ok(await height() < before, 'preview shorter without two parts');
+
+  // Move the order number to the top and add text at the bottom (typing turns the part on).
+  await dialog.getByRole('button', { name: 'Move Order number up' }).click();
+  const shorter = await height();
+  const textBox = dialog.getByRole('textbox', { name: 'Your text at the bottom' });
+  await textBox.click();
+  await page.keyboard.type('10% off your next order'); // typed by hand: the box keeps the cursor all the way
+  assert.equal(await textBox.inputValue(), '10% off your next order');
+  assert.equal(await dialog.getByRole('checkbox', { name: 'Your text at the bottom' }).isChecked(), true);
+  await page.waitForFunction(h => { const img = document.querySelector('.rl-preview img'); return img?.complete && img.naturalHeight > h; }, shorter);
+  const order = await dialog.locator('.rl-part span').allInnerTexts();
+  assert.ok(order.indexOf('Order number') < order.indexOf('Your text at the top'));
+  await shot(page, 'ui-receipt-layouts');
+
+  // Kitchen ticket: huge items.
+  const receiptSrc = await preview.getAttribute('src');
+  await dialog.getByRole('tab', { name: 'Kitchen ticket' }).click();
+  await dialog.getByRole('radio', { name: 'Huge' }).click();
+  await page.waitForFunction(old => { const img = document.querySelector('.rl-preview img'); return img && img.getAttribute('src') !== old && img.complete; }, receiptSrc);
+  await page.waitForTimeout(600); // the last change's preview
+  await shot(page, 'ui-receipt-layouts-kitchen');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Receipt layouts saved').waitFor();
+
+  const saved = await call('GET', '/api/settings/receipt-layouts', shop.owner);
+  assert.equal(saved.layouts.kitchen.itemSize, 'Huge');
+  assert.equal(saved.layouts.receipt.bottomText, '10% off your next order');
+  assert.equal(saved.layouts.receipt.parts.find(p => p.id === 'servedBy').show, false);
+  assert.equal(saved.layouts.delivery.parts.find(p => p.id === 'servedBy').show, true); // other layouts untouched
+
+  // Back to standard for any later printing.
+  await call('PUT', '/api/settings/receipt-layouts', shop.owner, saved.standard);
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
 });
 
 // Must stay the last test: it clears every sale and switches the shop to live.

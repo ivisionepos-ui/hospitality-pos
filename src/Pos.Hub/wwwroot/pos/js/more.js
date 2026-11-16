@@ -1,4 +1,5 @@
 // The "More" menu: menu, till shift, staff, X and Z reports, adding a till, failed prints, backups.
+import { receiptLayoutsDialog } from './receiptlayouts.js';
 import { api } from './api.js';
 import { h, mount, money, penceText, timeText, toast } from './dom.js';
 import { alertDialog, amountDialog, busy, confirmDialog, openDialog, textDialog } from './dialogs.js';
@@ -748,6 +749,7 @@ export function moreDialog(till) {
             item('Change my PIN', () => changeMyPin(till.ctx.me.staff, till.ctx.logout)),
             can('ManageDevices') ? item('Tills and screens', devicesDialog) : null,
             can('ManageDevices') ? item('Printers', printersDialog) : null,
+            can('ManageDevices') ? item('Receipt layouts', receiptLayoutsDialog) : null,
             can('ManageDevices') ? item('Add a till or screen', addTill) : null),
           section('Reports and shop',
             can('ManageDevices') ? item('Shop details', shopDetails) : null,

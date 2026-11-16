@@ -119,3 +119,10 @@ Before your first real day: clear the test sales, then go live
   a backup is made first). Menu, staff, tills and settings stay.
   Then "Go live" (type GO LIVE). This cannot be undone: after it no sale can
   be deleted, because UK law requires sales records to be kept six years.
+
+Receipt layouts
+  More > Receipt layouts (owner): for the customer receipt, the delivery
+  receipt and the kitchen ticket, tick the parts to print, move them up or
+  down, choose the item text size and language, and add your own text at the
+  top or bottom. The preview shows your newest order as it will print.
+  A VAT receipt always keeps the parts the law requires.

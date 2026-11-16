@@ -651,3 +651,28 @@ h1, h2, h3 { margin: 0; }
 .trading-row { display: flex; gap: 8px; }
 .trading-row .text-input { flex: 1; }
 .plain-list { margin: 4px 0 0; padding-left: 18px; font-size: .9rem; }
+
+/* ---------- More → Receipt layouts ---------- */
+.dialog-receipt-layouts .rl-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; margin-top: 12px; align-items: start; }
+@media (max-width: 860px) { .dialog-receipt-layouts .rl-body { grid-template-columns: 1fr; } }
+.rl-editor { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rl-parts { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; max-height: 42vh; overflow-y: auto; }
+.rl-part { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border-top: 1px solid var(--line); }
+.rl-part:first-child { border-top: 0; }
+.rl-part .check { display: flex; align-items: center; gap: 8px; flex: 1; min-height: 40px; }
+.rl-part input { width: 20px; height: 20px; }
+.rl-off { color: var(--muted, #6b7280); }
+.rl-required { color: var(--muted, #6b7280); font-size: .78rem; margin-left: 4px; }
+.rl-move { display: flex; gap: 4px; }
+.rl-move .btn { min-width: 40px; min-height: 36px; padding: 0 8px; }
+.rl-preview-wrap { display: flex; flex-direction: column; gap: 6px; }
+.rl-preview { background: #f3f4f6; border-radius: 10px; padding: 10px; max-height: 62vh; overflow-y: auto; display: flex; justify-content: center; }
+.rl-preview img { width: 100%; max-width: 300px; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.15); }
+.dialog-receipt-layouts { height: calc(100dvh - 32px); }
+.dialog-receipt-layouts .dialog-body { overflow: hidden; flex: 1; min-height: 0; }
+.dialog-receipt-layouts .rl-body { flex: 1; min-height: 0; margin-top: 0; }
+.dialog-receipt-layouts .rl-editor { overflow-y: auto; max-height: 100%; padding-right: 4px; }
+.dialog-receipt-layouts .rl-preview-wrap { max-height: 100%; min-height: 0; }
+.dialog-receipt-layouts .rl-preview { max-height: none; flex: 1; min-height: 0; }
+.dialog-receipt-layouts .rl-parts { max-height: none; overflow: visible; }
+@media (max-width: 860px) { .dialog-receipt-layouts .dialog-body { overflow-y: auto; } .dialog-receipt-layouts .rl-editor { overflow: visible; max-height: none; } }

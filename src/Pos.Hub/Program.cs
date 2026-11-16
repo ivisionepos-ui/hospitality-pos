@@ -85,6 +85,7 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddSingleton<PrintOutputs>();
 builder.Services.AddSingleton<PrinterSetupService>();
 builder.Services.AddSingleton<CashDrawerService>();
+builder.Services.AddSingleton<ReceiptLayoutService>();
 builder.Services.AddSingleton<PrintService>();
 builder.Services.AddHostedService<PrintWorker>();
 builder.Services.AddSignalR().AddJsonProtocol(o => PosJson.Configure(o.PayloadSerializerOptions));

@@ -52,8 +52,10 @@ export class CustomerDisplay {
     if (!state) return;
     clearTimeout(this.pendingIdle);
     if (state.stage === 'thanks') this.thanksUntil = Date.now() + THANKS_FOR_MS;
-    if (state.stage === 'idle' && this.state.stage === 'thanks' && Date.now() < this.thanksUntil) {
-      this.pendingIdle = setTimeout(() => this.show(state), this.thanksUntil - Date.now());
+    // While "Thank you" shows, the till clearing itself or redrawing the paid order waits; a new order shows at once.
+    const sameOrder = state.stage === 'idle' || (state.orderNumber && state.orderNumber === this.state.orderNumber);
+    if (this.state.stage === 'thanks' && state.stage !== 'thanks' && sameOrder && Date.now() < this.thanksUntil) {
+      this.pendingIdle = setTimeout(() => { this.thanksUntil = 0; this.show(state); }, this.thanksUntil - Date.now());
       return;
     }
 

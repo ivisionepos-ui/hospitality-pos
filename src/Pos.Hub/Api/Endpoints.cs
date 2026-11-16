@@ -69,6 +69,29 @@ public static class Endpoints
                 : throw new AccessDeniedException("NotADisplay", "This device is not a customer display.", 403);
         })).ForDisplays();
 
+        // More → Receipt layouts (owner): which parts each printout has, their order, item size, language, own texts.
+        api.MapGet("/settings/receipt-layouts", (ReceiptLayoutService layouts, ShopDetailsService shop) => Handle(() => Results.Ok(new
+        {
+            layouts = layouts.Get(),
+            standard = ReceiptParts.StandardSet,
+            receiptParts = ReceiptParts.Receipt,
+            kitchenParts = ReceiptParts.Kitchen,
+            vatRegistered = !string.IsNullOrWhiteSpace(shop.Get().VatNumber),
+        }))).ForStaff(Permission.ManageDevices); // owner only
+
+        api.MapPut("/settings/receipt-layouts", (HttpContext http, ReceiptLayoutService layouts, ShopDetailsService shop, ReceiptLayoutSet request) => Handle(() =>
+            Results.Ok(layouts.Save(request, !string.IsNullOrWhiteSpace(shop.Get().VatNumber), Caller(http).Staff!.Id))))
+            .ForStaff(Permission.ManageDevices); // owner only
+
+        // The preview beside the layout being edited: the newest suitable order printed with that layout (not saved).
+        api.MapPost("/settings/receipt-layouts/preview", (HttpContext http, PrintService print, ShopDetailsService shop, ReceiptKind kind, ReceiptLayout request) => Handle(() =>
+        {
+            var layout = ReceiptParts.Checked(kind, request, !string.IsNullOrWhiteSpace(shop.Get().VatNumber));
+            return print.PreviewLayout(kind, layout, DeviceOf(http)) is { } png
+                ? Results.File(png, "image/png")
+                : throw new KeyNotFoundException("No orders yet. Make a test order to see the preview.");
+        })).ForStaff(Permission.ManageDevices); // owner only
+
         // More → Testing or live (owner): clear the test sales while testing; go live (after which no sale can be deleted).
         api.MapGet("/settings/trading", (TradingService trading) => Handle(() => Results.Ok(trading.Status())))
             .ForStaff(Permission.ManageDevices); // owner only

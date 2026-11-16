@@ -87,6 +87,7 @@ public sealed class PrintService(
     PrintOutputs outputs,
     Renderer renderer,
     LiveUpdates live,
+    ReceiptLayoutService layouts,
     TimeProvider clock)
 {
     private readonly Channel<Guid> _queue = Channel.CreateUnbounded<Guid>(new UnboundedChannelOptions { SingleReader = true });
@@ -201,6 +202,65 @@ public sealed class PrintService(
         var printer = settings.ReceiptFor(deviceId);
         var document = ReceiptDocument(orderId, isCopy: false);
         return pdf ? renderer.RenderPdf(document, printer.WidthDots, printer.PaperWidthMm) : renderer.RenderPng(document, printer.WidthDots);
+    }
+
+    /// <summary>
+    /// How a printout would look with a layout that is not saved yet (More → Receipt layouts), using the newest order of
+    /// that kind as the example. Null when the shop has no orders yet.
+    /// </summary>
+    public byte[]? PreviewLayout(ReceiptKind kind, ReceiptLayout layout, Guid? deviceId)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        var order = ExampleOrder(kind);
+        if (order is null)
+        {
+            return null;
+        }
+
+        if (kind == ReceiptKind.Kitchen)
+        {
+            var station = settings.Kitchens[0];
+            var ticket = Layouts.KitchenTicket(order, [.. order.ActiveLines], KitchenTicketKind.New, settings.ReceiptText, hub.TimeZone, settings.Kitchens.Count > 1 ? station.Name : null, layout);
+            return renderer.RenderPng(ticket, station.Printer.WidthDots);
+        }
+
+        var servedBy = order.History.Count > 0 ? access.StaffName(order.History[0].UserId) : null;
+        var receipt = Layouts.Receipt(order, tills.Ledger(order), settings.ReceiptText, hub.TimeZone, servedBy, isCopy: false, layout);
+        return renderer.RenderPng(receipt, settings.ReceiptFor(deviceId).WidthDots);
+    }
+
+    /// <summary>The newest order that suits the preview: a delivery for the delivery receipt, any other for the rest.</summary>
+    private Order? ExampleOrder(ReceiptKind kind)
+    {
+        var ids = db.Run(() =>
+        {
+            using var command = db.Command("SELECT id FROM orders ORDER BY created_at DESC LIMIT 200;");
+            using var reader = command.ExecuteReader();
+            var list = new List<Guid>();
+            while (reader.Read())
+            {
+                list.Add(Guid.Parse(reader.GetString(0)));
+            }
+
+            return list;
+        });
+        Order? fallback = null;
+        foreach (var id in ids)
+        {
+            var order = orders.Get(id);
+            if (order.ActiveLines.Count == 0)
+            {
+                continue;
+            }
+
+            fallback ??= order;
+            if ((kind == ReceiptKind.Delivery) == (order.Type == Pos.Domain.Tax.OrderType.Delivery))
+            {
+                return order;
+            }
+        }
+
+        return fallback;
     }
 
     // ---------- Printing (used by the print worker) ----------
@@ -327,7 +387,7 @@ public sealed class PrintService(
                     PrintJobKind.KitchenAdditional => KitchenTicketKind.Additional,
                     _ => KitchenTicketKind.New,
                 };
-                return Layouts.KitchenTicket(order, lines, kind, settings.ReceiptText, hub.TimeZone, settings.Kitchens.Count > 1 ? station.Name : null);
+                return Layouts.KitchenTicket(order, lines, kind, settings.ReceiptText, hub.TimeZone, settings.Kitchens.Count > 1 ? station.Name : null, layouts.Get().Kitchen);
         }
     }
 
@@ -335,7 +395,8 @@ public sealed class PrintService(
     {
         var order = orders.Get(orderId);
         var servedBy = order.History.Count > 0 ? access.StaffName(order.History[0].UserId) : null;
-        return Layouts.Receipt(order, tills.Ledger(order), settings.ReceiptText, hub.TimeZone, servedBy, isCopy);
+        var layout = layouts.Get().For(order.Type == Pos.Domain.Tax.OrderType.Delivery ? ReceiptKind.Delivery : ReceiptKind.Receipt);
+        return Layouts.Receipt(order, tills.Ledger(order), settings.ReceiptText, hub.TimeZone, servedBy, isCopy, layout);
     }
 
     private string Describe(PrintJob job) => job.Kind switch

@@ -1727,6 +1727,53 @@ test('customer display: register it, the owner links it to Till 2; it matches th
   await till.context().close();
 });
 
+test('item buttons: the owner makes them small without prices on this till; items still add with their price; other tills unchanged', async () => {
+  const page = await tillPage(shop.till1);
+  await login(page, '4826');
+  await page.locator('.cats').getByRole('button', { name: 'Kebabs', exact: true }).click();
+  const normal = await page.locator('.items .item').first().boundingBox();
+  assert.ok(await page.locator('.items .item-price').count() > 0);
+
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Item buttons (size, prices)' }).click();
+  await top(page).getByRole('radio', { name: 'Small (more items fit)' }).click();
+  await top(page).getByRole('radio', { name: 'Hide prices' }).click();
+  await shot(page, 'ui-item-buttons-settings');
+  await top(page).getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Item buttons saved for this till.').waitFor();
+
+  await page.locator('.items.items-small.items-no-price').waitFor();
+  assert.equal(await page.locator('.items .item:not(.item-out) .item-price').count(), 0);
+  const small = await page.locator('.items .item').first().boundingBox();
+  assert.ok(small.height < normal.height && small.width < normal.width, `${JSON.stringify(small)} vs ${JSON.stringify(normal)}`);
+  await shot(page, 'ui-item-buttons-small');
+
+  // Still the same items: the price shows on the order as soon as one is added.
+  await page.getByRole('button', { name: 'Takeaway', exact: true }).click();
+  await page.locator('.cats').getByRole('button', { name: 'Sides', exact: true }).click();
+  await page.locator('.items').getByRole('button', { name: /Cheesy chips/ }).click();
+  await top(page).getByRole('button', { name: /Large/ }).click();
+  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await page.locator('.line .line-price', { hasText: /£\d+\.\d\d/ }).waitFor();
+
+  // Kept after logging in again; Till 2 still has normal buttons with prices.
+  await page.getByRole('button', { name: 'Clear' }).click();
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await login(page, '4826');
+  await page.locator('.items.items-small.items-no-price').waitFor();
+  const other = await tillPage(shop.till2);
+  await login(other, '5931');
+  await other.locator('.items.items-normal:not(.items-no-price)').waitFor();
+  assert.ok(await other.locator('.items .item-price').count() > 0);
+
+  // Back to normal for the other tests.
+  await call('PUT', '/api/settings/item-buttons', { device: shop.till1, token: shop.owner.token }, { showPrices: true, size: 'Normal', allTills: false }).catch(() => {});
+  assert.deepEqual(page.errors, []);
+  assert.deepEqual(other.errors, []);
+  await page.context().close();
+  await other.context().close();
+});
+
 test('website: the owner connects the website, a customer orders for collection, the till accepts it, the customer sees the ready time', async () => {
   // The online ordering service, run locally (the same code as on Cloudflare, with Node's SQLite for its database).
   const { start } = await import(path.join(__dirname, '..', '..', 'online', 'dev', 'local.mjs'));

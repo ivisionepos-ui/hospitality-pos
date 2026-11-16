@@ -311,6 +311,45 @@ async function kitchenScreensSettings() {
   });
 }
 
+/** More → Item buttons (owner or manager): button size and whether prices show, for this till or every till. */
+async function itemButtonsSettings(till) {
+  const current = till.itemButtons ?? { showPrices: true, size: 'Normal' };
+  let size = current.size;
+  let showPrices = current.showPrices;
+  let allTills = false;
+  await openDialog(close => {
+    const body = h('div', { class: 'item-buttons-settings' });
+    const choice = (label, on, onclick) => h('button', { type: 'button', class: `seg-btn ${on ? 'seg-on' : ''}`, role: 'radio', 'aria-checked': String(on), onclick, text: label });
+    const render = () => mount(body,
+      h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Button size' }),
+        h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Button size' },
+          [['Small', 'Small (more items fit)'], ['Normal', 'Normal'], ['Large', 'Large']].map(([id, label]) => choice(label, size === id, () => { size = id; render(); })))),
+      h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Prices on the buttons' }),
+        h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Prices on the buttons' },
+          choice('Show prices', showPrices, () => { showPrices = true; render(); }),
+          choice('Hide prices', !showPrices, () => { showPrices = false; render(); }))),
+      h('p', { class: 'field-hint', text: 'With prices hidden the price still shows on the order as soon as an item is added, and sold-out items still say Sold out.' }),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: allTills, onchange: e => { allTills = e.target.checked; } }), ' Use the same on every till'));
+    const save = async () => {
+      try {
+        till.itemButtons = await busy(() => api.put('/api/settings/item-buttons', { size, showPrices, allTills }));
+        till.renderCatalog();
+        toast(allTills ? 'Item buttons saved for every till. Other tills change at their next log-in.' : 'Item buttons saved for this till.', 'ok', 5000);
+        close();
+      } catch (e) {
+        toast(e.message, 'error', 6000);
+      }
+    };
+    render();
+    return {
+      title: 'Item buttons',
+      class: 'dialog-narrow',
+      body,
+      actions: [h('button', { class: 'btn', onclick: () => close(), text: 'Cancel' }), h('button', { class: 'btn btn-primary', onclick: save, text: 'Save' })],
+    };
+  });
+}
+
 /** More → Customer displays (owner): which till each display follows, the welcome line and the messages shown between orders. */
 async function customerDisplaysSettings() {
   let setup;
@@ -618,6 +657,7 @@ export function moreDialog(till) {
           section('Menu',
             can('EditMenu') ? item('Edit menu', () => till.enterEditMode(), true) : null,
             can('EditMenu') ? item('Menu spreadsheet (Excel)', menuSpreadsheetDialog) : null,
+            can('EditMenu') ? item('Item buttons (size, prices)', () => itemButtonsSettings(till)) : null,
             item('Sold out items', () => soldOutDialog(till)),
             can('ManageDevices') ? item('Discount limits', discountLimitsDialog) : null),
           section('Till',

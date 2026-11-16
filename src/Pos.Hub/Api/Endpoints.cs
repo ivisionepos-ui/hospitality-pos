@@ -69,6 +69,15 @@ public static class Endpoints
                 : throw new AccessDeniedException("NotADisplay", "This device is not a customer display.", 403);
         })).ForDisplays();
 
+        // More → Item buttons: this till's button size and whether prices show (owner or manager).
+        api.MapGet("/settings/item-buttons", (HttpContext http, ItemButtonService buttons) => Handle(() =>
+            Results.Ok(buttons.For(DeviceOf(http)))))
+            .ForStaff();
+
+        api.MapPut("/settings/item-buttons", (HttpContext http, ItemButtonService buttons, SaveItemButtonsRequest request) => Handle(() =>
+            Results.Ok(buttons.Save(DeviceOf(http), request, Caller(http).Staff!.Id))))
+            .ForStaff(Permission.EditMenu);
+
         // More → Customer displays (owner): which till each display follows, welcome line and messages.
         api.MapGet("/settings/customer-displays", (CustomerDisplayService displays) => Handle(() => Results.Ok(displays.Setup())))
             .ForStaff(Permission.ManageDevices);

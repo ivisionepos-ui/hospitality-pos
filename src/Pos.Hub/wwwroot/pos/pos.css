@@ -137,6 +137,15 @@ h1, h2, h3 { margin: 0; }
 .item-price { color: var(--ink-soft); font-variant-numeric: tabular-nums; font-size: .95rem; }
 .item-out { opacity: .5; background: repeating-linear-gradient(135deg, #fff, #fff 10px, #f3f4f6 10px, #f3f4f6 20px); }
 .item-out .item-price { color: var(--danger); font-weight: 700; }
+/* More → Item buttons: smaller buttons fit more items; without prices the name gets the room. */
+.items-small { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); grid-auto-rows: 66px; gap: 6px; }
+.items-small .item { padding: 6px 8px; border-top-width: 4px; font-size: .88rem; }
+.items-small .item-price { font-size: .8rem; }
+.items-large { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); grid-auto-rows: 116px; gap: 10px; }
+.items-large .item { padding: 12px 14px; font-size: 1.12rem; }
+.items-no-price .item { justify-content: center; }
+.items-no-price .item-name { -webkit-line-clamp: 3; }
+.items-no-price.items-small .item-name { -webkit-line-clamp: 3; line-height: 1.15; }
 .empty { margin: auto; max-width: 420px; text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center; background: var(--panel); padding: 28px; border-radius: 16px; }
 .empty p { margin: 0; color: var(--ink-soft); }
 

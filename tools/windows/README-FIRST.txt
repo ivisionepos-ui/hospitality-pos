@@ -108,3 +108,7 @@ Customer display (the screen facing the customer)
   the same way. Then on the owner's till: More > Customer displays to choose which
   till each display follows and write the welcome line and messages.
   A customer display cannot see other orders, customers or the menu settings.
+
+Item buttons (many items on the menu)
+  More > Item buttons (size, prices): make the item buttons Small, Normal or
+  Large and show or hide the prices, for this till or every till.

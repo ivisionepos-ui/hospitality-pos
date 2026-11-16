@@ -203,9 +203,18 @@ export class Till {
   }
 
   async start() {
-    await this.loadMenu();
+    await Promise.all([this.loadMenu(), this.loadItemButtons()]);
     this.render();
     this.refreshOpenCount();
+  }
+
+  /** This till's item buttons: size, and whether prices show (More → Item buttons). */
+  async loadItemButtons() {
+    try {
+      this.itemButtons = await api.get('/api/settings/item-buttons');
+    } catch {
+      this.itemButtons = { showPrices: true, size: 'Normal' }; // the hub will answer next time; the till still works
+    }
   }
 
   async loadMenu() {
@@ -344,7 +353,8 @@ export class Till {
       text: text(c.name),
     })));
     const category = categories.find(c => c.id === this.categoryId);
-    const grid = h('div', { class: 'items' }, this.menu.productsIn(this.categoryId).map(p => {
+    const look = this.itemButtons ?? { showPrices: true, size: 'Normal' };
+    const grid = h('div', { class: `items items-${look.size.toLowerCase()} ${look.showPrices ? '' : 'items-no-price'}` }, this.menu.productsIn(this.categoryId).map(p => {
       const soldOut = this.menu.isSoldOut(p);
       const price = p.variants.length > 1 ? `from ${penceText(this.menu.fromPrice(p))}` : penceText(p.variants[0].price.minorUnits);
       return h('button', {
@@ -352,8 +362,9 @@ export class Till {
         style: category?.colour ? { '--cat': category.colour } : null,
         disabled: soldOut,
         onclick: () => this.pick(p),
+        'aria-label': look.showPrices || soldOut ? null : `${this.menu.buttonName(p)} ${price}`, // the price is still read out
       }, h('span', { class: 'item-name', text: this.menu.buttonName(p) }),
-        h('span', { class: 'item-price', text: soldOut ? 'Sold out' : price }));
+        soldOut || look.showPrices ? h('span', { class: 'item-price', text: soldOut ? 'Sold out' : price }) : null);
     }));
     mount(this.catalogEl, tabs, grid);
   }

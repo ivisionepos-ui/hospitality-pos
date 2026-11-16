@@ -349,7 +349,9 @@ export class Till {
     }
 
     const categories = this.menu.categories();
-    const tabs = h('nav', { class: 'cats', 'aria-label': 'Categories' }, categories.map(c => h('button', {
+    const look = this.itemButtons ?? { showPrices: true, size: 'Normal' };
+    const catSize = look.customCategories ? { '--cat-w': `${look.categoryWidth}px`, '--cat-h': `${look.categoryHeight}px` } : null;
+    const tabs = h('nav', { class: `cats ${catSize ? 'cats-custom' : ''}`, style: catSize, 'aria-label': 'Categories' }, categories.map(c => h('button', {
       class: `cat ${c.id === this.categoryId ? 'cat-on' : ''}`,
       style: c.colour ? { '--cat': c.colour } : null,
       'aria-pressed': String(c.id === this.categoryId),
@@ -357,8 +359,8 @@ export class Till {
       text: text(c.name),
     })));
     const category = categories.find(c => c.id === this.categoryId);
-    const look = this.itemButtons ?? { showPrices: true, size: 'Normal' };
-    const grid = h('div', { class: `items items-${look.size.toLowerCase()} ${look.showPrices ? '' : 'items-no-price'}` }, this.menu.productsIn(this.categoryId).map(p => {
+    const itemSize = look.size === 'Custom' ? { '--item-w': `${look.itemWidth}px`, '--item-h': `${look.itemHeight}px` } : null;
+    const grid = h('div', { class: `items items-${look.size.toLowerCase()} ${look.showPrices ? '' : 'items-no-price'}`, style: itemSize }, this.menu.productsIn(this.categoryId).map(p => {
       const soldOut = this.menu.isSoldOut(p);
       const price = p.variants.length > 1 ? `from ${penceText(this.menu.fromPrice(p))}` : penceText(p.variants[0].price.minorUnits);
       return h('button', {

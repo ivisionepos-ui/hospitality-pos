@@ -109,9 +109,10 @@ Customer display (the screen facing the customer)
   till each display follows and write the welcome line and messages.
   A customer display cannot see other orders, customers or the menu settings.
 
-Item buttons (many items on the menu)
-  More > Item buttons (size, prices): make the item buttons Small, Normal or
-  Large and show or hide the prices, for this till or every till.
+Buttons (many items on the menu)
+  More > Buttons (size, prices): item buttons Small, Normal or Large
+  (automatic), or a custom width and height in pixels; category buttons
+  automatic or custom; prices shown or hidden; this till or every till.
 
 Before your first real day: clear the test sales, then go live
   More > Testing or live (owner). "Clear test sales" removes every order,

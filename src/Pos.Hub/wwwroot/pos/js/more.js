@@ -389,30 +389,83 @@ async function tradingDialog() {
   });
 }
 
-/** More → Item buttons (owner or manager): button size and whether prices show, for this till or every till. */
+/**
+ * More → Buttons (owner or manager): item buttons Small / Normal / Large (automatic, they fill the screen) or a custom
+ * width and height in pixels; category buttons automatic (sized to their names) or custom; prices shown or hidden.
+ * For this till or every till.
+ */
 async function itemButtonsSettings(till) {
   const current = till.itemButtons ?? { showPrices: true, size: 'Normal' };
-  let size = current.size;
-  let showPrices = current.showPrices;
-  let allTills = false;
+  const s = {
+    size: current.size,
+    showPrices: current.showPrices,
+    itemWidth: current.itemWidth ?? 140,
+    itemHeight: current.itemHeight ?? 92,
+    customCategories: !!current.customCategories,
+    categoryWidth: current.categoryWidth ?? 120,
+    categoryHeight: current.categoryHeight ?? 52,
+    allTills: false,
+  };
   await openDialog(close => {
     const body = h('div', { class: 'item-buttons-settings' });
     const choice = (label, on, onclick) => h('button', { type: 'button', class: `seg-btn ${on ? 'seg-on' : ''}`, role: 'radio', 'aria-checked': String(on), onclick, text: label });
-    const render = () => mount(body,
-      h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Button size' }),
-        h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Button size' },
-          [['Small', 'Small (more items fit)'], ['Normal', 'Normal'], ['Large', 'Large']].map(([id, label]) => choice(label, size === id, () => { size = id; render(); })))),
-      h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Prices on the buttons' }),
-        h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Prices on the buttons' },
-          choice('Show prices', showPrices, () => { showPrices = true; render(); }),
-          choice('Hide prices', !showPrices, () => { showPrices = false; render(); }))),
-      h('p', { class: 'field-hint', text: 'With prices hidden the price still shows on the order as soon as an item is added, and sold-out items still say Sold out.' }),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: allTills, onchange: e => { allTills = e.target.checked; } }), ' Use the same on every till'));
+    const pixels = (label, prop, min, max, sample) => {
+      const input = h('input', { class: 'text-input px-input', type: 'number', inputmode: 'numeric', min, max, step: 1, value: s[prop], 'aria-label': label });
+      input.addEventListener('input', () => {
+        s[prop] = Number(input.value);
+        sample();
+      });
+      return h('label', { class: 'px-field' }, h('span', { text: label }), input, h('span', { class: 'field-hint', text: `px (${min}–${max})` }));
+    };
+
+    // Samples at the real size, so the owner sees what the pixels mean on this screen.
+    const itemSample = h('button', { type: 'button', class: 'item item-sample', tabindex: -1, 'aria-hidden': 'true' },
+      h('span', { class: 'item-name', text: 'Large Doner kebab' }), h('span', { class: 'item-price', text: '£7.50' }));
+    const catSample = h('button', { type: 'button', class: 'cat cat-sample', tabindex: -1, 'aria-hidden': 'true', text: 'Kebabs' });
+    const sizeSamples = () => {
+      itemSample.style.width = `${s.itemWidth}px`;
+      itemSample.style.height = `${s.itemHeight}px`;
+      itemSample.style.setProperty('--item-h', `${s.itemHeight}px`);
+      catSample.style.width = `${s.categoryWidth}px`;
+      catSample.style.height = `${s.categoryHeight}px`;
+      catSample.style.setProperty('--cat-h', `${s.categoryHeight}px`);
+    };
+
+    const render = () => {
+      mount(body,
+        h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Item buttons' }),
+          h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Item button size' },
+            [['Small', 'Small'], ['Normal', 'Normal'], ['Large', 'Large'], ['Custom', 'Custom size']].map(([id, label]) => choice(label, s.size === id, () => { s.size = id; render(); }))),
+          s.size === 'Custom'
+            ? h('div', { class: 'px-row' }, pixels('Item width', 'itemWidth', 60, 400, sizeSamples), pixels('Item height', 'itemHeight', 40, 300, sizeSamples))
+            : h('p', { class: 'field-hint', text: 'Automatic: the buttons stretch to fill the screen; Small fits the most items.' }),
+          s.size === 'Custom' ? h('div', { class: 'items-custom sample-row' }, itemSample) : null),
+        h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Category buttons' }),
+          h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Category button size' },
+            choice('Automatic', !s.customCategories, () => { s.customCategories = false; render(); }),
+            choice('Custom size', s.customCategories, () => { s.customCategories = true; render(); })),
+          s.customCategories
+            ? h('div', { class: 'px-row' }, pixels('Category width', 'categoryWidth', 50, 400, sizeSamples), pixels('Category height', 'categoryHeight', 36, 200, sizeSamples))
+            : h('p', { class: 'field-hint', text: 'Automatic: each category button is as wide as its name.' }),
+          s.customCategories ? h('div', { class: 'cats-custom sample-row' }, catSample) : null),
+        h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Prices on the item buttons' }),
+          h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Prices on the buttons' },
+            choice('Show prices', s.showPrices, () => { s.showPrices = true; render(); }),
+            choice('Hide prices', !s.showPrices, () => { s.showPrices = false; render(); }))),
+        h('p', { class: 'field-hint', text: 'With prices hidden the price still shows on the order as soon as an item is added, and sold-out items still say Sold out.' }),
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.allTills, onchange: e => { s.allTills = e.target.checked; } }), ' Use the same on every till'));
+      sizeSamples();
+    };
     const save = async () => {
       try {
-        till.itemButtons = await busy(() => api.put('/api/settings/item-buttons', { size, showPrices, allTills }));
+        till.itemButtons = await busy(() => api.put('/api/settings/item-buttons', {
+          size: s.size, showPrices: s.showPrices, allTills: s.allTills,
+          itemWidth: s.size === 'Custom' ? s.itemWidth : null, itemHeight: s.size === 'Custom' ? s.itemHeight : null,
+          customCategories: s.customCategories,
+          categoryWidth: s.customCategories ? s.categoryWidth : null, categoryHeight: s.customCategories ? s.categoryHeight : null,
+        }));
         till.renderCatalog();
-        toast(allTills ? 'Item buttons saved for every till. Other tills change at their next log-in.' : 'Item buttons saved for this till.', 'ok', 5000);
+        toast(s.allTills ? 'Buttons saved for every till. Other tills change at their next log-in.' : 'Buttons saved for this till.', 'ok', 5000);
         close();
       } catch (e) {
         toast(e.message, 'error', 6000);
@@ -420,7 +473,7 @@ async function itemButtonsSettings(till) {
     };
     render();
     return {
-      title: 'Item buttons',
+      title: 'Buttons',
       class: 'dialog-narrow',
       body,
       actions: [h('button', { class: 'btn', onclick: () => close(), text: 'Cancel' }), h('button', { class: 'btn btn-primary', onclick: save, text: 'Save' })],
@@ -735,7 +788,7 @@ export function moreDialog(till) {
           section('Menu',
             can('EditMenu') ? item('Edit menu', () => till.enterEditMode(), true) : null,
             can('EditMenu') ? item('Menu spreadsheet (Excel)', menuSpreadsheetDialog) : null,
-            can('EditMenu') ? item('Item buttons (size, prices)', () => itemButtonsSettings(till)) : null,
+            can('EditMenu') ? item('Buttons (size, prices)', () => itemButtonsSettings(till)) : null,
             item('Sold out items', () => soldOutDialog(till)),
             can('ManageDevices') ? item('Discount limits', discountLimitsDialog) : null),
           section('Till',

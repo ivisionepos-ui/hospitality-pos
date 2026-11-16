@@ -52,4 +52,33 @@ public sealed class ItemButtonTests : HubTestBase
         Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
         Assert.Equal(ItemButtonSettings.Default, await Cashier.GetJson<ItemButtonSettings>("/api/settings/item-buttons"));
     }
+
+    [Fact]
+    public async Task Item_and_category_buttons_can_have_exact_pixel_sizes()
+    {
+        var saved = await (await Manager.Put("/api/settings/item-buttons", new SaveItemButtonsRequest(true, ItemButtonSize.Custom, false, 120, 70, true, 110, 44))).Read<ItemButtonSettings>();
+        Assert.Equal(new ItemButtonSettings(true, ItemButtonSize.Custom, 120, 70, true, 110, 44), saved);
+
+        Restart();
+        Assert.Equal(saved, await Cashier.GetJson<ItemButtonSettings>("/api/settings/item-buttons"));
+
+        // Pixel sizes are kept only where used: back to automatic forgets them.
+        var auto = await (await Manager.Put("/api/settings/item-buttons", new SaveItemButtonsRequest(true, ItemButtonSize.Small, false, 120, 70, false, 110, 44))).Read<ItemButtonSettings>();
+        Assert.Equal(new ItemButtonSettings(true, ItemButtonSize.Small), auto);
+    }
+
+    [Theory]
+    [InlineData(59, 70, false, null, null, "Item button width must be between 60 and 400 pixels.")]
+    [InlineData(120, 301, false, null, null, "Item button height must be between 40 and 300 pixels.")]
+    [InlineData(null, 70, false, null, null, "Item button width must be between 60 and 400 pixels.")]
+    [InlineData(120, 70, true, 401, 44, "Category button width must be between 50 and 400 pixels.")]
+    [InlineData(120, 70, true, 110, 35, "Category button height must be between 36 and 200 pixels.")]
+    public async Task Pixel_sizes_must_be_tappable_and_fit_the_screen(int? width, int? height, bool customCategories, int? catWidth, int? catHeight, string message)
+    {
+        var refused = await Manager.Put("/api/settings/item-buttons", new SaveItemButtonsRequest(true, ItemButtonSize.Custom, false, width, height, customCategories, catWidth, catHeight));
+
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Equal(message, (await refused.Read<ErrorView>()).Message);
+        Assert.Equal(ItemButtonSettings.Default, await Cashier.GetJson<ItemButtonSettings>("/api/settings/item-buttons"));
+    }
 }

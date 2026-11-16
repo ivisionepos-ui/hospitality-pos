@@ -1736,12 +1736,12 @@ test('item buttons: the owner makes them small without prices on this till; item
   assert.ok(await page.locator('.items .item-price').count() > 0);
 
   await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Item buttons (size, prices)' }).click();
-  await top(page).getByRole('radio', { name: 'Small (more items fit)' }).click();
+  await top(page).getByRole('button', { name: 'Buttons (size, prices)' }).click();
+  await top(page).getByRole('radio', { name: 'Small', exact: true }).click();
   await top(page).getByRole('radio', { name: 'Hide prices' }).click();
   await shot(page, 'ui-item-buttons-settings');
   await top(page).getByRole('button', { name: 'Save' }).click();
-  await page.getByText('Item buttons saved for this till.').waitFor();
+  await page.getByText('Buttons saved for this till.').waitFor();
 
   await page.locator('.items.items-small.items-no-price').waitFor();
   assert.equal(await page.locator('.items .item:not(.item-out) .item-price').count(), 0);
@@ -1773,6 +1773,52 @@ test('item buttons: the owner makes them small without prices on this till; item
   assert.deepEqual(other.errors, []);
   await page.context().close();
   await other.context().close();
+});
+
+test('buttons: exact pixel sizes for item and category buttons, shown at real size before saving, then on the till', async () => {
+  const page = await tillPage(shop.till1);
+  await login(page, '4826');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Buttons (size, prices)' }).click();
+  const dialog = top(page);
+  await dialog.getByRole('radio', { name: 'Custom size' }).first().click();
+  await dialog.getByLabel('Item width').fill('120');
+  await dialog.getByLabel('Item height').fill('70');
+  const sample = await dialog.locator('.item-sample').boundingBox();
+  assert.deepEqual([Math.round(sample.width), Math.round(sample.height)], [120, 70]); // the sample is the real size
+  await dialog.getByRole('radiogroup', { name: 'Category button size' }).getByRole('radio', { name: 'Custom size' }).click();
+  await dialog.getByLabel('Category width').fill('110');
+  await dialog.getByLabel('Category height').fill('44');
+  await shot(page, 'ui-buttons-custom-settings');
+
+  // Too small is refused with the limits.
+  await dialog.getByLabel('Item height').fill('20');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Item button height must be between 40 and 300 pixels.').waitFor();
+  await dialog.getByLabel('Item height').fill('70');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Buttons saved for this till.').waitFor();
+
+  await page.locator('.cats').getByRole('button', { name: 'Kebabs', exact: true }).click();
+  await page.locator('.items.items-custom').waitFor();
+  const sizes = await page.locator('.items .item').evaluateAll(els => els.map(e => [Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]));
+  assert.ok(sizes.length > 0 && sizes.every(([w, hgt]) => w === 120 && hgt === 70), JSON.stringify(sizes));
+  const cats = await page.locator('.cats .cat').evaluateAll(els => els.map(e => [Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]));
+  assert.ok(cats.every(([w, hgt]) => w === 110 && hgt === 44), JSON.stringify(cats));
+  await shot(page, 'ui-buttons-custom');
+
+  // Items still add as usual.
+  await page.getByRole('button', { name: 'Takeaway', exact: true }).click();
+  await page.locator('.cats').getByRole('button', { name: 'Sides', exact: true }).click();
+  await page.locator('.items').getByRole('button', { name: /Cheesy chips/ }).click();
+  await top(page).getByRole('button', { name: /Large/ }).click();
+  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await page.locator('.line', { hasText: 'Cheesy chips' }).waitFor();
+
+  // Back to automatic for the other tests.
+  await call('PUT', '/api/settings/item-buttons', { device: shop.till1, token: shop.owner.token }, { showPrices: true, size: 'Normal', allTills: false });
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
 });
 
 test('website: the owner connects the website, a customer orders for collection, the till accepts it, the customer sees the ready time', async () => {

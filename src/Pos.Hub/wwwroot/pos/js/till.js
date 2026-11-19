@@ -339,7 +339,7 @@ export class Till {
           h('button', { class: 'top-btn', onclick: () => moreDialog(this) , text: 'More' }),
           h('span', { class: 'staff-name', text: this.ctx.me.staff.name }),
           h('button', { class: 'top-btn top-btn-quiet', onclick: () => this.ctx.logout(), text: 'Log out' }))),
-      h('main', { class: 'till' }, this.ticketEl, this.catalogEl));
+      h('main', { class: `till ${this.itemButtons?.orderOnRight ? 'till-order-right' : ''}` }, this.ticketEl, this.catalogEl));
     this.renderTicket();
     this.renderCatalog();
   }

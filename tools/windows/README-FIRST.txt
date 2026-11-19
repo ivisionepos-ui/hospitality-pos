@@ -112,7 +112,8 @@ Customer display (the screen facing the customer)
 Buttons (many items on the menu)
   More > Buttons (size, prices): item buttons Small, Normal or Large
   (automatic), or a custom width and height in pixels; category buttons
-  automatic or custom; prices shown or hidden; this till or every till.
+  automatic or custom; prices shown or hidden; Screen layout: the order on
+  the left or on the right; this till or every till.
 
 Faster ordering
   Search: type in the box above the menu to find any item in any category;

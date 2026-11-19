@@ -1814,6 +1814,45 @@ test('buttons: exact pixel sizes for item and category buttons, shown at real si
   await page.context().close();
 });
 
+test('right-hand layout: the order moves to the right of the screen, the order being taken stays, and it is remembered', async () => {
+  const page = await tillPage(shop.till1);
+  await login(page, '4826');
+  await page.getByRole('button', { name: 'Takeaway', exact: true }).click();
+  await page.locator('.cats').getByRole('button', { name: 'Drinks', exact: true }).click();
+  await page.locator('.items').getByRole('button', { name: /Can 330ml/ }).click();
+  await addIfStillOpen(page);
+  await page.locator('.line', { hasText: 'Can 330ml' }).waitFor();
+  const side = async () => {
+    const [ticket, menu] = [await page.locator('.ticket').boundingBox(), await page.locator('.catalog').boundingBox()];
+    return ticket.x > menu.x ? 'right' : 'left';
+  };
+  assert.equal(await side(), 'left');
+
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Buttons (size, prices)' }).click();
+  await top(page).getByRole('radio', { name: 'Order on the right' }).click();
+  await top(page).getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Buttons saved for this till.').waitFor();
+  await page.locator('.till-order-right').waitFor();
+  assert.equal(await side(), 'right');
+  await page.locator('.line', { hasText: 'Can 330ml' }).waitFor(); // the order being taken is still there
+  const pay = await page.getByRole('button', { name: /^Pay £/ }).boundingBox();
+  assert.ok(pay.x > 1366 / 2, 'Pay is under the right hand');
+  const message = await page.locator('.toast', { hasText: 'Buttons saved' }).boundingBox();
+  assert.ok(message.x + message.width < pay.x, 'messages do not cover Pay');
+  await shot(page, 'ui-right-hand-layout');
+
+  // Remembered after logging out and in again.
+  await page.reload();
+  await page.locator('.till-order-right').or(page.getByText('Enter your PIN')).first().waitFor();
+  if (await page.getByText('Enter your PIN').isVisible()) await login(page, '4826');
+  await page.locator('.till-order-right').waitFor();
+
+  await call('PUT', '/api/settings/item-buttons', { device: shop.till1, token: shop.owner.token }, { showPrices: true, size: 'Normal', allTills: false });
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
 test('website: the owner connects the website, a customer orders for collection, the till accepts it, the customer sees the ready time', async () => {
   // The online ordering service, run locally (the same code as on Cloudflare, with Node's SQLite for its database).
   const { start } = await import(path.join(__dirname, '..', '..', 'online', 'dev', 'local.mjs'));

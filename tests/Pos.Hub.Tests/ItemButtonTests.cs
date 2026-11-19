@@ -67,6 +67,20 @@ public sealed class ItemButtonTests : HubTestBase
         Assert.Equal(new ItemButtonSettings(true, ItemButtonSize.Small), auto);
     }
 
+    [Fact]
+    public async Task Right_hand_layout_is_kept_per_till_and_across_restarts()
+    {
+        var saved = await (await Manager.Put("/api/settings/item-buttons", new SaveItemButtonsRequest(true, ItemButtonSize.Normal, false, OrderOnRight: true))).Read<ItemButtonSettings>();
+        Assert.True(saved.OrderOnRight);
+
+        Restart();
+        Assert.True((await Cashier.GetJson<ItemButtonSettings>("/api/settings/item-buttons")).OrderOnRight);
+
+        // Older saves without the setting keep the usual layout (order on the left).
+        await Manager.Put("/api/settings/item-buttons", new { showPrices = true, size = "Normal", allTills = false });
+        Assert.False((await Cashier.GetJson<ItemButtonSettings>("/api/settings/item-buttons")).OrderOnRight);
+    }
+
     [Theory]
     [InlineData(59, 70, false, null, null, "Item button width must be between 60 and 400 pixels.")]
     [InlineData(120, 301, false, null, null, "Item button height must be between 40 and 300 pixels.")]

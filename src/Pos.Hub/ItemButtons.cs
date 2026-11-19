@@ -29,6 +29,7 @@ public enum ItemButtonSize
 /// <param name="CustomCategories">False: category buttons size themselves to their names (automatic); true: the width and height below.</param>
 /// <param name="CategoryWidth">Category button width in pixels (custom only).</param>
 /// <param name="CategoryHeight">Category button height in pixels (custom only).</param>
+/// <param name="OrderOnRight">Right-hand layout: the order on the right of the screen and the menu on the left.</param>
 public sealed record ItemButtonSettings(
     bool ShowPrices,
     ItemButtonSize Size,
@@ -36,7 +37,8 @@ public sealed record ItemButtonSettings(
     int? ItemHeight = null,
     bool CustomCategories = false,
     int? CategoryWidth = null,
-    int? CategoryHeight = null)
+    int? CategoryHeight = null,
+    bool OrderOnRight = false)
 {
     /// <summary>Smallest and largest item button (pixels): still tappable, still fits a till screen.</summary>
     public static (int MinWidth, int MaxWidth, int MinHeight, int MaxHeight) ItemLimits => (60, 400, 40, 300);
@@ -67,7 +69,8 @@ public sealed record ItemButtonSettings(
             custom ? Pixels(ItemHeight, ih, iH, "Item button height") : null,
             CustomCategories,
             CustomCategories ? Pixels(CategoryWidth, cw, cW, "Category button width") : null,
-            CustomCategories ? Pixels(CategoryHeight, ch, cH, "Category button height") : null);
+            CustomCategories ? Pixels(CategoryHeight, ch, cH, "Category button height") : null,
+            OrderOnRight);
     }
 }
 
@@ -80,6 +83,7 @@ public sealed record ItemButtonSettings(
 /// <param name="CustomCategories">Custom category size.</param>
 /// <param name="CategoryWidth">Custom category width (pixels).</param>
 /// <param name="CategoryHeight">Custom category height (pixels).</param>
+/// <param name="OrderOnRight">Right-hand layout.</param>
 public sealed record SaveItemButtonsRequest(
     bool ShowPrices,
     ItemButtonSize Size,
@@ -88,7 +92,8 @@ public sealed record SaveItemButtonsRequest(
     int? ItemHeight = null,
     bool CustomCategories = false,
     int? CategoryWidth = null,
-    int? CategoryHeight = null);
+    int? CategoryHeight = null,
+    bool OrderOnRight = false);
 
 /// <summary>
 /// Item buttons per till: with many items the buttons can be made small and the prices hidden so more fit on the screen.
@@ -107,7 +112,7 @@ public sealed class ItemButtonService(HubDatabase db, AccessService access, Time
     {
         ArgumentNullException.ThrowIfNull(request);
         var settings = new ItemButtonSettings(request.ShowPrices, request.Size, request.ItemWidth, request.ItemHeight,
-            request.CustomCategories, request.CategoryWidth, request.CategoryHeight).Checked();
+            request.CustomCategories, request.CategoryWidth, request.CategoryHeight, request.OrderOnRight).Checked();
         var all = All();
         var tills = request.AllTills
             ? access.ListDevices().Where(d => d.IsActive && d.Type is DeviceType.Till or DeviceType.BackOffice).Select(d => d.Id).Append(deviceId).Distinct()

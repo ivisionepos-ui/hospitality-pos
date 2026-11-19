@@ -404,6 +404,7 @@ async function itemButtonsSettings(till) {
     customCategories: !!current.customCategories,
     categoryWidth: current.categoryWidth ?? 120,
     categoryHeight: current.categoryHeight ?? 52,
+    orderOnRight: !!current.orderOnRight,
     allTills: false,
   };
   await openDialog(close => {
@@ -433,6 +434,11 @@ async function itemButtonsSettings(till) {
 
     const render = () => {
       mount(body,
+        h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Screen layout' }),
+          h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Screen layout' },
+            choice('Order on the left', !s.orderOnRight, () => { s.orderOnRight = false; render(); }),
+            choice('Order on the right', s.orderOnRight, () => { s.orderOnRight = true; render(); })),
+          h('p', { class: 'field-hint', text: 'Order on the right puts the menu under the left hand and Pay under the right thumb.' })),
         h('div', { class: 'field' }, h('span', { class: 'field-label', text: 'Item buttons' }),
           h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Item button size' },
             [['Small', 'Small'], ['Normal', 'Normal'], ['Large', 'Large'], ['Custom', 'Custom size']].map(([id, label]) => choice(label, s.size === id, () => { s.size = id; render(); }))),
@@ -461,10 +467,10 @@ async function itemButtonsSettings(till) {
         till.itemButtons = await busy(() => api.put('/api/settings/item-buttons', {
           size: s.size, showPrices: s.showPrices, allTills: s.allTills,
           itemWidth: s.size === 'Custom' ? s.itemWidth : null, itemHeight: s.size === 'Custom' ? s.itemHeight : null,
-          customCategories: s.customCategories,
+          customCategories: s.customCategories, orderOnRight: s.orderOnRight,
           categoryWidth: s.customCategories ? s.categoryWidth : null, categoryHeight: s.customCategories ? s.categoryHeight : null,
         }));
-        till.renderCatalog();
+        till.render();
         toast(s.allTills ? 'Buttons saved for every till. Other tills change at their next log-in.' : 'Buttons saved for this till.', 'ok', 5000);
         close();
       } catch (e) {

@@ -112,7 +112,7 @@ public sealed class OrderService
         var table = _tables.CheckForNewOrder(request.Type, request.Table);
         return _db.RunInTransaction(() =>
         {
-            var lines = _menu.Read(menu => BuildLines(menu, request.Lines ?? []));
+            var lines = _menu.Read(menu => BuildLines(menu, request.Lines ?? [], request.Type));
             var customerId = contact?.Phone is not null ? _customers.Remember(contact, countOrder: false) : request.CustomerId;
             var result = _intake.Submit(NewOrderFrom(request, actor, lines, contact, customerId) with { Table = table });
             if (!result.WasDuplicate)
@@ -258,7 +258,7 @@ public sealed class OrderService
     {
         ArgumentNullException.ThrowIfNull(request);
         // Customer details do not change the price, so they are not checked here (they may be half-typed).
-        var lines = _menu.Read(menu => BuildLines(menu, request.Lines ?? []));
+        var lines = _menu.Read(menu => BuildLines(menu, request.Lines ?? [], request.Type));
         var order = _intake.Quote(NewOrderFrom(request, actor, lines, null, request.CustomerId));
         if (request.Delivery is { } delivery && request.Type == Pos.Domain.Tax.OrderType.Delivery)
         {
@@ -318,7 +318,7 @@ public sealed class OrderService
 
             var order = Change(orderId, order =>
             {
-                foreach (var line in _menu.Read(menu => BuildLines(menu, lines)))
+                foreach (var line in _menu.Read(menu => BuildLines(menu, lines, order.Type))) // priced for the order's type
                 {
                     order.AddLine(line.Pricing, line.Display, actor, line.Note);
                 }
@@ -328,9 +328,9 @@ public sealed class OrderService
             return (order, false);
         });
 
-    private static List<NewOrderLine> BuildLines(Menu menu, IReadOnlyList<OrderLineRequest> requests)
+    private static List<NewOrderLine> BuildLines(Menu menu, IReadOnlyList<OrderLineRequest> requests, Pos.Domain.Tax.OrderType type)
     {
-        var builder = new MenuOrderBuilder(menu);
+        var builder = new MenuOrderBuilder(menu, type);
         var problems = new List<SelectionProblem>();
         var lines = new List<NewOrderLine>();
         for (var i = 0; i < requests.Count; i++)

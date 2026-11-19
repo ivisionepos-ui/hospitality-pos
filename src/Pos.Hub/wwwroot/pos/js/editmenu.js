@@ -78,7 +78,7 @@ export class MenuEditor {
         style: category.colour ? { '--cat': category.colour } : null,
         onclick: () => this.openProduct(p),
       }, h('span', { class: 'item-name', text: this.menu.buttonName(p) }),
-        h('span', { class: 'item-price', text: [p.variants.map(v => penceText(v.price.minorUnits)).join(' / '), p.isHidden ? 'Hidden' : null, this.menu.isSoldOut(p) ? 'Sold out' : null].filter(Boolean).join(' · ') }))),
+        h('span', { class: 'item-price', text: [p.variants.map(v => penceText(this.menu.priceOf(v))).join(' / '), p.isHidden ? 'Hidden' : null, this.menu.isSoldOut(p) ? 'Sold out' : null].filter(Boolean).join(' · ') }))),
       category ? h('button', { class: 'item item-add', onclick: () => this.addProduct(category), text: '+ Add item' }) : null);
 
     mount(this.till.catalogEl, tabs, category ? grid : h('div', { class: 'empty' }, h('p', { text: 'Add a category to start.' })));
@@ -143,17 +143,32 @@ export class MenuEditor {
         const price = h('button', {
           class: 'price-btn', 'aria-label': `Price of ${text(v.name)}`,
           onclick: async () => {
-            const pence = await amountDialog(`Price — ${text(v.name)}`, { initial: v.price.minorUnits, ok: 'Set price', allowZero: true });
+            const pence = await amountDialog(`Main price — ${text(v.name)}`, { initial: v.price.minorUnits, ok: 'Set price', allowZero: true });
             if (pence !== null) { v.price = money(pence); rerender(); }
           },
         }, penceText(v.price.minorUnits));
+        // Takeaway & collection and eat-in prices are optional: empty (or 0) means the main price.
+        const other = (prop, label, title) => h('label', { class: 'price-field' }, h('span', { text: label }),
+          h('button', {
+            class: `price-btn price-btn-other ${v[prop]?.minorUnits > 0 ? '' : 'price-same'}`, 'aria-label': `${title} of ${text(v.name)}`,
+            onclick: async () => {
+              const pence = await amountDialog(`${title} — ${text(v.name)}`, {
+                initial: v[prop]?.minorUnits ?? 0, ok: 'Set price', allowZero: true,
+                message: 'Leave at £0.00 to use the main price.',
+              });
+              if (pence !== null) { v[prop] = pence > 0 ? money(pence) : null; rerender(); }
+            },
+          }, v[prop]?.minorUnits > 0 ? penceText(v[prop].minorUnits) : 'Main'));
         size.addEventListener('input', () => { v.name = lt(size.value); price.setAttribute('aria-label', `Price of ${size.value}`); });
         return h('div', { class: 'size-row' },
           draft.variants.length > 1 || !isDeal ? size : null,
-          price,
+          h('div', { class: 'price-fields' },
+            h('label', { class: 'price-field' }, h('span', { text: 'Main' }), price),
+            other('takeawayPrice', 'Takeaway', 'Takeaway price'),
+            other('eatInPrice', 'Eat in', 'Eat-in price')),
           draft.variants.length > 1 ? h('button', { class: 'icon-btn', 'aria-label': `Remove size ${text(v.name)}`, onclick: () => { draft.variants.splice(i, 1); rerender(); }, text: '✕' }) : null);
       }),
-      isDeal ? null : h('button', { class: 'btn btn-small', onclick: () => { draft.variants.push({ id: newId(), name: lt(draft.variants.length === 1 ? 'Large' : 'Size'), price: money(draft.variants.at(-1).price.minorUnits), isSoldOut: false }); rerender(); }, text: '+ Add size' }));
+      isDeal ? null : h('button', { class: 'btn btn-small', onclick: () => { draft.variants.push({ id: newId(), name: lt(draft.variants.length === 1 ? 'Large' : 'Size'), price: money(draft.variants.at(-1).price.minorUnits), isSoldOut: false, takeawayPrice: draft.variants.at(-1).takeawayPrice ?? null, eatInPrice: draft.variants.at(-1).eatInPrice ?? null }); rerender(); }, text: '+ Add size' }));
 
     const vat = h('div', { class: 'seg seg-small seg-wrap' }, VAT.map(v => h('button', {
       class: `seg-btn ${draft.vatCategory === v.id ? 'seg-on' : ''}`, 'aria-pressed': String(draft.vatCategory === v.id),

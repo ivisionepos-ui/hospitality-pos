@@ -108,13 +108,16 @@ export function isOpen(hours, date = new Date()) {
 
 // ---------- The basket, checked against the published menu ----------
 
+/** A size's price for delivery or collection: collection has its own price when the shop set one (pricePence is the main price). */
+export const variantPence = (variant, type) => (type === 'Collection' && variant.collectionPence > 0 ? variant.collectionPence : variant.pricePence);
+
 export const LIMITS = { lines: 50, quantity: 50, note: 140 };
 
 /**
  * Checks the customer's choices against the menu and prices them. lines = [{ productId, variantId, quantity,
- * optionIds: [], note }]. Returns { lines: [checked], goodsPence, problems: [text] }.
+ * optionIds: [], note }] for a 'Delivery' or 'Collection' order. Returns { lines: [checked], goodsPence, problems: [text] }.
  */
-export function priceBasket(menu, lines) {
+export function priceBasket(menu, lines, type = 'Delivery') {
   const problems = [];
   if (!Array.isArray(lines) || lines.length === 0) return { lines: [], goodsPence: 0, problems: ['Your basket is empty.'] };
   if (lines.length > LIMITS.lines) return { lines: [], goodsPence: 0, problems: [`At most ${LIMITS.lines} items in one order.`] };
@@ -131,7 +134,7 @@ export function priceBasket(menu, lines) {
     const quantity = Number(line.quantity);
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > LIMITS.quantity) { problems.push(`${product.name}: quantity must be 1 to ${LIMITS.quantity}.`); continue; }
     const optionIds = Array.isArray(line.optionIds) ? [...new Set(line.optionIds)] : [];
-    let unit = variant.pricePence;
+    let unit = variantPence(variant, type);
     let ok = true;
     for (const groupId of product.groupIds) {
       const group = groups.get(groupId);

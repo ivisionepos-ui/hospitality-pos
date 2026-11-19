@@ -1,5 +1,5 @@
 // Shared by the menu, checkout and order pages: making elements, calling the service, the basket kept in this browser.
-import { pounds, priceBasket } from '/rules.js';
+import { pounds, priceBasket, variantPence } from '/rules.js';
 
 export const $ = id => document.getElementById(id);
 
@@ -74,8 +74,8 @@ export function lineText(menu, line) {
 }
 
 /** The price of one line (all of its quantity), or null if it can no longer be ordered. */
-export function linePence(menu, line) {
-  const priced = priceBasket(menu, [line]);
+export function linePence(menu, line, type) {
+  const priced = priceBasket(menu, [line], type);
   return priced.problems.length ? null : priced.goodsPence;
 }
 
@@ -99,4 +99,4 @@ export function initials(name) {
   return String(name ?? '').split(/\s+/).filter(w => /^[A-Za-z0-9]/.test(w)).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '🍽';
 }
 
-export { pounds, priceBasket };
+export { pounds, priceBasket, variantPence };

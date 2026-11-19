@@ -70,9 +70,16 @@ public sealed class InvalidSelectionException : InvalidOperationException
 public sealed class MenuOrderBuilder
 {
     private readonly Menu _menu;
+    private readonly Tax.OrderType? _type;
 
-    /// <summary>Creates a builder for a menu.</summary>
-    public MenuOrderBuilder(Menu menu) => _menu = menu ?? throw new ArgumentNullException(nameof(menu));
+    /// <summary>Creates a builder for a menu, pricing items for an order type (takeaway, eat in or delivery prices).</summary>
+    /// <param name="menu">The menu.</param>
+    /// <param name="type">The order's type; none means main prices.</param>
+    public MenuOrderBuilder(Menu menu, Tax.OrderType? type = null)
+    {
+        _menu = menu ?? throw new ArgumentNullException(nameof(menu));
+        _type = type;
+    }
 
     /// <summary>Lists what is wrong with an item selection (empty when it is fine).</summary>
     public IReadOnlyList<SelectionProblem> Check(ItemSelection selection)
@@ -237,10 +244,10 @@ public sealed class MenuOrderBuilder
         ?? slot.Options.FirstOrDefault(o => o.Kind == SlotOptionKind.Product && o.TargetId == item.Id)
         ?? slot.Options.FirstOrDefault(o => o.Kind == SlotOptionKind.Category && o.TargetId == item.CategoryId);
 
-    private static PricingItem ToPricingItem(Product product, Guid variantId)
+    private PricingItem ToPricingItem(Product product, Guid variantId)
     {
         var variant = product.Variants.Single(v => v.Id == variantId);
-        return new PricingItem(product.Id, variant.Id, product.CategoryId, variant.Price);
+        return new PricingItem(product.Id, variant.Id, product.CategoryId, variant.PriceFor(_type));
     }
 
     private List<ModifierInput> ToModifiers(Product product, IReadOnlyList<Guid> optionIds)

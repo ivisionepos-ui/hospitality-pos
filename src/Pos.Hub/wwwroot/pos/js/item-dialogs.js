@@ -30,7 +30,7 @@ export function itemOptionsDialog(menu, product, options = {}) {
     const problem = h('p', { class: 'form-problem', role: 'alert' });
 
     const extrasPence = () => groups.flatMap(g => g.options).filter(o => state.extras.has(o.id)).reduce((s, o) => s + o.price.minorUnits, 0);
-    const variantPence = () => (state.variantId && !inDeal ? menu.variant(product, state.variantId).price.minorUnits : 0);
+    const variantPence = () => (state.variantId && !inDeal ? menu.priceOf(menu.variant(product, state.variantId)) : 0);
     const missing = () => {
       if (!state.variantId) return 'Choose a size.';
       for (const g of groups) {
@@ -54,7 +54,7 @@ export function itemOptionsDialog(menu, product, options = {}) {
               if (oneTap) { finish(); return; }
               render();
             },
-          }, h('span', { class: 'opt-name', text: text(v.name) }), inDeal ? null : h('span', { class: 'opt-price', text: penceText(v.price.minorUnits) }))))));
+          }, h('span', { class: 'opt-name', text: text(v.name) }), inDeal ? null : h('span', { class: 'opt-price', text: penceText(menu.priceOf(v)) }))))));
         if (oneTap) sections.push(h('p', { class: 'field-hint one-tap-hint', text: 'Tap a size to add it.' }));
       }
 
@@ -134,7 +134,7 @@ export function itemOptionsDialog(menu, product, options = {}) {
 export function dealDialog(menu, deal) {
   return openDialog(close => {
     const variantId = deal.variants.find(v => !v.isSoldOut)?.id ?? deal.variants[0].id;
-    const basePence = menu.variant(deal, variantId).price.minorUnits;
+    const basePence = menu.priceOf(menu.variant(deal, variantId));
     const picked = new Map(deal.dealSlots.map(s => [s.id, []]));
     const body = h('div', { class: 'deal' });
     const addButton = h('button', { class: 'btn btn-primary btn-big' });

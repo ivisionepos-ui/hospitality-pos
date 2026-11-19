@@ -115,6 +115,16 @@ Buttons (many items on the menu)
   automatic or custom; prices shown or hidden; Screen layout: the order on
   the left or on the right; this till or every till.
 
+Prices for takeaway, collection and eat in
+  More > Edit menu > tap an item: each size has Main, Takeaway and Eat in.
+  Main is always the delivery price. Takeaway is used for takeaway and
+  collection, Eat in for eating in. Leave Takeaway or Eat in as "Main"
+  (or £0.00) and the main price is charged.
+  One price for everything: fill in Main only.
+  Delivery costs more: put the delivery price in Main, and the cheaper price
+  in Takeaway (and Eat in).
+  The menu spreadsheet has the same two optional columns.
+
 Faster ordering
   Search: type in the box above the menu to find any item in any category;
   Enter adds it when only one matches, Esc clears.

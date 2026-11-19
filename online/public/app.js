@@ -1,13 +1,15 @@
 // The menu page, laid out the way customers know from the big takeaway apps: the shop at the top, delivery or
 // collection, search, menu sections with a "+" on every item, choices in a pop-up, and the order always in view
 // (on the right on a computer, a "View basket" bar on a phone). Checkout is its own page (/checkout).
-import { $, aboutMinutes, addressLine, put, api, findOption, h, initials, itemCount, lineText, linePence, orderType, pounds, priceBasket, state, store, toast } from '/common.js';
+import { $, aboutMinutes, addressLine, put, api, findOption, h, initials, itemCount, lineText, linePence, orderType, pounds, priceBasket, state, store, toast, variantPence } from '/common.js';
 
 let shop = null;
 let menu = { categories: [], products: [], groups: [] };
 
 const group = id => menu.groups.find(g => g.id === id);
-const fromPrice = p => Math.min(...p.variants.filter(v => !v.soldOut).map(v => v.pricePence));
+// Prices follow the chosen order type (the shop may charge less for collection).
+const typeNow = () => (shop ? orderType(shop) : 'Delivery');
+const fromPrice = p => Math.min(...p.variants.filter(v => !v.soldOut).map(v => variantPence(v, typeNow())));
 const isSoldOut = p => p.soldOut || p.variants.every(v => v.soldOut);
 const isSimple = p => p.variants.length === 1 && p.groupIds.map(group).filter(Boolean).length === 0;
 
@@ -104,7 +106,7 @@ function openItem(p) {
   const qty = h('output', { 'aria-live': 'polite', text: '1' });
   const sections = new Map(); // which fieldset to point at when a required choice is missing
 
-  const unit = () => (p.variants.find(x => x.id === choice.variantId)?.pricePence ?? fromPrice(p))
+  const unit = () => ((v => (v ? variantPence(v, typeNow()) : null))(p.variants.find(x => x.id === choice.variantId)) ?? fromPrice(p))
     + choice.optionIds.reduce((s, id) => s + (findOption(menu, id)?.pricePence ?? 0), 0);
   const refresh = () => {
     addBtn.textContent = `Add to order · ${pounds(unit() * choice.quantity)}`;
@@ -123,7 +125,7 @@ function openItem(p) {
   const sizes = p.variants.length > 1 ? section('size', 'Choose your size', 'Choose 1', true, p.variants.map(v => {
     const input = h('input', { type: 'radio', name: 'size', value: v.id, disabled: v.soldOut });
     input.addEventListener('change', () => { choice.variantId = v.id; sections.get('size').classList.remove('missing'); refresh(); });
-    return h('label', { class: `choice ${v.soldOut ? 'off' : ''}` }, input, h('span', { class: 'choice-name', text: v.soldOut ? `${v.name} (sold out)` : v.name }), h('span', { class: 'choice-price', text: pounds(v.pricePence) }));
+    return h('label', { class: `choice ${v.soldOut ? 'off' : ''}` }, input, h('span', { class: 'choice-name', text: v.soldOut ? `${v.name} (sold out)` : v.name }), h('span', { class: 'choice-price', text: pounds(variantPence(v, typeNow())) }));
   })) : null;
 
   const extras = groups.map(g => {
@@ -159,7 +161,7 @@ function openItem(p) {
     }
 
     const line = { productId: p.id, variantId: choice.variantId, quantity: choice.quantity, optionIds: choice.optionIds, note: choice.note.trim() || null };
-    const check = priceBasket(menu, [line]);
+    const check = priceBasket(menu, [line], typeNow());
     if (check.problems.length) { toast(check.problems[0]); return; }
     sheet.close();
     addLine(line, p.name);
@@ -200,7 +202,7 @@ function addLine(line, name) {
 
 function basketContent() {
   const type = orderType(shop);
-  const priced = priceBasket(menu, state.basket);
+  const priced = priceBasket(menu, state.basket, typeNow());
   const minimum = type === 'Delivery' ? shop.delivery.minimumOrderPence : null;
   const short = minimum ? Math.max(0, minimum - priced.goodsPence) : 0;
 
@@ -209,7 +211,7 @@ function basketContent() {
       const offer = t === 'Delivery' ? shop.delivery : shop.collection;
       return h('button', {
         type: 'button', 'aria-pressed': String(type === t), disabled: !offer.enabled,
-        onclick: () => { state.checkout.type = t; state.save(); renderBasket(); },
+        onclick: () => { state.checkout.type = t; state.save(); renderMenu(); renderBasket(); }, // collection may have its own prices
       }, h('strong', { text: t }), h('small', { text: offer.enabled ? aboutMinutes(offer.minutes) : 'not available' }));
     }));
 
@@ -220,7 +222,7 @@ function basketContent() {
 
   const lines = h('ul', { class: 'lines' }, state.basket.map(line => {
     const t = lineText(menu, line);
-    const pence = linePence(menu, line);
+    const pence = linePence(menu, line, typeNow());
     const change = by => {
       line.quantity += by;
       if (line.quantity < 1) state.basket = state.basket.filter(l => l !== line);
@@ -272,7 +274,7 @@ function renderBasket() {
   }
 
   const count = itemCount();
-  const total = priceBasket(menu, state.basket).goodsPence;
+  const total = priceBasket(menu, state.basket, typeNow()).goodsPence;
   $('top-count').textContent = String(count);
   $('top-basket').setAttribute('aria-label', `Basket, ${count} ${count === 1 ? 'item' : 'items'}`);
   $('basket-bar').hidden = count === 0;

@@ -81,7 +81,7 @@ public static class MenuSheetImport
     private static readonly string[] Palette = ["#c2410c", "#b91c1c", "#a16207", "#4d7c0f", "#0f766e", "#1d4ed8", "#7c3aed", "#be185d", "#475569", "#15803d"];
 
     /// <summary>The column headings of the Menu sheet, in template order.</summary>
-    public static readonly IReadOnlyList<string> MenuHeadings = ["Category", "Item", "Size", "Price", "VAT", "Description", "Extras", "Sold out"];
+    public static readonly IReadOnlyList<string> MenuHeadings = ["Category", "Item", "Size", "Price", "Takeaway price", "Eat in price", "VAT", "Description", "Extras", "Sold out"];
 
     /// <summary>The column headings of the Extras sheet, in template order.</summary>
     public static readonly IReadOnlyList<string> ExtrasHeadings = ["Group", "Extra", "Price", "Choose at least", "Choose at most"];
@@ -144,6 +144,8 @@ public static class MenuSheetImport
                         p.Name.En,
                         p.Variants.Count == 1 ? string.Empty : v.Name.En,
                         Price(v.Price),
+                        v.TakeawayPrice is { MinorUnits: > 0 } takeaway ? Price(takeaway) : string.Empty,
+                        v.EatInPrice is { MinorUnits: > 0 } eatIn ? Price(eatIn) : string.Empty,
                         VatName(p.VatCategory),
                         i == 0 ? p.Description?.En ?? string.Empty : string.Empty,
                         i == 0 ? extras : string.Empty,
@@ -222,7 +224,8 @@ public static class MenuSheetImport
         "Category: the tab on the till, e.g. Pizzas. Leave it empty to use the category from the row above.",
         "Item: the name on the button and receipt. Leave it empty (and fill in Size) to add another size to the item above.",
         "Size: e.g. 12\", Large, Meal. Leave it empty for an item with only one price.",
-        "Price: the selling price including VAT, e.g. 8.99 (a £ sign is fine).",
+        "Price: the main selling price including VAT, e.g. 8.99 (a £ sign is fine). It is the delivery price, and the takeaway and eat-in price when those are empty.",
+        "Takeaway price and Eat in price: optional. Fill them in only when takeaway and collection, or eating in, cost a different amount; empty or 0 means the main price.",
         "VAT: Hot food (pizza, kebabs, chips, hot drinks…), Cold food (cold sandwiches, salads, cakes, coleslaw…) or Standard (soft drinks, water, alcohol, sweets, crisps, ice cream). Ask your accountant if unsure.",
         "Description: optional, for the website and the item's details.",
         "Extras: optional, the names of extras groups from the Extras sheet, separated by ; (e.g. Extra toppings; Dips).",
@@ -262,7 +265,9 @@ public static class MenuSheetImport
                 "category" or "categories" or "tab" => "category",
                 "item" or "items" or "name" or "itemname" or "product" => "item",
                 "size" or "sizes" or "variant" or "option" => "size",
-                "price" or "prices" or "pricegbp" or "priceincvat" => "price",
+                "price" or "prices" or "pricegbp" or "priceincvat" or "mainprice" or "deliveryprice" => "price",
+                "takeawayprice" or "takeaway" or "takeawayandcollectionprice" or "collectionprice" => "takeaway",
+                "eatinprice" or "eatin" => "eatin",
                 "vat" or "vattype" or "vatcategory" or "vatrate" => "vat",
                 "description" or "details" => "description",
                 "extras" or "extrasgroups" or "extrasgroup" or "modifiers" => "extras",
@@ -304,6 +309,8 @@ public static class MenuSheetImport
         private bool _hasDescription;
         private bool _hasExtras;
         private bool _hasSoldOut;
+        private bool _hasTakeaway;
+        private bool _hasEatIn;
 
         public void Problem(string sheet, int row, string message) => _problems.Add(new ImportProblem(sheet, row, message));
 
@@ -428,6 +435,8 @@ public static class MenuSheetImport
             _hasDescription = col.ContainsKey("description");
             _hasExtras = col.ContainsKey("extras");
             _hasSoldOut = col.ContainsKey("soldout");
+            _hasTakeaway = col.ContainsKey("takeaway");
+            _hasEatIn = col.ContainsKey("eatin");
 
             string? category = null;
             SheetItem? lastItem = null;
@@ -562,9 +571,12 @@ public static class MenuSheetImport
                     continue;
                 }
 
+                long? Optional(string key) => Cell(key) is { Length: > 0 } text ? ParsePrice(sheet.Name, row, text) : null;
+                var takeawayPence = Optional("takeaway");
+                var eatInPence = Optional("eatin");
                 if (pence is not null)
                 {
-                    item.Sizes.Add(new SheetSize(sizeCell, pence.Value, soldOut ?? false, row));
+                    item.Sizes.Add(new SheetSize(sizeCell, pence.Value, soldOut ?? false, row, takeawayPence, eatInPence));
                 }
 
                 lastItem = item;
@@ -753,7 +765,10 @@ public static class MenuSheetImport
                 var name = s.Name.Length > 0 ? new LocalizedText(s.Name, old?.Name.Ar) : old?.Name ?? new LocalizedText("Regular");
                 // When every size has run out the item itself is marked sold out; otherwise just the sizes that have.
                 var soldOut = _hasSoldOut ? s.SoldOut && !allSoldOut : old?.IsSoldOut ?? false;
-                return new ProductVariant(old?.Id ?? Guid.NewGuid(), name, new Money(s.Pence, current.Currency), soldOut);
+                Money? Other(long? pence) => pence is > 0 ? new Money(pence.Value, current.Currency) : null; // empty or 0 = the main price
+                return new ProductVariant(old?.Id ?? Guid.NewGuid(), name, new Money(s.Pence, current.Currency), soldOut,
+                    _hasTakeaway ? Other(s.TakeawayPence) : old?.TakeawayPrice,
+                    _hasEatIn ? Other(s.EatInPence) : old?.EatInPrice);
             }).ToList();
 
             var name = new LocalizedText(item.Name, existing?.Name.Ar);
@@ -821,6 +836,17 @@ public static class MenuSheetImport
                     if (old.Price != v.Price)
                     {
                         parts.Add($"{label}{Pounds(old.Price.MinorUnits)} → {Pounds(v.Price.MinorUnits)}");
+                    }
+
+                    static string Other(Money? price) => price is { MinorUnits: > 0 } p ? Pounds(p.MinorUnits) : "main price";
+                    if (Other(old.TakeawayPrice) != Other(v.TakeawayPrice))
+                    {
+                        parts.Add($"{label}takeaway {Other(old.TakeawayPrice)} → {Other(v.TakeawayPrice)}");
+                    }
+
+                    if (Other(old.EatInPrice) != Other(v.EatInPrice))
+                    {
+                        parts.Add($"{label}eat in {Other(old.EatInPrice)} → {Other(v.EatInPrice)}");
                     }
 
                     if (old.Name.En != v.Name.En)
@@ -986,7 +1012,7 @@ public static class MenuSheetImport
         public List<Guid> Extras { get; } = [];
     }
 
-    private sealed record SheetSize(string Name, long Pence, bool SoldOut, int Row);
+    private sealed record SheetSize(string Name, long Pence, bool SoldOut, int Row, long? TakeawayPence = null, long? EatInPence = null);
 
     /// <summary>Text for logs: a short summary of a preview.</summary>
     public static string Summary(ImportPreview preview)

@@ -114,11 +114,23 @@ export class Till {
       this.draft.table = null;
     }
 
+    const before = this.orderType;
     this.mode = m;
+    this.repriceDraft(before, this.orderType);
     this.renderTicket();
     this.requestQuote();
     if (m.source === 'Phone' && !this.draft.customer) await this.editCustomer();
     return true;
+  }
+
+  /** Items already on a new order take the new type's prices (e.g. eat-in prices after switching from takeaway). */
+  repriceDraft(from, to) {
+    if (from === to || !this.menu) return;
+    for (const line of this.draft.lines) {
+      const product = this.menu.products.get(line.productId);
+      const variant = product && this.menu.variant(product, line.variantId);
+      if (variant) line.unitPence += this.menu.priceOf(variant, to) - this.menu.priceOf(variant, from);
+    }
   }
 
   async loadTables() {
@@ -222,6 +234,7 @@ export class Till {
   async loadMenu() {
     const [menu, popular] = await Promise.all([api.get('/api/menu'), api.get('/api/menu/popular').catch(() => [])]);
     this.menu = new MenuView(menu);
+    this.menu.orderType = () => this.orderType; // buttons and dialogs show the price for the order's type
     this.popular = popular;
     const categories = this.menu.categories();
     // Start on Popular when there are best sellers (the busiest buttons first), else on the first category.
@@ -389,7 +402,7 @@ export class Till {
     const itemSize = look.size === 'Custom' ? { '--item-w': `${look.itemWidth}px`, '--item-h': `${look.itemHeight}px` } : null;
     const grid = h('div', { class: `items items-${look.size.toLowerCase()} ${look.showPrices ? '' : 'items-no-price'}`, style: itemSize }, products.map(p => {
       const soldOut = this.menu.isSoldOut(p);
-      const price = p.variants.length > 1 ? `from ${penceText(this.menu.fromPrice(p))}` : penceText(p.variants[0].price.minorUnits);
+      const price = p.variants.length > 1 ? `from ${penceText(this.menu.fromPrice(p))}` : penceText(this.menu.priceOf(p.variants[0]));
       const colour = colours.get(p.categoryId);
       return h('button', {
         class: `item ${soldOut ? 'item-out' : ''}`,
@@ -501,7 +514,7 @@ export class Till {
 
       line = {
         productId: product.id, variantId: variant.id, quantity: 1, extras: [], note: null, choices: null,
-        name: text(product.name), size: null, details: [], unitPence: variant.price.minorUnits,
+        name: text(product.name), size: null, details: [], unitPence: this.menu.priceOf(variant),
       };
     }
 
@@ -544,8 +557,18 @@ export class Till {
 
   // ---------- The order (left) ----------
 
+  /** The type the order on screen is priced for: the saved order's, else the chosen one (none yet: main prices). */
+  get orderType() {
+    return this.saved?.type ?? this.mode?.type ?? null;
+  }
+
   renderTicket() {
     if (this.editor) return;
+    if (this.menu && this.pricedFor !== this.orderType) {
+      this.pricedFor = this.orderType;
+      if (this.gridHost) this.renderGrid(); // item buttons show the prices for this type
+    }
+
     const saved = this.saved;
     const draft = this.draft.lines;
     const head = saved
@@ -782,7 +805,7 @@ export class Till {
         key: newId(), productId: r.productId, variantId: r.variantId, quantity: r.quantity, extras: r.extras ?? [], note: r.note ?? null,
         choices, name: text(product.name), size: choices ? null : sizeName(product, r.variantId),
         details: choices ? choices.map(c => c.label) : extras.map(extraText),
-        unitPence: this.menu.variant(product, r.variantId).price.minorUnits, // the hub's quote gives the real total
+        unitPence: this.menu.priceOf(this.menu.variant(product, r.variantId)), // the hub's quote gives the real total
       });
     }
 

@@ -330,7 +330,11 @@ public sealed class OnlineOrderService : IDisposable
                 {
                     id = p.Id, categoryId = p.CategoryId, name = p.Name.En, description = p.Description?.En, allergens = p.Allergens, soldOut = p.IsSoldOut,
                     groupIds = p.ModifierGroupIds.Where(groups.ContainsKey),
-                    variants = p.Variants.Select(v => new { id = v.Id, name = v.Name.En, pricePence = v.Price.MinorUnits, soldOut = v.IsSoldOut }),
+                    variants = p.Variants.Select(v => new
+                    {
+                        id = v.Id, name = v.Name.En, pricePence = v.Price.MinorUnits, soldOut = v.IsSoldOut,
+                        collectionPence = v.PriceFor(OrderType.Takeaway) is var c && c != v.Price ? c.MinorUnits : (long?)null, // collection = takeaway price
+                    }),
                 }),
             },
         };

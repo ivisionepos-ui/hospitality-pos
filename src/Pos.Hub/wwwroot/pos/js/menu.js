@@ -31,9 +31,18 @@ export class MenuView {
     return text(product.buttonName ?? product.name);
   }
 
+  /**
+   * A size's price in pence for an order type: delivery (or no type yet) uses the main price; takeaway and collection use
+   * the takeaway price, eat in the eat-in price, each only when set above zero. The type defaults to the order on screen.
+   */
+  priceOf(variant, type = this.orderType?.()) {
+    const own = type === 'Takeaway' ? variant.takeawayPrice : type === 'EatIn' ? variant.eatInPrice : null;
+    return own?.minorUnits > 0 ? own.minorUnits : variant.price.minorUnits;
+  }
+
   /** Lowest price, for "from £7.99" on items with sizes. */
   fromPrice(product) {
-    return Math.min(...product.variants.map(v => v.price.minorUnits));
+    return Math.min(...product.variants.map(v => this.priceOf(v)));
   }
 
   isSoldOut(product) {

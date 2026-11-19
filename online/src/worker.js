@@ -135,7 +135,7 @@ async function placeOrder(request, env) {
   if (customer.name.length < 2) throw new Problem(400, 'Enter your name.');
   if (!customer.phone) throw new Problem(400, 'Enter a UK phone number, so the shop can call you about your order.');
 
-  const basket = priceBasket(shop.menu, body.lines);
+  const basket = priceBasket(shop.menu, body.lines, type);
   if (basket.problems.length) throw new Problem(400, basket.problems[0], { problems: basket.problems });
 
   let delivery = { feePence: 0, miles: null };

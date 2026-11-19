@@ -501,6 +501,16 @@ public sealed class Menu
         foreach (var variant in product.Variants)
         {
             CheckPrice(variant.Price, nameof(product));
+            if (variant.TakeawayPrice is { } takeaway)
+            {
+                CheckPrice(takeaway, nameof(product));
+            }
+
+            if (variant.EatInPrice is { } eatIn)
+            {
+                CheckPrice(eatIn, nameof(product));
+            }
+
             var owner = FindProductByVariant(variant.Id);
             if (owner is not null && owner.Id != product.Id)
             {
@@ -635,9 +645,23 @@ public sealed class Menu
             {
                 parts.Add($"size {v.Name} added at {Format(v.Price)}");
             }
-            else if (old.Price != v.Price)
+            else
             {
-                parts.Add($"price{label} {Format(old.Price)} → {Format(v.Price)}");
+                if (old.Price != v.Price)
+                {
+                    parts.Add($"price{label} {Format(old.Price)} → {Format(v.Price)}");
+                }
+
+                string Other(Money? price) => price is { MinorUnits: > 0 } p ? Format(p) : "main price";
+                if (Other(old.TakeawayPrice) != Other(v.TakeawayPrice))
+                {
+                    parts.Add($"takeaway price{label} {Other(old.TakeawayPrice)} → {Other(v.TakeawayPrice)}");
+                }
+
+                if (Other(old.EatInPrice) != Other(v.EatInPrice))
+                {
+                    parts.Add($"eat-in price{label} {Other(old.EatInPrice)} → {Other(v.EatInPrice)}");
+                }
             }
         }
 

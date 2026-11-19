@@ -36,6 +36,53 @@ public class MenuOrderBuilderTests
         Assert.Equal(Money.Gbp((1199 + 100 + 75) * 2), order.Total);
     }
 
+    [Theory]
+    [InlineData(null, null, null, 899)]
+    [InlineData(OrderType.Delivery, 799, 999, 899)]   // delivery: always the main price
+    [InlineData(OrderType.Takeaway, 799, 999, 799)]   // takeaway and collection: their own price
+    [InlineData(OrderType.EatIn, 799, 999, 999)]      // eat in: its own price
+    [InlineData(OrderType.Takeaway, null, 999, 899)]  // missing: the main price
+    [InlineData(OrderType.EatIn, 799, 0, 899)]        // zero: the main price
+    [InlineData(OrderType.Takeaway, 0, 0, 899)]
+    public void Each_order_type_uses_its_own_price_or_the_main_price(OrderType? type, int? takeaway, int? eatIn, int expected)
+    {
+        var size = new ProductVariant(Guid.NewGuid(), new LocalizedText("Regular"), Money.Gbp(899), false,
+            takeaway is { } t ? Money.Gbp(t) : null, eatIn is { } e ? Money.Gbp(e) : null);
+
+        Assert.Equal(Money.Gbp(expected), size.PriceFor(type));
+    }
+
+    [Fact]
+    public void Lines_are_priced_for_the_order_type_including_meal_deals()
+    {
+        var s = new SampleMenu();
+        var margherita = s.Menu.GetProduct(s.Margherita);
+        s.Menu.UpdateProduct(margherita with { Variants = [.. margherita.Variants.Select(v => v.Id == s.Margherita12 ? v with { TakeawayPrice = Money.Gbp(1099), EatInPrice = Money.Gbp(1299) } : v)] }, Manager);
+        var deal = s.Menu.GetProduct(s.Deal);
+        s.Menu.UpdateProduct(deal with { Variants = [.. deal.Variants.Select(v => v with { EatInPrice = v.Price + Money.Gbp(200) })] }, Manager);
+        var item = new ItemSelection(s.Margherita, s.Margherita12, [s.ExtraCheese]);
+
+        Assert.Equal(Money.Gbp(1199), new MenuOrderBuilder(s.Menu, OrderType.Delivery).ToLine(item).Item.NormalUnitPrice);
+        Assert.Equal(Money.Gbp(1099), new MenuOrderBuilder(s.Menu, OrderType.Takeaway).ToLine(item).Item.NormalUnitPrice);
+        Assert.Equal(Money.Gbp(1299), new MenuOrderBuilder(s.Menu, OrderType.EatIn).ToLine(item).Item.NormalUnitPrice);
+        Assert.Equal(Money.Gbp(100), new MenuOrderBuilder(s.Menu, OrderType.EatIn).ToLine(item).Modifiers[0].UnitPrice); // extras keep one price
+
+        var mainDeal = new MenuOrderBuilder(s.Menu, OrderType.Takeaway).ToLine(ValidDeal(s)).Deal.NormalUnitPrice;
+        Assert.Equal(mainDeal + Money.Gbp(200), new MenuOrderBuilder(s.Menu, OrderType.EatIn).ToLine(ValidDeal(s)).Deal.NormalUnitPrice);
+    }
+
+    [Fact]
+    public void Negative_takeaway_or_eat_in_prices_are_refused_and_changes_are_logged()
+    {
+        var s = new SampleMenu();
+        var doner = s.Menu.GetProduct(s.Doner);
+        Assert.Throws<ArgumentException>(() => s.Menu.UpdateProduct(doner with { Variants = [.. doner.Variants.Select(v => v with { EatInPrice = Money.Gbp(-1) })] }, Manager));
+
+        var change = s.Menu.UpdateProduct(doner with { Variants = [.. doner.Variants.Select(v => v with { TakeawayPrice = Money.Gbp(650) })] }, Manager);
+        Assert.Contains("takeaway price", change.Summary, StringComparison.Ordinal);
+        Assert.Contains("main price → £6.50", change.Summary, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Sold_out_items_sizes_and_extras_are_refused()
     {

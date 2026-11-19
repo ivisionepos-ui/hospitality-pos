@@ -2028,6 +2028,61 @@ test('website: the owner connects the website, a customer orders for collection,
   }
 });
 
+test('three prices: the owner sets takeaway and eat-in prices; the till charges each order type its own price', async () => {
+  const owner = { device: shop.owner.device, token: shop.owner.token };
+  const water = async () => (await call('GET', '/api/menu', owner)).products.find(p => p.name.en === 'Water 500ml');
+  const page = await tillPage(shop.till1);
+  await login(page, '4826');
+
+  // Edit menu: main £1.00 stays; takeaway & collection £0.90; eat in £1.50.
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Edit menu' }).click();
+  await page.getByText('EDIT MENU', { exact: true }).waitFor();
+  await page.locator('.cats').getByRole('button', { name: 'Drinks' }).click();
+  await page.locator('.items').getByRole('button', { name: /Water 500ml/ }).click();
+  await page.getByRole('button', { name: /^Takeaway price of/ }).waitFor();
+  assert.equal(await page.getByRole('button', { name: /^Takeaway price of/ }).innerText(), 'Main'); // not set: the main price
+  await page.getByRole('button', { name: /^Takeaway price of/ }).click();
+  await top(page).getByText('Leave at £0.00 to use the main price.').waitFor();
+  await pin(page, '90');
+  await top(page).getByRole('button', { name: 'Set price' }).click();
+  await page.getByRole('button', { name: /^Eat-in price of/ }).click();
+  await pin(page, '150');
+  await top(page).getByRole('button', { name: 'Set price' }).click();
+  await shot(page, 'ui-three-prices-edit');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByText('Water 500ml saved. All tills updated.').waitFor();
+  const saved = (await water()).variants[0];
+  assert.deepEqual([saved.price.minorUnits, saved.takeawayPrice.minorUnits, saved.eatInPrice.minorUnits], [100, 90, 150]);
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  // Takeaway: the button and the order show £0.90.
+  await page.getByRole('button', { name: 'Takeaway', exact: true }).click();
+  await page.locator('.cats').getByRole('button', { name: 'Drinks', exact: true }).click();
+  await page.locator('.items').getByRole('button', { name: /Water 500ml.*£0\.90/ }).click();
+  await page.locator('.line', { hasText: 'Water 500ml' }).getByText('£0.90').waitFor();
+  await page.getByRole('button', { name: 'Pay £0.90' }).waitFor();
+
+  // Switched to eat in: the item already on the order takes the eat-in price, and so do the buttons.
+  await page.getByRole('button', { name: 'Eat in', exact: true }).click();
+  if (await top(page).getByText('Which table?').isVisible().catch(() => false)) await top(page).getByRole('button', { name: 'Table 5', exact: true }).click();
+  await page.locator('.items').getByRole('button', { name: /Water 500ml.*£1\.50/ }).waitFor();
+  await page.locator('.line', { hasText: 'Water 500ml' }).getByText('£1.50').waitFor();
+  await page.getByRole('button', { name: 'Pay £1.50' }).waitFor();
+  assert.equal(await page.getByText('Offers').count(), 0); // no made-up discount from the price change
+  await shot(page, 'ui-three-prices-eat-in');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await page.getByText(/Order \d+ sent to the kitchen/).waitFor();
+  const order = (await ordersToday()).at(-1);
+  assert.equal(order.total.minorUnits, 150);
+
+  // Back to one price for the other tests.
+  const product = await water();
+  await call('PUT', `/api/menu/products/${product.id}`, owner, { product: { ...product, variants: product.variants.map(v => ({ ...v, takeawayPrice: null, eatInPrice: null })) } });
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
 test('usability: search, one-tap sizes, Popular tab, smarter cash, repeat a regular\'s order, order ages and filters', async () => {
   const owner = { device: shop.owner.device, token: shop.owner.token };
   const menu = await call('GET', '/api/menu', owner);

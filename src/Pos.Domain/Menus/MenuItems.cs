@@ -35,9 +35,23 @@ public sealed record Category
 /// <summary>One size of a product, e.g. 12". Products without sizes have a single variant.</summary>
 /// <param name="Id">Unique id.</param>
 /// <param name="Name">Size name, e.g. Large.</param>
-/// <param name="Price">Normal price, VAT included.</param>
+/// <param name="Price">Main price, VAT included. Used for delivery, and for takeaway or eat in when they have no price of their own.</param>
 /// <param name="IsSoldOut">This size has run out.</param>
-public sealed record ProductVariant(Guid Id, LocalizedText Name, Money Price, bool IsSoldOut = false);
+/// <param name="TakeawayPrice">Takeaway and collection price; empty or zero means the main price.</param>
+/// <param name="EatInPrice">Eat-in price; empty or zero means the main price.</param>
+public sealed record ProductVariant(Guid Id, LocalizedText Name, Money Price, bool IsSoldOut = false, Money? TakeawayPrice = null, Money? EatInPrice = null)
+{
+    /// <summary>
+    /// The price for an order type: delivery always uses the main price; takeaway and collection use the takeaway price
+    /// and eat in the eat-in price, each falling back to the main price when it is empty or zero. No type: the main price.
+    /// </summary>
+    public Money PriceFor(Tax.OrderType? type) => type switch
+    {
+        Tax.OrderType.Takeaway when TakeawayPrice is { MinorUnits: > 0 } takeaway => takeaway,
+        Tax.OrderType.EatIn when EatInPrice is { MinorUnits: > 0 } eatIn => eatIn,
+        _ => Price,
+    };
+}
 
 /// <summary>Whether a product is sold on its own or is a meal deal.</summary>
 public enum ProductType

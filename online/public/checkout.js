@@ -32,7 +32,7 @@ function field(label, key, attrs = {}) {
 const card = (title, ...body) => h('section', { class: 'card' }, h('h2', { text: title }), body);
 
 async function checkPostcode() {
-  const goods = priceBasket(menu, state.basket).goodsPence;
+  const goods = priceBasket(menu, state.basket, 'Delivery').goodsPence; // the postcode check is for delivery
   const code = tidyPostcode(c.postcode);
   if (!code) { quote = null; return false; }
   if (quote && quotedFor === `${code}|${goods}`) return quote.status === 'Ok';
@@ -54,7 +54,7 @@ async function checkPostcode() {
 function render() {
   const type = orderType(shop);
   c.type = type;
-  const priced = priceBasket(menu, state.basket);
+  const priced = priceBasket(menu, state.basket, type);
   const fee = type === 'Delivery' ? (quote?.status === 'Ok' && tidyPostcode(c.postcode) === quote.postcode ? quote.feePence : null) : 0;
   const total = priced.goodsPence + (fee ?? 0);
   const minutes = type === 'Delivery' ? shop.delivery.minutes : shop.collection.minutes;
@@ -95,7 +95,7 @@ function render() {
     h('div', { class: 'summary-head' }, h('h2', { class: 'basket-title', text: 'Your order' }), h('a', { href: '/', text: 'Edit' })),
     h('ul', { class: 'lines' }, state.basket.map(line => {
       const t = lineText(menu, line);
-      const pence = linePence(menu, line);
+      const pence = linePence(menu, line, orderType(shop));
       return h('li', {},
         h('div', { class: 'line-top' }, h('span', { class: 'line-name', text: `${line.quantity} × ${t.name}` }), h('span', { class: 'line-price', text: pence == null ? '—' : pounds(pence) })),
         t.details ? h('small', { class: 'line-details', text: t.details }) : null);

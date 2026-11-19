@@ -131,6 +131,15 @@ test('the basket is checked and priced against the menu', () => {
 
 // ---------- The service ----------
 
+test('collection uses the takeaway price when the shop set one; delivery always the main price', () => {
+  const priced = { ...menu, products: menu.products.map(p => p.id === 'p-kebab' ? { ...p, variants: p.variants.map(v => ({ ...v, collectionPence: 650 })) } : p) };
+  const line = [{ productId: 'p-kebab', variantId: 'v-reg', quantity: 2, optionIds: ['o-garlic'] }];
+  assert.equal(priceBasket(priced, line, 'Delivery').goodsPence, 750 * 2);
+  assert.equal(priceBasket(priced, line, 'Collection').goodsPence, 650 * 2);
+  assert.equal(priceBasket(priced, line).goodsPence, 750 * 2); // no type: the main price
+  assert.equal(priceBasket(menu, line, 'Collection').goodsPence, 750 * 2); // no collection price: the main price
+});
+
 test('before the shop publishes, the website says ordering is not set up', async () => {
   const shop = await call('GET', '/api/shop');
   assert.equal(shop.body.configured, false);

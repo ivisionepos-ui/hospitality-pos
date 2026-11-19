@@ -116,6 +116,15 @@ public sealed class OnlineOrderTests : HubTestBase, IDisposable
         await Online.SyncAsync(default);
         Assert.Equal(2, _cloud.Published.Count);
         Assert.Contains(_cloud.Published[1]["menu"]!["products"]!.AsArray(), p => (string?)p!["name"] == "Can" && (int)p!["variants"]![0]!["pricePence"]! == 130);
+        Assert.Null(_cloud.Published[1]["menu"]!["products"]!.AsArray().First(p => (string?)p!["name"] == "Can")!["variants"]![0]!["collectionPence"]);
+
+        // A takeaway price is the website's collection price (delivery keeps the main price).
+        var menu = await Manager.GetJson<Pos.Domain.Menus.MenuState>("/api/menu");
+        menu = menu with { Products = [.. menu.Products.Select(p => p.Id == TestMenu.Can ? p with { Variants = [.. p.Variants.Select(v => v with { TakeawayPrice = Pos.Domain.Common.Money.Gbp(110) })] } : p)] };
+        (await Manager.Put("/api/menu", menu)).EnsureSuccessStatusCode();
+        await Online.SyncAsync(default);
+        var can = _cloud.Published[^1]["menu"]!["products"]!.AsArray().First(p => (string?)p!["name"] == "Can")!["variants"]![0]!;
+        Assert.Equal((130, 110), ((int)can["pricePence"]!, (int)can["collectionPence"]!));
     }
 
     [Fact]

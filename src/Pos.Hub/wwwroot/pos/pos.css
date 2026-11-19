@@ -265,6 +265,11 @@ h1, h2, h3 { margin: 0; }
 .size-row { display: flex; gap: 8px; align-items: center; width: 100%; flex-wrap: wrap; }
 .size-name { flex: 1; min-width: 120px; }
 .price-btn { min-height: 52px; min-width: 110px; padding: 0 14px; border: 2px solid var(--line); border-radius: var(--radius); background: #fff; font-size: 1.15rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+/* Main, takeaway & collection, and eat-in prices side by side; an unset one says "Main". */
+.price-fields { display: flex; gap: 6px; flex-wrap: wrap; }
+.price-field { display: flex; flex-direction: column; gap: 2px; font-size: .8rem; font-weight: 600; color: var(--muted, #6b7280); }
+.price-fields .price-btn { min-width: 92px; min-height: 48px; font-size: 1.05rem; color: #111827; }
+.price-btn.price-same { color: var(--muted, #6b7280); font-weight: 600; border-style: dashed; }
 .seg-wrap { flex-wrap: wrap; }
 .chip-pair { display: inline-flex; }
 .chip-pair .chip:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }

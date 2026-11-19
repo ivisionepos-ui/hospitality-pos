@@ -2040,6 +2040,8 @@ test('usability: search, one-tap sizes, Popular tab, smarter cash, repeat a regu
   const offered = (await top(page).locator('.quick-btn').allInnerTexts()).slice(1).map(t => Number(t.replace('£', '')));
   assert.ok(offered.length >= 2 && offered.every(v => v > due) && offered[0] === Math.ceil(due), `${due} → ${offered}`);
   await shot(page, 'ui-usability-cash');
+  const footer = await top(page).locator('.dialog-actions').boundingBox();
+  assert.ok(footer.y + footer.height <= 768, 'the payment buttons fit on a 1366 × 768 screen');
   await top(page).getByRole('button', { name: `£${offered[0].toFixed(2)}` }).click();
   await top(page).getByRole('button', { name: 'Done' }).click();
   await page.getByText('Paid. Receipt printing.').waitFor();

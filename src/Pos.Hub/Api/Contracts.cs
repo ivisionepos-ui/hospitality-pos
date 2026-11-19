@@ -17,6 +17,7 @@ namespace Pos.Hub.Api;
 /// <param name="Contact">Customer name, phone, address and notes (phone and delivery orders). With a phone, the customer is remembered.</param>
 /// <param name="Delivery">Distance and any fee change (delivery orders).</param>
 /// <param name="Table">The table, for eat-in orders when the shop uses tables.</param>
+/// <param name="ServiceCharge">Eat-in orders: false when the customer declined the service charge; empty = the shop's setting.</param>
 public sealed record CreateOrderRequest(
     Guid OrderId,
     string IdempotencyKey,
@@ -27,7 +28,8 @@ public sealed record CreateOrderRequest(
     IReadOnlyList<OrderLineRequest>? Lines,
     OrderContact? Contact = null,
     DeliveryRequest? Delivery = null,
-    string? Table = null);
+    string? Table = null,
+    bool? ServiceCharge = null);
 
 /// <summary>Move an eat-in order to another table.</summary>
 /// <param name="Table">The table to move to.</param>
@@ -200,6 +202,9 @@ public sealed record OrderView(
     /// <summary>Why the discount was given, when there is one.</summary>
     public string? DiscountReason { get; init; }
 
+    /// <summary>The service charge rate, e.g. 12.5, when the order has one.</summary>
+    public decimal? ServiceChargePercent { get; init; }
+
     /// <summary>Paid so far (after refunds), when known.</summary>
     public Money? Paid { get; init; }
 
@@ -230,6 +235,7 @@ public sealed record OrderView(
         {
             Contact = order.Contact,
             DiscountReason = order.Discount?.Reason,
+            ServiceChargePercent = order.ServiceCharge is { } service ? service.BasisPoints / 100m : null,
             DriverId = order.DriverId,
             Table = order.Table,
             Delivery = t.Delivery is { } d

@@ -674,6 +674,10 @@ public static class Endpoints
             Handle(() => Results.Ok(OrderView.From(orders.MoveToTable(orderId, request.Table, Actor(http))))))
             .ForStaff(Permission.TakeOrders);
 
+        api.MapPost("/orders/{orderId:guid}/service-charge", (HttpContext http, OrderService orders, Guid orderId, OrderServiceChargeRequest request) =>
+            Handle(() => Results.Ok(OrderView.From(orders.ChangeServiceCharge(orderId, request.On, Actor(http))))))
+            .ForStaff(Permission.TakeOrders);
+
         api.MapPost("/orders/{orderId:guid}/delivery", (HttpContext http, OrderService orders, Guid orderId, DeliveryRequest delivery) =>
             Handle(() =>
             {
@@ -781,6 +785,13 @@ public static class Endpoints
 
         api.MapGet("/settings/tables", (TableService tables) => Handle(() => Results.Ok(tables.Get())))
             .ForStaff();
+
+        api.MapGet("/settings/service-charge", (TableService tables) => Handle(() => Results.Ok(tables.ServiceCharge())))
+            .ForStaff();
+
+        api.MapPut("/settings/service-charge", (HttpContext http, TableService tables, ServiceChargeSettings request) => Handle(() =>
+            Results.Ok(tables.SaveServiceCharge(request, Caller(http).Staff!.Id))))
+            .ForStaff(Permission.ManageDevices);
 
         api.MapPut("/settings/tables", (HttpContext http, TableService tables, SaveTablesRequest request) => Handle(() =>
             Results.Ok(tables.Save(request, Caller(http).Staff!.Id))))

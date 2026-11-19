@@ -115,6 +115,15 @@ Buttons (many items on the menu)
   automatic or custom; prices shown or hidden; Screen layout: the order on
   the left or on the right; this till or every till.
 
+Service charge (eat in)
+  More > Service charge: Off, or On for eat-in orders, then type the
+  percentage (e.g. 12.5) and Save. Takeaway, collection and delivery never
+  have it.
+  It is shown as "Optional service": if a customer does not want to pay it,
+  tap Remove service on their order (Add service puts it back).
+  It has no VAT. By law all of it must be passed to your staff; the Z report
+  shows the total for the day.
+
 Prices for takeaway, collection and eat in
   More > Edit menu > tap an item: each size has Main, Takeaway and Eat in.
   Main is always the delivery price. Takeaway is used for takeaway and

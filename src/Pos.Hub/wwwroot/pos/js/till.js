@@ -24,6 +24,8 @@ const ORDER_MODES = [
 ];
 const modeLabel = (source, type) => (source === 'Website' ? (type === 'Delivery' ? 'Website delivery' : 'Website collection') : ORDER_MODES.find(m => m.source === source && m.type === type)?.label ?? type);
 const CLOSED = ['Completed', 'Cancelled', 'Rejected'];
+// The service charge is optional (discretionary): the till and receipts always say so.
+const serviceLabel = percent => `Optional service ${percent ?? ''}%`;
 const VOID_REASONS = ['Customer changed mind', 'Entered by mistake', 'Out of stock'];
 
 /** Runs a request; when the hub says a manager must approve, asks for a manager PIN and tries again. */
@@ -88,7 +90,7 @@ export class Till {
   newDraft() {
     // customer: { contact, distanceMiles } for phone and delivery orders; feeOverride: { pence, reason } (needs a manager).
     // table: the table of an eat-in order when the shop uses tables (More → Eat-in and tables).
-    this.draft = { orderId: newId(), key: newId(), lines: [], customer: null, feeOverride: null, table: null };
+    this.draft = { orderId: newId(), key: newId(), lines: [], customer: null, feeOverride: null, table: null, serviceCharge: null }; // serviceCharge false = declined
     this.quote = null;
     this.mode = null; // every new order starts with no type: staff must choose Takeaway, Eat in, Collection or Delivery
   }
@@ -232,7 +234,8 @@ export class Till {
   }
 
   async loadMenu() {
-    const [menu, popular] = await Promise.all([api.get('/api/menu'), api.get('/api/menu/popular').catch(() => [])]);
+    const [menu, popular, service] = await Promise.all([api.get('/api/menu'), api.get('/api/menu/popular').catch(() => []), api.get('/api/settings/service-charge').catch(() => null)]);
+    this.serviceSettings = service; // eat-in service charge (More → Service charge)
     this.menu = new MenuView(menu);
     this.menu.orderType = () => this.orderType; // buttons and dialogs show the price for the order's type
     this.popular = popular;
@@ -547,6 +550,7 @@ export class Till {
           orderId: this.draft.orderId, idempotencyKey: this.draft.key, source: mode.source, type: mode.type,
           lines: this.draft.lines.map(lineRequest),
           delivery: this.saved ? null : this.deliveryRequest(),
+          serviceCharge: this.saved ? null : this.draft.serviceCharge,
         });
         if (seq === this.quoteSeq) { this.quote = quote; this.renderTicket(); }
       } catch (e) {
@@ -667,6 +671,7 @@ export class Till {
     if (saved) {
       if (saved.discountAmount) rows.push([`Discount${saved.discountReason ? ` (${saved.discountReason})` : ''}`, `-${money(saved.discountAmount)}`]);
       if (saved.delivery) rows.push([`Delivery (${saved.delivery.distanceMiles} mi)`, saved.delivery.isFree ? 'Free' : money(saved.delivery.fee)]);
+      if (saved.serviceCharge) rows.push([serviceLabel(saved.serviceChargePercent), money(saved.serviceCharge)]);
       rows.push(['Total', money(saved.total), 'total']);
       if (saved.refunded?.minorUnits) rows.push(['Refunded', `-${money(saved.refunded)}`]);
       if (saved.paid?.minorUnits) rows.push(['Paid', money(saved.paid)]);
@@ -677,8 +682,10 @@ export class Till {
       const vat = q ? q.vat.reduce((s, v) => s + v.vat.minorUnits, 0) : 0;
       const atMenu = this.draft.lines.reduce((s, l) => s + l.unitPence * l.quantity, 0);
       const fee = q?.delivery?.fee.minorUnits ?? 0;
-      if (q && atMenu + fee > q.total.minorUnits) rows.push(['Offers', `-${penceText(atMenu + fee - q.total.minorUnits)}`]);
+      const service = q?.serviceCharge?.minorUnits ?? 0;
+      if (q && atMenu + fee + service > q.total.minorUnits) rows.push(['Offers', `-${penceText(atMenu + fee + service - q.total.minorUnits)}`]);
       if (q?.delivery) rows.push([`Delivery (${q.delivery.distanceMiles} mi)${q.delivery.overridden ? ' — changed' : ''}`, q.delivery.isFree ? 'Free' : money(q.delivery.fee)]);
+      if (q?.serviceCharge) rows.push([serviceLabel(q.serviceChargePercent), money(q.serviceCharge)]);
       rows.push(['Total', q ? money(q.total) : this.draft.lines.length ? '…' : penceText(0), 'total']);
       if (q) rows.push(['incl. VAT', penceText(vat), 'small']);
     }
@@ -713,7 +720,9 @@ export class Till {
     const canDiscount = saved ? !CLOSED.includes(saved.status) : this.draft.lines.length > 0 && !block;
     return h('div', { class: 'totals' },
       block ? h('p', { class: 'ticket-warning', role: 'alert', text: block }) : null,
-      canDiscount ? h('button', { class: 'btn btn-small discount-btn', onclick: () => this.discount(), text: saved?.discountAmount ? 'Change discount' : 'Discount' }) : null,
+      h('div', { class: 'totals-tools' },
+        this.serviceButton(),
+        canDiscount ? h('button', { class: 'btn btn-small discount-btn', onclick: () => this.discount(), text: saved?.discountAmount ? 'Change discount' : 'Discount' }) : null),
       rows.map(([label, value, kind]) =>
         h('div', { class: `total-row ${kind ? `total-${kind}` : ''}` }, h('span', { text: label }), h('span', { text: value }))));
   }
@@ -881,6 +890,7 @@ export class Till {
         contact: this.mode.source === 'Phone' ? this.draft.customer?.contact ?? null : null,
         delivery: this.deliveryRequest(),
         table: this.mode.type === 'EatIn' ? this.draft.table : null,
+        serviceCharge: this.draft.serviceCharge,
       };
       const created = await withApproval(pin => api.post('/api/orders', body, { managerPin: pin }));
       if (!created) throw new ApiError(0, 'NotApproved', 'The delivery fee change was not approved. Choose "Normal fee" or ask a manager.');
@@ -950,6 +960,39 @@ export class Till {
       this.refreshOpenCount();
     } catch (e) {
       this.showError(e);
+    }
+  }
+
+  /**
+   * Eat-in orders: take the optional service charge off (the customer declined it) or put it back. Shown only while the
+   * shop's service charge is on, or the order still has one.
+   */
+  serviceButton() {
+    const saved = this.saved;
+    const type = saved?.type ?? this.mode?.type;
+    if (type !== 'EatIn' || (saved && CLOSED.includes(saved.status))) return null;
+    const charged = saved ? !!saved.serviceCharge : this.draft.serviceCharge !== false && !!this.serviceSettings?.on;
+    if (!charged && !this.serviceSettings?.on) return null;
+    if (!saved && !this.draft.lines.length) return null;
+    return h('button', {
+      class: 'btn btn-small service-btn', onclick: () => this.toggleService(!charged),
+      text: charged ? 'Remove service' : 'Add service',
+    });
+  }
+
+  async toggleService(on) {
+    try {
+      if (this.saved) {
+        this.saved = await busy(() => api.post(`/api/orders/${this.saved.id}/service-charge`, { on }));
+      } else {
+        this.draft.serviceCharge = on ? null : false;
+        this.requestQuote();
+      }
+      toast(on ? 'Service charge added.' : 'Service charge removed.', 'ok');
+    } catch (e) {
+      this.showError(e);
+    } finally {
+      this.renderTicket();
     }
   }
 

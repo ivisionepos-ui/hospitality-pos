@@ -597,6 +597,67 @@ async function eatInSettings() {
   });
 }
 
+/**
+ * More → Service charge: on or off for eat-in orders, and the percentage. The charge is optional for the customer
+ * (staff can take it off any order), outside the scope of VAT, and all of it belongs to the staff.
+ */
+async function serviceChargeSettings(till) {
+  let settings;
+  try {
+    settings = await busy(() => api.get('/api/settings/service-charge'));
+  } catch (e) {
+    toast(e.message ?? 'Could not reach the hub.', 'error');
+    return;
+  }
+
+  let on = settings.on;
+  await openDialog(close => {
+    const body = h('div', { class: 'service-settings' });
+    const percent = h('input', {
+      class: 'text-input count-input', type: 'number', inputmode: 'decimal', min: 0.01, max: 25, step: 0.5,
+      value: String(settings.percent), 'aria-label': 'Service charge percentage',
+    });
+    const problem = h('p', { class: 'form-problem', role: 'alert' });
+    const option = (value, title, hint) => h('button', {
+      class: `choice ${on === value ? 'choice-on' : ''}`, role: 'radio', 'aria-checked': String(on === value),
+      onclick: () => { on = value; render(); },
+    }, h('strong', { text: title }), h('span', { text: hint }));
+
+    const render = () => mount(body,
+      h('div', { class: 'choices', role: 'radiogroup', 'aria-label': 'Service charge on eat-in orders' },
+        option(false, 'Off', 'No service charge on any order.'),
+        option(true, 'On for eat-in orders', 'Added to every eat-in order. Takeaway, collection and delivery never have it.')),
+      on ? h('div', { class: 'field' },
+        h('label', { class: 'field' }, h('span', { class: 'field-label', text: 'Percentage (%)' }),
+          h('div', { class: 'percent-row' }, percent, h('span', { class: 'percent-sign', text: '%' }))),
+        h('div', { class: 'seg seg-small', role: 'group', 'aria-label': 'Common rates' },
+          [10, 12.5, 15].map(p => h('button', { class: 'seg-btn', onclick: () => { percent.value = String(p); }, text: `${p}%` }))),
+        h('p', { class: 'field-hint', text: 'Shown as "Optional service" on the till and receipts. If a customer asks, tap Remove service on their order. It has no VAT, and by law all of it must go to your staff.' })) : null,
+      problem);
+
+    const save = async () => {
+      problem.textContent = '';
+      const request = { on, percent: on ? Number(percent.value) : settings.percent };
+      try {
+        const saved = await busy(() => api.put('/api/settings/service-charge', request));
+        if (till) { till.serviceSettings = saved; till.renderTicket(); }
+        toast(saved.on ? `Eat-in orders now have an optional ${saved.percent}% service charge.` : 'Service charge switched off.', 'ok');
+        close();
+      } catch (e) {
+        problem.textContent = e.message;
+      }
+    };
+
+    render();
+    return {
+      title: 'Service charge',
+      class: 'dialog-narrow',
+      body,
+      actions: [h('button', { class: 'btn', onclick: () => close(), text: 'Cancel' }), h('button', { class: 'btn btn-primary', onclick: save, text: 'Save' })],
+    };
+  });
+}
+
 async function shopDetails() {
   const d = await busy(() => api.get('/api/settings/shop'));
   await openDialog(close => {
@@ -813,6 +874,7 @@ export function moreDialog(till) {
           section('Reports and shop',
             can('ManageDevices') ? item('Shop details', shopDetails) : null,
             can('ManageDevices') ? item('Eat-in and tables', eatInSettings) : null,
+            can('ManageDevices') ? item('Service charge', () => serviceChargeSettings(till)) : null,
             can('ManageDevices') ? item('Kitchen screens', kitchenScreensSettings) : null,
             can('ManageDevices') ? item('Customer displays', customerDisplaysSettings) : null,
             can('ManageDevices') ? item('Website (online orders)', websiteSettings) : null,

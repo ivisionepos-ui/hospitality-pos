@@ -53,6 +53,41 @@ public sealed record TableSettings(bool UseTables, IReadOnlyList<string> Tables)
     }
 }
 
+/// <summary>
+/// The service charge added to eat-in orders (More → Service charge). It is an optional (discretionary) charge:
+/// the customer may decline it, so staff can take it off any order, and it is outside the scope of VAT (HMRC VATSC06130).
+/// All of it belongs to the staff (Employment (Allocation of Tips) Act 2023).
+/// </summary>
+/// <param name="On">Add the service charge to eat-in orders.</param>
+/// <param name="Percent">The rate, e.g. 12.5. Kept while the charge is off, for when it is switched on again.</param>
+public sealed record ServiceChargeSettings(bool On, decimal Percent)
+{
+    /// <summary>Highest rate the till accepts.</summary>
+    public const decimal MaxPercent = 25m;
+
+    /// <summary>A new shop: off (12.5% is suggested when it is switched on).</summary>
+    public static readonly ServiceChargeSettings Default = new(false, 12.5m);
+
+    /// <summary>The charge for a new eat-in order, or null when it is off.</summary>
+    public Pos.Domain.Pricing.ServiceChargeInput? ForEatIn() => On ? new((int)(Percent * 100m), IsOptional: true) : null;
+
+    /// <summary>Checked: 0.01% to 25%, at most two decimal places.</summary>
+    /// <exception cref="ArgumentException">The rate cannot be used.</exception>
+    public ServiceChargeSettings Checked()
+    {
+        if (Percent is <= 0m or > MaxPercent || decimal.Round(Percent, 2) != Percent)
+        {
+            throw new ArgumentException($"The service charge must be more than 0% and at most {MaxPercent.ToString(CultureInfo.InvariantCulture)}%, e.g. 10 or 12.5.");
+        }
+
+        return this;
+    }
+}
+
+/// <summary>Take the service charge off an eat-in order (the customer declined it) or put it back.</summary>
+/// <param name="On">True to charge it.</param>
+public sealed record OrderServiceChargeRequest(bool On);
+
 /// <summary>Save the eat-in settings: tables on or off, and either a number of tables or their names.</summary>
 /// <param name="UseTables">Use tables for eat-in orders.</param>
 /// <param name="Count">Number the tables 1 to this (used when <paramref name="Tables"/> is empty).</param>
@@ -81,6 +116,26 @@ public sealed class TableService(HubDatabase db, TimeProvider clock)
     {
         var saved = db.Run(() => db.Scalar("SELECT value FROM settings WHERE key = $k;", ("$k", Key)) as string);
         return saved is null ? TableSettings.Default : PosJson.Deserialize<TableSettings>(saved);
+    }
+
+    private const string ServiceChargeKey = "service-charge";
+
+    /// <summary>The service charge for eat-in orders.</summary>
+    public ServiceChargeSettings ServiceCharge()
+    {
+        var saved = db.Run(() => db.Scalar("SELECT value FROM settings WHERE key = $k;", ("$k", ServiceChargeKey)) as string);
+        return saved is null ? ServiceChargeSettings.Default : PosJson.Deserialize<ServiceChargeSettings>(saved);
+    }
+
+    /// <summary>Saves the service charge; new eat-in orders use it (orders already open keep theirs).</summary>
+    public ServiceChargeSettings SaveServiceCharge(ServiceChargeSettings settings, Guid byUserId)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        var checkedSettings = settings.Checked();
+        db.Run(() => db.Execute(
+            "INSERT OR REPLACE INTO settings (key, value, updated_at, updated_by) VALUES ($k, $v, $at, $by);",
+            ("$k", ServiceChargeKey), ("$v", PosJson.Serialize(checkedSettings)), ("$at", clock.GetUtcNow().ToString("O", CultureInfo.InvariantCulture)), ("$by", byUserId.ToString())));
+        return checkedSettings;
     }
 
     /// <summary>Saves the settings; the next eat-in order uses them.</summary>

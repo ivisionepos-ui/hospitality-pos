@@ -444,7 +444,10 @@ body:has(.till-order-right) .toasts { right: auto; left: 16px; }
 .staff-history thead th { font-weight: 700; color: var(--ink); }
 
 /* Discounts, refunds, orders by day */
-.discount-btn { align-self: flex-end; margin: 0 0 6px auto; display: block; }
+/* Service charge and Discount, side by side above the totals. */
+.totals-tools { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 6px; }
+.totals-tools:empty { display: none; }
+.discount-btn, .service-btn { margin: 0; }
 .discount-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
 .discount-left, .discount-right { display: flex; flex-direction: column; gap: 10px; }
 .discount-preview { margin: 0; font-size: 1.15rem; font-weight: 700; min-height: 1.4em; }
@@ -735,3 +738,7 @@ body:has(.till-order-right) .toasts { right: auto; left: 16px; }
 .order-age-none { background: none; }
 .age-warn { background: #fef3c7; color: #92400e; }
 .age-late { background: #fee2e2; color: #991b1b; }
+
+/* More → Service charge. */
+.percent-row { display: flex; align-items: center; gap: 8px; }
+.percent-sign { font-size: 1.3rem; font-weight: 700; }

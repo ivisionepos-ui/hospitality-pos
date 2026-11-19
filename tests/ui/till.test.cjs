@@ -2028,6 +2028,55 @@ test('website: the owner connects the website, a customer orders for collection,
   }
 });
 
+test('service charge: the owner switches it on with a percentage; eat-in orders get it, and it can be taken off', async () => {
+  const page = await tillPage(shop.till1);
+  await login(page, '4826');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await top(page).getByRole('button', { name: 'Service charge' }).click();
+  await top(page).getByRole('radio', { name: /^Off/ }).waitFor();
+  assert.equal(await top(page).getByLabel('Service charge percentage').count(), 0); // no percentage while off
+  await top(page).getByRole('radio', { name: /^On for eat-in orders/ }).click();
+  await top(page).getByLabel('Service charge percentage').fill('12.5');
+  await shot(page, 'ui-service-charge-settings');
+  await top(page).getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Eat-in orders now have an optional 12.5% service charge.').waitFor();
+
+  // Takeaway: none.
+  await page.getByRole('button', { name: 'Takeaway', exact: true }).click();
+  await page.locator('.cats').getByRole('button', { name: 'Drinks', exact: true }).click();
+  await page.locator('.items').getByRole('button', { name: /Water 500ml/ }).click();
+  await page.getByRole('button', { name: 'Pay £1.00' }).waitFor();
+  assert.equal(await page.getByText(/Optional service/).count(), 0);
+
+  // Eat in: 12.5% of £4.00 = £0.50 is added; the customer can decline it.
+  await page.getByRole('button', { name: 'Eat in', exact: true }).click();
+  if (await top(page).getByText('Which table?').isVisible().catch(() => false)) await top(page).getByRole('button', { name: 'Table 5', exact: true }).click();
+  for (let i = 0; i < 3; i++) await page.locator('.items').getByRole('button', { name: /Water 500ml/ }).click();
+  await page.locator('.total-row', { hasText: 'Optional service 12.5%' }).getByText('£0.50').waitFor();
+  await page.getByRole('button', { name: 'Pay £4.50' }).waitFor();
+  await page.getByRole('button', { name: 'Remove service' }).click();
+  await page.getByRole('button', { name: 'Pay £4.00' }).waitFor();
+  await page.getByRole('button', { name: 'Add service' }).click();
+  await page.getByRole('button', { name: 'Pay £4.50' }).waitFor();
+  await shot(page, 'ui-service-charge-order');
+
+  // Saved and sent: still on the order; taken off when the customer asks.
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await page.getByText(/Order \d+ sent to the kitchen/).waitFor();
+  const sent = (await ordersToday()).at(-1);
+  assert.deepEqual([sent.serviceCharge?.minorUnits, sent.serviceChargePercent, sent.total.minorUnits], [50, 12.5, 450]);
+  await page.getByRole('button', { name: /^Orders/ }).click();
+  await top(page).locator('.order-row', { hasText: '£4.50' }).first().click();
+  await page.getByRole('button', { name: 'Remove service' }).click();
+  await page.getByText('Service charge removed.').waitFor();
+  await page.locator('.total-row', { hasText: 'Total' }).getByText('£4.00').waitFor();
+  assert.equal(await page.getByText(/Optional service/).count(), 0);
+
+  await call('PUT', '/api/settings/service-charge', { device: shop.owner.device, token: shop.owner.token }, { on: false, percent: 12.5 });
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
 test('three prices: the owner sets takeaway and eat-in prices; the till charges each order type its own price', async () => {
   const owner = { device: shop.owner.device, token: shop.owner.token };
   const water = async () => (await call('GET', '/api/menu', owner)).products.find(p => p.name.en === 'Water 500ml');
@@ -2102,7 +2151,10 @@ test('usability: search, one-tap sizes, Popular tab, smarter cash, repeat a regu
   // Popular: best sellers first.
   await page.locator('.cats').getByRole('button', { name: '★ Popular' }).waitFor();
   await page.locator('.cats').getByRole('button', { name: '★ Popular' }).click();
-  await page.locator('.items').getByRole('button', { name: /Cheesy chips/ }).waitFor();
+  // The hub's best sellers, best first (which ones depends on what earlier tests sold).
+  const best = (await call('GET', '/api/menu/popular', owner)).map(id => menu.products.find(p => p.id === id).name.en);
+  assert.ok(best.length > 0);
+  await page.locator('.items button').first().filter({ hasText: best[0] }).waitFor();
 
   // Search across the whole menu; Enter adds the only match; one tap on the size adds it.
   await page.getByRole('button', { name: 'Takeaway', exact: true }).click();

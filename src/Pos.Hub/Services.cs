@@ -123,6 +123,12 @@ public sealed class OrderService
                     _store.Save(result.Order);
                 }
 
+                if (ServiceChargeFor(request) is { } service)
+                {
+                    result.Order.SetServiceCharge(service, actor);
+                    _store.Save(result.Order);
+                }
+
                 if (contact?.Phone is not null)
                 {
                     _customers.Remember(contact, countOrder: true);
@@ -134,6 +140,31 @@ public sealed class OrderService
             return result;
         });
     }
+
+    /// <summary>The shop's service charge for a new eat-in order, unless the customer declined it.</summary>
+    private Pos.Domain.Pricing.ServiceChargeInput? ServiceChargeFor(CreateOrderRequest request) =>
+        request.Type == Pos.Domain.Tax.OrderType.EatIn && request.ServiceCharge != false ? _tables.ServiceCharge().ForEatIn() : null;
+
+    /// <summary>
+    /// Takes the service charge off an open eat-in order (it is optional: the customer may decline it) or puts it
+    /// back at the shop's rate. Recorded in the order's history.
+    /// </summary>
+    public Order ChangeServiceCharge(Guid orderId, bool on, OrderActor actor) => Change(orderId, order =>
+    {
+        if (order.Type != Pos.Domain.Tax.OrderType.EatIn)
+        {
+            throw new InvalidOperationException("Only eat-in orders have a service charge.");
+        }
+
+        var service = on ? _tables.ServiceCharge().ForEatIn() ?? throw new InvalidOperationException("The service charge is switched off (More → Service charge).") : null;
+        if (service is null && order.ServiceCharge is null)
+        {
+            return order;
+        }
+
+        order.SetServiceCharge(service, actor);
+        return order;
+    });
 
     /// <summary>Moves an open eat-in order to another of the shop's tables.</summary>
     public Order MoveToTable(Guid orderId, string? table, OrderActor actor)
@@ -263,6 +294,11 @@ public sealed class OrderService
         if (request.Delivery is { } delivery && request.Type == Pos.Domain.Tax.OrderType.Delivery)
         {
             order.SetDelivery(DeliveryInputFrom(delivery, actor.UserId), actor); // a preview: the fee change is approved when the order is saved
+        }
+
+        if (ServiceChargeFor(request) is { } service)
+        {
+            order.SetServiceCharge(service, actor);
         }
 
         return order;

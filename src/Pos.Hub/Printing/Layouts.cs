@@ -298,7 +298,10 @@ public static class Layouts
 
         if (t.Delivery is { } delivery)
         {
-            blocks.Add(new PrintColumns($"Delivery ({delivery.Quote.DistanceMiles.ToString("0.0", CultureInfo.InvariantCulture)} miles)", Money(delivery.Fee)));
+            var where = delivery.Quote.Status == Pos.Domain.Delivery.DeliveryQuoteStatus.DistanceUnknown
+                ? "distance not known"
+                : $"{delivery.Quote.DistanceMiles.ToString("0.0", CultureInfo.InvariantCulture)} miles";
+            blocks.Add(new PrintColumns($"Delivery ({where})", Money(delivery.Fee)));
         }
 
         if (t.ServiceCharge is { } service)

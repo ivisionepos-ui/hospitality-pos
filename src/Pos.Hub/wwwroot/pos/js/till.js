@@ -26,6 +26,9 @@ const modeLabel = (source, type) => (source === 'Website' ? (type === 'Delivery'
 const CLOSED = ['Completed', 'Cancelled', 'Rejected'];
 // The service charge is optional (discretionary): the till and receipts always say so.
 const serviceLabel = percent => `Optional service ${percent ?? ''}%`;
+// "2.4 mi", or why the fee is the furthest area's: postcode not found, or outside the area and staff went ahead.
+const deliveryWhere = d => (d.status === 'DistanceUnknown' ? 'distance not known'
+  : d.goAhead && d.status === 'BeyondMaximumDistance' ? `${d.distanceMiles} mi, outside area` : `${d.distanceMiles} mi`);
 const VOID_REASONS = ['Customer changed mind', 'Entered by mistake', 'Out of stock'];
 
 /** Runs a request; when the hub says a manager must approve, asks for a manager PIN and tries again. */
@@ -670,7 +673,7 @@ export class Till {
     const rows = [];
     if (saved) {
       if (saved.discountAmount) rows.push([`Discount${saved.discountReason ? ` (${saved.discountReason})` : ''}`, `-${money(saved.discountAmount)}`]);
-      if (saved.delivery) rows.push([`Delivery (${saved.delivery.distanceMiles} mi)`, saved.delivery.isFree ? 'Free' : money(saved.delivery.fee)]);
+      if (saved.delivery) rows.push([`Delivery (${deliveryWhere(saved.delivery)})`, saved.delivery.isFree ? 'Free' : money(saved.delivery.fee)]);
       if (saved.serviceCharge) rows.push([serviceLabel(saved.serviceChargePercent), money(saved.serviceCharge)]);
       rows.push(['Total', money(saved.total), 'total']);
       if (saved.refunded?.minorUnits) rows.push(['Refunded', `-${money(saved.refunded)}`]);
@@ -684,7 +687,7 @@ export class Till {
       const fee = q?.delivery?.fee.minorUnits ?? 0;
       const service = q?.serviceCharge?.minorUnits ?? 0;
       if (q && atMenu + fee + service > q.total.minorUnits) rows.push(['Offers', `-${penceText(atMenu + fee + service - q.total.minorUnits)}`]);
-      if (q?.delivery) rows.push([`Delivery (${q.delivery.distanceMiles} mi)${q.delivery.overridden ? ' — changed' : ''}`, q.delivery.isFree ? 'Free' : money(q.delivery.fee)]);
+      if (q?.delivery) rows.push([`Delivery (${deliveryWhere(q.delivery)})${q.delivery.overridden ? ' — changed' : ''}`, q.delivery.isFree ? 'Free' : money(q.delivery.fee)]);
       if (q?.serviceCharge) rows.push([serviceLabel(q.serviceChargePercent), money(q.serviceCharge)]);
       rows.push(['Total', q ? money(q.total) : this.draft.lines.length ? '…' : penceText(0), 'total']);
       if (q) rows.push(['incl. VAT', penceText(vat), 'small']);
@@ -735,9 +738,13 @@ export class Till {
 
   /** What the hub needs to price a delivery, or null. */
   deliveryRequest() {
-    if (this.mode?.type !== 'Delivery' || this.draft.customer?.distanceMiles == null) return null;
+    const c = this.draft.customer;
+    if (this.mode?.type !== 'Delivery' || (c?.distanceMiles == null && !c?.distanceUnknown)) return null;
     const o = this.draft.feeOverride;
-    return { distanceMiles: this.draft.customer.distanceMiles, feeOverridePence: o?.pence ?? null, overrideReason: o?.reason ?? null };
+    return {
+      distanceMiles: c.distanceUnknown ? 0 : c.distanceMiles, feeOverridePence: o?.pence ?? null, overrideReason: o?.reason ?? null,
+      goAhead: !!c.goAhead, distanceUnknown: !!c.distanceUnknown, // staff were warned and went ahead
+    };
   }
 
   /** Why this delivery cannot be sent yet, or null. */
@@ -751,7 +758,7 @@ export class Till {
     if (!this.draft.customer) return 'Add the customer’s address first.';
     const d = this.quote?.delivery;
     if (!d) return null;
-    if (d.status === 'BeyondMaximumDistance') return `Too far to deliver (${d.distanceMiles} miles). A manager can still agree a fee.`;
+    if (d.status === 'BeyondMaximumDistance' && !d.goAhead && !d.overridden) return `Too far to deliver (${d.distanceMiles} miles). Tap the customer to go ahead anyway.`;
     if (d.status === 'BelowMinimumOrder' && d.minimumOrder) {
       const food = this.quote.total.minorUnits - d.fee.minorUnits;
       return `Minimum order for delivery is ${money(d.minimumOrder)}: add ${penceText(d.minimumOrder.minorUnits - food)} more.`;
@@ -1071,13 +1078,13 @@ export class Till {
 
   async changeSavedCustomer(order) {
     const delivery = order.type === 'Delivery';
-    const result = await customerDialog({ delivery, initial: { contact: order.contact, distanceMiles: order.delivery?.distanceMiles ?? null } });
+    const result = await customerDialog({ delivery, initial: { contact: order.contact, distanceMiles: order.delivery?.distanceMiles ?? null, distanceUnknown: order.delivery?.status === 'DistanceUnknown' } });
     if (!result) return;
     try {
       await busy(async () => {
         await api.post(`/api/orders/${order.id}/contact`, result.contact);
-        if (delivery && result.distanceMiles !== order.delivery?.distanceMiles) {
-          await api.post(`/api/orders/${order.id}/delivery`, { distanceMiles: result.distanceMiles });
+        if (delivery && (result.distanceMiles !== order.delivery?.distanceMiles || result.goAhead !== !!order.delivery?.goAhead)) {
+          await api.post(`/api/orders/${order.id}/delivery`, { distanceMiles: result.distanceUnknown ? 0 : result.distanceMiles, goAhead: result.goAhead, distanceUnknown: result.distanceUnknown });
         }
       });
       this.saved = await api.get(`/api/orders/${order.id}`);

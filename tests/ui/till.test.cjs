@@ -564,7 +564,7 @@ test('phone delivery: postcode check, minimum order, remembered customer, manage
   const priya = await call('GET', '/api/customers?phone=07700900456', owner);
   assert.equal(priya[0].orderCount, 2);
 
-  // No internet: the postcode cannot be checked, so the miles are typed in. Too far is blocked.
+  // No internet: the postcode cannot be checked, so the miles are typed in. Too far warns first; Cancel to correct it.
   await page.getByRole('button', { name: 'Delivery', exact: true }).click();
   await top(page).getByLabel('Phone number').fill('0113 496 0000');
   await top(page).getByLabel('Name').fill('Test 000');
@@ -574,15 +574,13 @@ test('phone delivery: postcode check, minimum order, remembered customer, manage
   await top(page).getByText(/Type the distance in miles instead/).waitFor();
   await top(page).getByLabel('Distance in miles').fill('9'); // the miles box opens by itself
   await top(page).getByRole('button', { name: 'Use these details' }).click();
+  await top(page).getByText('Outside the delivery area', { exact: true }).waitFor();
+  await top(page).getByRole('button', { name: 'Cancel' }).click();
+  await top(page).getByLabel('Distance in miles').fill('3.5');
+  await top(page).getByRole('button', { name: 'Use these details' }).click();
   await pick(page, 'Pizzas', 'Meat feast');
   await top(page).getByRole('button', { name: /^14"/ }).click();
   await addIfStillOpen(page);
-  await page.locator('.ticket-warning', { hasText: 'Too far to deliver (9 miles)' }).waitFor();
-  assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).isDisabled(), true);
-  await page.locator('.customer-btn').click();
-  await top(page).getByText('No internet? Type the miles').click();
-  await top(page).getByLabel('Distance in miles').fill('3.5');
-  await top(page).getByRole('button', { name: 'Use these details' }).click();
   await page.locator('.total-row', { hasText: 'Delivery (3.5 mi)' }).getByText('£3.00').waitFor();
   assert.deepEqual(page.errors, []);
   await page.context().close();
@@ -2073,6 +2071,63 @@ test('service charge: the owner switches it on with a percentage; eat-in orders 
   assert.equal(await page.getByText(/Optional service/).count(), 0);
 
   await call('PUT', '/api/settings/service-charge', { device: shop.owner.device, token: shop.owner.token }, { on: false, percent: 12.5 });
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
+test('delivery outside the area or with a postcode not found: a warning, then go ahead or cancel', async () => {
+  const page = await tillPage(shop.till1);
+  await login(page, '5931');
+  const customer = async (name, phone, postcode) => {
+    await top(page).getByLabel('Phone number').fill(phone);
+    await top(page).getByLabel('Name').fill(name);
+    await top(page).getByLabel('House number and street').fill('1 New Build Road');
+    await top(page).getByLabel('Postcode').fill(postcode);
+  };
+  const twoPizzas = async () => {
+    for (let i = 0; i < 2; i++) {
+      await pick(page, 'Pizzas', 'Margherita');
+      await top(page).getByRole('button', { name: /^12"/ }).click();
+      await addIfStillOpen(page);
+    }
+  };
+
+  // Postcode not found: warned; Cancel keeps the customer window open to fix it.
+  await page.getByRole('button', { name: 'Delivery', exact: true }).click();
+  await customer('Nadia New', '07700 900611', 'LS99 9ZZ');
+  await top(page).getByRole('button', { name: 'Use these details' }).click();
+  await top(page).getByText('Postcode not found', { exact: true }).waitFor();
+  await top(page).getByText(/The distance to LS99 9ZZ could not be worked out/).waitFor();
+  await shot(page, 'ui-delivery-postcode-not-found');
+  await top(page).getByRole('button', { name: 'Cancel' }).click();
+  await top(page).getByRole('button', { name: 'Use these details' }).waitFor(); // still on the customer window
+  await top(page).getByRole('button', { name: 'Use these details' }).click();
+  await top(page).getByRole('button', { name: 'Go ahead' }).click();
+  await page.locator('.customer-btn', { hasText: 'Nadia New' }).waitFor();
+  await twoPizzas();
+  await page.locator('.total-row', { hasText: 'Delivery (distance not known)' }).getByText('£3.00').waitFor(); // the furthest area's fee
+  assert.equal(await page.locator('.ticket-warning').count(), 0);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await page.getByText(/Order \d+ sent to the kitchen/).waitFor();
+  const first = (await ordersToday()).at(-1);
+  assert.deepEqual([first.delivery.status, first.delivery.fee.minorUnits, first.delivery.goAhead], ['DistanceUnknown', 300, true]);
+
+  // Too far (9 miles; the shop delivers up to 5): warned, then taken at the furthest fee.
+  await page.getByRole('button', { name: 'Delivery', exact: true }).click();
+  await customer('Fred Faraway', '07700 900612', 'LS2 9JT');
+  await top(page).getByText('No internet? Type the miles').click();
+  await top(page).getByLabel('Distance in miles').fill('9');
+  await top(page).getByRole('button', { name: 'Use these details' }).click();
+  await top(page).getByText('Outside the delivery area', { exact: true }).waitFor();
+  await top(page).getByText(/9 miles is further than the shop delivers \(up to 5 miles\)/).waitFor();
+  await shot(page, 'ui-delivery-too-far');
+  await top(page).getByRole('button', { name: 'Go ahead' }).click();
+  await twoPizzas();
+  await page.locator('.total-row', { hasText: 'Delivery (9 mi, outside area)' }).getByText('£3.00').waitFor();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await page.getByText(/Order \d+ sent to the kitchen/).waitFor();
+  const second = (await ordersToday()).at(-1);
+  assert.deepEqual([second.delivery.status, second.delivery.distanceMiles, second.delivery.goAhead], ['BeyondMaximumDistance', 9, true]);
   assert.deepEqual(page.errors, []);
   await page.context().close();
 });

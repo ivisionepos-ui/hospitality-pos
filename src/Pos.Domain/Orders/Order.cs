@@ -189,7 +189,7 @@ public sealed class Order
         _history.AddRange(state.History);
         Discount = state.Discount;
         Delivery = state.Delivery is { } d
-            ? new DeliveryInput(d.DistanceMiles, DeliveryChargeTable.FromState(d.Table), d.Override)
+            ? new DeliveryInput(d.DistanceMiles, DeliveryChargeTable.FromState(d.Table), d.Override, d.GoAhead, d.DistanceUnknown)
             : null;
         ServiceCharge = state.ServiceCharge;
         Contact = state.Contact;
@@ -226,7 +226,7 @@ public sealed class Order
         Lines = [.. _lines],
         History = [.. _history],
         Discount = Discount,
-        Delivery = Delivery is { } d ? new DeliveryState(d.DistanceMiles, d.Table.ToState(), d.Override) : null,
+        Delivery = Delivery is { } d ? new DeliveryState(d.DistanceMiles, d.Table.ToState(), d.Override, d.GoAhead, d.DistanceUnknown) : null,
         ServiceCharge = ServiceCharge,
         Contact = Contact,
         DriverId = DriverId,
@@ -486,7 +486,11 @@ public sealed class Order
         Delivery = delivery;
         var description = delivery.Override is { } o
             ? $"Delivery fee changed to {o.Fee}"
-            : $"Delivery {delivery.DistanceMiles} miles, fee {Totals.Delivery!.Fee}";
+            : delivery.DistanceUnknown
+                ? $"Delivery: postcode not found, staff went ahead, fee {Totals.Delivery!.Fee}"
+                : Totals.Delivery!.Quote.Status == DeliveryQuoteStatus.BeyondMaximumDistance && delivery.GoAhead
+                    ? $"Delivery {delivery.DistanceMiles} miles: outside the delivery area, staff went ahead, fee {Totals.Delivery.Fee}"
+                    : $"Delivery {delivery.DistanceMiles} miles, fee {Totals.Delivery.Fee}";
         Record(actor, OrderEventKind.DeliveryChanged, description, reason: delivery.Override?.Reason, approvedBy: delivery.Override?.ByUserId);
     }
 
@@ -671,7 +675,9 @@ public sealed class Order
 /// <param name="DistanceMiles">Distance used.</param>
 /// <param name="Table">Charge table in force when the order was taken.</param>
 /// <param name="Override">Staff override, if any.</param>
-public sealed record DeliveryState(decimal DistanceMiles, DeliveryChargeTableState Table, DeliveryFeeOverride? Override);
+/// <param name="GoAhead">Staff went ahead although it is outside the delivery area.</param>
+/// <param name="DistanceUnknown">The postcode was not found; the distance is not known.</param>
+public sealed record DeliveryState(decimal DistanceMiles, DeliveryChargeTableState Table, DeliveryFeeOverride? Override, bool GoAhead = false, bool DistanceUnknown = false);
 
 /// <summary>An order as plain data: what is saved in the database and synced to the cloud.</summary>
 public sealed record OrderState

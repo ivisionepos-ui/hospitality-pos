@@ -3,7 +3,7 @@
 import { api, ApiError } from './api.js';
 import { addressFinder } from './address-finder.js';
 import { h, mount, penceText, timeText } from './dom.js';
-import { openDialog } from './dialogs.js';
+import { confirmDialog, openDialog } from './dialogs.js';
 
 function input(label, value, attrs = {}) {
   const el = h('input', { class: 'text-input', type: 'text', value: value ?? '', autocomplete: 'off', ...attrs });
@@ -45,6 +45,10 @@ export function customerDialog({ delivery, initial, allowRepeat = false }) {
     const checked = h('p', { class: 'check-result', role: 'status' });
     const problem = h('p', { class: 'form-problem', role: 'alert' });
     let distance = initial?.distanceMiles ?? null;
+    // How far the shop delivers, to warn before taking an order outside the area (staff can still go ahead).
+    let maximumMiles = null;
+    if (delivery) api.get('/api/delivery/settings').then(s => { maximumMiles = s.maximumMiles; }).catch(() => {});
+    if (initial?.distanceUnknown) distance = null;
     let checkedPostcode = distance !== null ? (a.postcode ?? '') : null;
 
     const showDistance = () => {
@@ -164,7 +168,7 @@ export function customerDialog({ delivery, initial, allowRepeat = false }) {
 
     if (allowRepeat && c.phone) showPastOrders(c.phone); // the customer is already on the order
 
-    const save = (repeatOrderId = null) => {
+    const save = async (repeatOrderId = null) => {
       problem.textContent = '';
       const digits = phone.el.value.replace(/[^\d+]/g, '');
       // Name and phone are needed on every collection and delivery order (the hub checks this too).
@@ -172,7 +176,24 @@ export function customerDialog({ delivery, initial, allowRepeat = false }) {
       if (!digits) { problem.textContent = delivery ? 'Enter a phone number, so the driver can call.' : 'Enter a phone number, so the shop can call about the order.'; phone.el.focus(); return; }
       if (delivery && !line1.el.value.trim()) { problem.textContent = 'Enter the house number and street.'; return; }
       if (delivery && !postcode.el.value.trim()) { problem.textContent = 'Enter the postcode.'; return; }
-      if (delivery && distance === null) { problem.textContent = 'Press Check postcode, or type the distance in miles.'; return; }
+      let goAhead = false;
+      let distanceUnknown = false;
+      if (delivery && distance === null) {
+        if (checkedPostcode !== postcode.el.value.trim().toUpperCase()) await check(); // not checked yet
+        if (distance === null) {
+          // Postcode not found (or no internet): the order can still be taken, after a warning.
+          if (!await confirmDialog('Postcode not found',
+            `The distance to ${postcode.el.value.trim().toUpperCase()} could not be worked out. You can still take the order: the delivery fee for the furthest area is charged (a manager can change it). Check the address with the customer.`,
+            'Go ahead', false, 'Cancel')) return;
+          goAhead = distanceUnknown = true;
+        }
+      }
+      if (delivery && distance !== null && maximumMiles !== null && distance > maximumMiles) {
+        if (!await confirmDialog('Outside the delivery area',
+          `${distance} miles is further than the shop delivers (up to ${maximumMiles} miles). You can still take the order: the delivery fee for the furthest area is charged (a manager can change it).`,
+          'Go ahead', false, 'Cancel')) return;
+        goAhead = true;
+      }
       close({
         contact: {
           name: name.el.value.trim() || null,
@@ -181,6 +202,8 @@ export function customerDialog({ delivery, initial, allowRepeat = false }) {
           notes: notes.el.value.trim() || null,
         },
         distanceMiles: delivery ? distance : null,
+        goAhead,
+        distanceUnknown,
         repeatOrderId,
       });
     };

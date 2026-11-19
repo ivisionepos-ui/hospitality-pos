@@ -251,7 +251,7 @@ public sealed class OrderPricer
         AppliedDelivery? appliedDelivery = null;
         if (request.Delivery is { } delivery)
         {
-            var quote = delivery.Table.Quote(delivery.DistanceMiles, goodsAfterDiscount);
+            var quote = delivery.QuoteFor(goodsAfterDiscount);
             var fee = quote.Fee;
             if (delivery.Override is { } feeOverride)
             {

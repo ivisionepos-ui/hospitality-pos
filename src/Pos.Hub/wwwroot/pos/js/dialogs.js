@@ -50,12 +50,12 @@ export function alertDialog(title, message) {
 }
 
 /** Yes/no question. Resolves true or false. */
-export async function confirmDialog(title, message, yes = 'Yes', danger = false) {
+export async function confirmDialog(title, message, yes = 'Yes', danger = false, no = 'No') {
   return (await openDialog(close => ({
     title,
     body: h('p', { class: 'dialog-message', text: message }),
     actions: [
-      h('button', { class: 'btn', onclick: () => close(false), text: 'No' }),
+      h('button', { class: 'btn', onclick: () => close(false), text: no }),
       h('button', { class: `btn ${danger ? 'btn-danger' : 'btn-primary'}`, onclick: () => close(true), text: yes }),
     ],
   }))) === true;

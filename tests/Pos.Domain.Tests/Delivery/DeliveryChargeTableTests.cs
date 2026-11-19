@@ -30,6 +30,36 @@ public class DeliveryChargeTableTests
         Assert.Equal(Money.Gbp(expectedFee), quote.Fee);
     }
 
+    [Theory]
+    [InlineData(7.5, false, 0, DeliveryQuoteStatus.BeyondMaximumDistance)]    // not agreed: no fee, the till blocks it
+    [InlineData(7.5, true, 350, DeliveryQuoteStatus.BeyondMaximumDistance)]   // staff went ahead: the furthest band's fee
+    [InlineData(2.0, true, 250, DeliveryQuoteStatus.Ok)]                      // inside the area going ahead changes nothing
+    public void Outside_the_area_staff_can_go_ahead_at_the_furthest_fee(double miles, bool goAhead, long fee, DeliveryQuoteStatus status)
+    {
+        var quote = new DeliveryInput((decimal)miles, Bands, GoAhead: goAhead).QuoteFor(Money.Gbp(2000));
+
+        Assert.Equal((status, Money.Gbp(fee), (decimal)miles), (quote.Status, quote.Fee, quote.DistanceMiles));
+    }
+
+    [Fact]
+    public void Postcode_not_found_charges_the_furthest_fee_and_keeps_its_minimum_order_and_free_delivery()
+    {
+        var unknown = new DeliveryInput(0m, Bands, GoAhead: true, DistanceUnknown: true);
+
+        Assert.Equal((DeliveryQuoteStatus.DistanceUnknown, Money.Gbp(350)), (unknown.QuoteFor(Money.Gbp(2000)).Status, unknown.QuoteFor(Money.Gbp(2000)).Fee));
+        Assert.Equal(DeliveryQuoteStatus.BelowMinimumOrder, unknown.QuoteFor(Money.Gbp(1000)).Status); // the furthest band's £15 minimum
+        Assert.True(unknown.QuoteFor(Money.Gbp(3000)).IsFreeDelivery);
+    }
+
+    [Fact]
+    public void Per_mile_charging_uses_the_fee_at_the_maximum_distance()
+    {
+        var perMile = DeliveryChargeTable.PerMile(Money.Gbp(100), Money.Gbp(200), maximumMiles: 6m);
+
+        Assert.Equal(Money.Gbp(600), perMile.QuoteOutsideArea(9m, Money.Gbp(2000)).Fee);
+        Assert.Equal(Money.Gbp(600), perMile.QuoteOutsideArea(null, Money.Gbp(2000)).Fee);
+    }
+
     [Fact]
     public void Too_far_is_refused_with_no_fee()
     {

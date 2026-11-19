@@ -39,7 +39,9 @@ public sealed record MoveTableRequest(string Table);
 /// <param name="DistanceMiles">Distance from the shop, from the postcode check or typed in.</param>
 /// <param name="FeeOverridePence">A different fee in pence (needs a manager); empty = the normal charge.</param>
 /// <param name="OverrideReason">Why the fee was changed.</param>
-public sealed record DeliveryRequest(decimal DistanceMiles, long? FeeOverridePence = null, string? OverrideReason = null);
+/// <param name="GoAhead">Staff saw the warning (outside the delivery area, or postcode not found) and went ahead.</param>
+/// <param name="DistanceUnknown">The postcode was not found and staff went ahead without the distance (send 0 miles).</param>
+public sealed record DeliveryRequest(decimal DistanceMiles, long? FeeOverridePence = null, string? OverrideReason = null, bool GoAhead = false, bool DistanceUnknown = false);
 
 /// <summary>Delivery as shown on the till.</summary>
 /// <param name="DistanceMiles">Distance used.</param>
@@ -48,7 +50,8 @@ public sealed record DeliveryRequest(decimal DistanceMiles, long? FeeOverridePen
 /// <param name="MinimumOrder">Minimum order that applies, if any.</param>
 /// <param name="IsFree">Free because the order is big enough.</param>
 /// <param name="Overridden">A manager changed the fee.</param>
-public sealed record DeliveryView(decimal DistanceMiles, Pos.Domain.Delivery.DeliveryQuoteStatus Status, Money Fee, Money? MinimumOrder, bool IsFree, bool Overridden);
+/// <param name="GoAhead">Staff went ahead although it is outside the delivery area or the postcode was not found.</param>
+public sealed record DeliveryView(decimal DistanceMiles, Pos.Domain.Delivery.DeliveryQuoteStatus Status, Money Fee, Money? MinimumOrder, bool IsFree, bool Overridden, bool GoAhead = false);
 
 /// <summary>One item or meal deal picked on the till. With Choices it is a meal deal.</summary>
 /// <param name="ProductId">Item or deal.</param>
@@ -239,7 +242,7 @@ public sealed record OrderView(
             DriverId = order.DriverId,
             Table = order.Table,
             Delivery = t.Delivery is { } d
-                ? new DeliveryView(d.Quote.DistanceMiles, d.Override is null ? d.Quote.Status : Pos.Domain.Delivery.DeliveryQuoteStatus.Ok, d.Fee, d.Quote.MinimumOrder, d.Quote.IsFreeDelivery, d.Override is not null)
+                ? new DeliveryView(d.Quote.DistanceMiles, d.Override is null || d.Quote.Status == Pos.Domain.Delivery.DeliveryQuoteStatus.DistanceUnknown ? d.Quote.Status : Pos.Domain.Delivery.DeliveryQuoteStatus.Ok, d.Fee, d.Quote.MinimumOrder, d.Quote.IsFreeDelivery, d.Override is not null, order.Delivery?.GoAhead == true || order.Delivery?.DistanceUnknown == true)
                 : null,
         };
     }

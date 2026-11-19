@@ -115,6 +115,12 @@ Buttons (many items on the menu)
   automatic or custom; prices shown or hidden; Screen layout: the order on
   the left or on the right; this till or every till.
 
+Delivery outside the area, or postcode not found
+  The till warns you and asks: Go ahead or Cancel.
+  Go ahead takes the order and charges the delivery fee for your furthest
+  area (a manager can change the fee). Cancel lets you correct the postcode
+  or the miles. The receipt shows "distance not known" or "outside area".
+
 Service charge (eat in)
   More > Service charge: Off, or On for eat-in orders, then type the
   percentage (e.g. 12.5) and Save. Takeaway, collection and delivery never

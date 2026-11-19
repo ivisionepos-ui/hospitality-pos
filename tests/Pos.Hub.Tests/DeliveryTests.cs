@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Text;
 using System.Net;
 using System.Net.Http.Json;
@@ -162,6 +163,42 @@ public sealed class DeliveryTests : HubTestBase
         Assert.Equal(DeliveryQuoteStatus.BeyondMaximumDistance, far.Delivery!.Status);
         Assert.Equal(DeliveryQuoteStatus.BelowMinimumOrder, bandMinimum.Delivery!.Status); // £12.59 < £15 for 3–5 miles
         Assert.Equal(Money.Gbp(1500), bandMinimum.Delivery.MinimumOrder);
+    }
+
+    [Fact]
+    public async Task Too_far_orders_go_ahead_when_staff_agree_at_the_furthest_fee_and_it_is_recorded()
+    {
+        await Menu();
+
+        var order = await (await Cashier.Post("/api/orders", DeliveryOrder(Sam, new DeliveryRequest(9m, GoAhead: true), Doner, Pizza))).Read<OrderView>();
+
+        Assert.Equal((DeliveryQuoteStatus.BeyondMaximumDistance, Money.Gbp(300), true), (order.Delivery!.Status, order.Delivery.Fee, order.Delivery.GoAhead));
+        Assert.Equal(Money.Gbp(899 + 1199 + 300), order.Total);
+        var saved = Host.Services.GetRequiredService<OrderService>().Get(order.Id);
+        Assert.Contains(saved.History, e => e.Description.Contains("outside the delivery area, staff went ahead", StringComparison.Ordinal));
+
+        // Kept after a restart (the order is read back from the database).
+        Restart();
+        var again = await Cashier.GetJson<OrderView>($"/api/orders/{order.Id}");
+        Assert.Equal((Money.Gbp(300), true), (again.Delivery!.Fee, again.Delivery.GoAhead));
+    }
+
+    [Fact]
+    public async Task Postcode_not_found_orders_go_ahead_without_a_distance()
+    {
+        await Menu();
+        var unknownAddress = Sam with { Address = new DeliveryAddress("1 New Build Road", null, "Leeds", "LS99 9ZZ") };
+
+        var order = await (await Cashier.Post("/api/orders", DeliveryOrder(unknownAddress, new DeliveryRequest(0m, DistanceUnknown: true), Doner, Pizza))).Read<OrderView>();
+
+        Assert.Equal((DeliveryQuoteStatus.DistanceUnknown, Money.Gbp(300), true), (order.Delivery!.Status, order.Delivery.Fee, order.Delivery.GoAhead));
+        var saved = Host.Services.GetRequiredService<OrderService>().Get(order.Id);
+        var receipt = Layouts.Receipt(saved, null, PrintSamples.Shop, TimeZoneInfo.Utc, "Sam", isCopy: false).PlainText;
+        Assert.Contains("Delivery (distance not known)", receipt, StringComparison.Ordinal);
+
+        // The address is corrected later: the real distance and fee replace it.
+        var fixedUp = await (await Cashier.Post($"/api/orders/{order.Id}/delivery", new DeliveryRequest(1.3m))).Read<OrderView>();
+        Assert.Equal((DeliveryQuoteStatus.Ok, Money.Gbp(150), false), (fixedUp.Delivery!.Status, fixedUp.Delivery.Fee, fixedUp.Delivery.GoAhead));
     }
 
     [Fact]

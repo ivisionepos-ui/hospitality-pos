@@ -21,6 +21,9 @@ public enum DeliveryQuoteStatus
 
     /// <summary>Further than the shop delivers.</summary>
     BeyondMaximumDistance,
+
+    /// <summary>The postcode was not found, and staff chose to deliver anyway: the distance is not known.</summary>
+    DistanceUnknown,
 }
 
 /// <summary>What the delivery would cost, and whether it is allowed.</summary>
@@ -144,6 +147,20 @@ public sealed class DeliveryChargeTable
             : Banded(state.Bands, state.MaximumMiles, state.MinimumOrder, state.FreeOver);
     }
 
+    /// <summary>
+    /// Quotes a delivery that staff agreed to take although it is outside the delivery area, or the postcode was not
+    /// found (<paramref name="distanceMiles"/> null). The fee is the furthest normal fee: the last band's fee, or for
+    /// per-mile charging the fee at the maximum distance. The minimum order and free delivery of the furthest band apply.
+    /// </summary>
+    public DeliveryQuote QuoteOutsideArea(decimal? distanceMiles, Money goodsTotal)
+    {
+        var furthest = Quote(MaximumMiles, goodsTotal);
+        var status = furthest.Status == DeliveryQuoteStatus.BelowMinimumOrder
+            ? DeliveryQuoteStatus.BelowMinimumOrder
+            : distanceMiles is null ? DeliveryQuoteStatus.DistanceUnknown : DeliveryQuoteStatus.BeyondMaximumDistance;
+        return furthest with { Status = status, DistanceMiles = distanceMiles ?? 0m };
+    }
+
     /// <summary>Quotes a delivery for a distance and the food and drink total (after discounts).</summary>
     public DeliveryQuote Quote(decimal distanceMiles, Money goodsTotal)
     {
@@ -209,7 +226,22 @@ public sealed record DeliveryFeeOverride(Money Fee, string Reason, Guid ByUserId
 /// <param name="DistanceMiles">Distance from the shop to the address.</param>
 /// <param name="Table">The branch's delivery charges.</param>
 /// <param name="Override">Staff override, or null.</param>
-public sealed record DeliveryInput(decimal DistanceMiles, DeliveryChargeTable Table, DeliveryFeeOverride? Override = null);
+/// <param name="GoAhead">Staff were warned the address is outside the delivery area (or its postcode was not found) and went ahead.</param>
+/// <param name="DistanceUnknown">The postcode was not found: <paramref name="DistanceMiles"/> is not used.</param>
+public sealed record DeliveryInput(decimal DistanceMiles, DeliveryChargeTable Table, DeliveryFeeOverride? Override = null, bool GoAhead = false, bool DistanceUnknown = false)
+{
+    /// <summary>The delivery quote for this order's food and drink total.</summary>
+    public DeliveryQuote QuoteFor(Money goodsTotal)
+    {
+        if (DistanceUnknown)
+        {
+            return Table.QuoteOutsideArea(null, goodsTotal);
+        }
+
+        var quote = Table.Quote(DistanceMiles, goodsTotal);
+        return GoAhead && quote.Status == DeliveryQuoteStatus.BeyondMaximumDistance ? Table.QuoteOutsideArea(DistanceMiles, goodsTotal) : quote;
+    }
+}
 
 /// <summary>A delivery charge table as plain data.</summary>
 /// <param name="Bands">Distance bands (empty for per-mile).</param>

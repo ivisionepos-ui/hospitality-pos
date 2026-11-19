@@ -261,7 +261,10 @@ public sealed class OrderService
         var feeOverride = delivery.FeeOverridePence is { } fee
             ? new Pos.Domain.Delivery.DeliveryFeeOverride(Money.Gbp(fee), string.IsNullOrWhiteSpace(delivery.OverrideReason) ? throw new ArgumentException("Give a reason for changing the delivery fee.") : delivery.OverrideReason.Trim(), approver)
             : null;
-        return new Pos.Domain.Delivery.DeliveryInput(delivery.DistanceMiles, _delivery.Table(), feeOverride);
+        // Postcode not found, or outside the delivery area: staff were warned and went ahead (the furthest fee applies).
+        return delivery.DistanceUnknown
+            ? new Pos.Domain.Delivery.DeliveryInput(0m, _delivery.Table(), feeOverride, GoAhead: true, DistanceUnknown: true)
+            : new Pos.Domain.Delivery.DeliveryInput(delivery.DistanceMiles, _delivery.Table(), feeOverride, delivery.GoAhead);
     }
 
     /// <summary>Only a changed fee needs a manager; the normal charge never does.</summary>

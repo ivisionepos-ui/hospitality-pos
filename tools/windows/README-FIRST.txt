@@ -114,6 +114,16 @@ Buttons (many items on the menu)
   (automatic), or a custom width and height in pixels; category buttons
   automatic or custom; prices shown or hidden; this till or every till.
 
+Faster ordering
+  Search: type in the box above the menu to find any item in any category;
+  Enter adds it when only one matches, Esc clears.
+  ★ Popular: your best sellers of the last 30 days, one tap away.
+  Items with only a size choice are added as soon as you tap the size.
+  Regular customers: on Collection or Delivery type their phone number; their
+  last orders appear with Repeat, which adds the same items at today's prices.
+  Cash: buttons for the notes the customer is likely to hand over.
+  Orders: open orders show how long they have waited (amber 15 min, red 30).
+
 Before your first real day: clear the test sales, then go live
   More > Testing or live (owner). "Clear test sales" removes every order,
   payment, till session and Z report made while trying the system (type CLEAR;

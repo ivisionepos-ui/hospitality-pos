@@ -2,7 +2,7 @@
 // or type name and address; check the postcode to get the distance from the shop.
 import { api, ApiError } from './api.js';
 import { addressFinder } from './address-finder.js';
-import { h, mount, timeText } from './dom.js';
+import { h, mount, penceText, timeText } from './dom.js';
 import { openDialog } from './dialogs.js';
 
 function input(label, value, attrs = {}) {
@@ -23,10 +23,11 @@ export function contactSummary(contact) {
 }
 
 /**
- * Opens the customer panel. Resolves { contact, distanceMiles } or null.
- * @param {{ delivery: boolean, initial?: { contact?: object, distanceMiles?: number } }} options
+ * Opens the customer panel. Resolves { contact, distanceMiles, repeatOrderId? } or null.
+ * With allowRepeat a returning customer's last orders are listed, each with Repeat ("same as last time").
+ * @param {{ delivery: boolean, initial?: { contact?: object, distanceMiles?: number }, allowRepeat?: boolean }} options
  */
-export function customerDialog({ delivery, initial }) {
+export function customerDialog({ delivery, initial, allowRepeat = false }) {
   const c = initial?.contact ?? {};
   const a = c.address ?? {};
   return openDialog(close => {
@@ -40,6 +41,7 @@ export function customerDialog({ delivery, initial }) {
     const notes = input(delivery ? 'Notes for the driver (optional)' : 'Notes (optional)', c.notes, { maxlength: 200, placeholder: delivery ? 'e.g. Ring the side door' : '' });
     const manual = h('details', { class: 'manual-miles' }, h('summary', { text: 'No internet? Type the miles' }), miles.field);
     const matches = h('div', { class: 'matches', 'aria-live': 'polite' });
+    const past = h('div', { class: 'past-orders', 'aria-live': 'polite' });
     const checked = h('p', { class: 'check-result', role: 'status' });
     const problem = h('p', { class: 'form-problem', role: 'alert' });
     let distance = initial?.distanceMiles ?? null;
@@ -124,6 +126,21 @@ export function customerDialog({ delivery, initial }) {
         if (delivery) check();
       }
       mount(matches);
+      if (allowRepeat) showPastOrders(customer.phone);
+    };
+
+    // A returning customer's last orders, each with Repeat: one tap puts the same items on the new order.
+    const showPastOrders = async digits => {
+      mount(past);
+      try {
+        const orders = await api.get(`/api/customers/orders?phone=${encodeURIComponent(digits)}`);
+        if (!orders.length) return;
+        mount(past, h('span', { class: 'field-label', text: 'Previous orders' }), orders.map(o => h('div', { class: 'past-order' },
+          h('div', { class: 'past-text' },
+            h('strong', { text: `${o.number} · ${new Date(o.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · ${penceText(o.total.minorUnits)}` }),
+            h('span', { text: o.summary })),
+          h('button', { class: 'btn btn-repeat', 'aria-label': `Repeat order ${o.number}`, onclick: () => save(o.id), text: 'Repeat' }))));
+      } catch { /* a help only */ }
     };
 
     let searchTimer;
@@ -145,7 +162,9 @@ export function customerDialog({ delivery, initial }) {
       }, 250);
     });
 
-    const save = () => {
+    if (allowRepeat && c.phone) showPastOrders(c.phone); // the customer is already on the order
+
+    const save = (repeatOrderId = null) => {
       problem.textContent = '';
       const digits = phone.el.value.replace(/[^\d+]/g, '');
       // Name and phone are needed on every collection and delivery order (the hub checks this too).
@@ -162,6 +181,7 @@ export function customerDialog({ delivery, initial }) {
           notes: notes.el.value.trim() || null,
         },
         distanceMiles: delivery ? distance : null,
+        repeatOrderId,
       });
     };
 
@@ -170,7 +190,7 @@ export function customerDialog({ delivery, initial }) {
       wide: true,
       focus: phone.el,
       body: h('div', { class: 'customer-form' },
-        h('div', { class: 'customer-col' }, phone.field, matches, name.field, notes.field),
+        h('div', { class: 'customer-col' }, phone.field, matches, name.field, notes.field, past),
         delivery ? h('div', { class: 'customer-col' },
           finder.field,
           finder.list,
@@ -181,7 +201,7 @@ export function customerDialog({ delivery, initial }) {
         problem),
       actions: [
         h('button', { class: 'btn', onclick: () => close(null), text: 'Cancel' }),
-        h('button', { class: 'btn btn-primary', onclick: save, text: 'Use these details' }),
+        h('button', { class: 'btn btn-primary', onclick: () => save(), text: 'Use these details' }),
       ],
     };
   });

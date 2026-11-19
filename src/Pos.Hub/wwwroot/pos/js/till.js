@@ -14,6 +14,8 @@ import { driversDialog } from './drivers.js';
 import { WebOrders } from './weborders.js';
 import { displayFeed } from './displayfeed.js';
 
+const POPULAR = 'popular'; // the Popular tab's id
+
 const ORDER_MODES = [
   { id: 'counter', label: 'Takeaway', source: 'Counter', type: 'Takeaway' },
   { id: 'eatin', label: 'Eat in', source: 'Counter', type: 'EatIn' },
@@ -218,9 +220,13 @@ export class Till {
   }
 
   async loadMenu() {
-    this.menu = new MenuView(await api.get('/api/menu'));
+    const [menu, popular] = await Promise.all([api.get('/api/menu'), api.get('/api/menu/popular').catch(() => [])]);
+    this.menu = new MenuView(menu);
+    this.popular = popular;
     const categories = this.menu.categories();
-    if (!categories.some(c => c.id === this.categoryId)) this.categoryId = categories[0]?.id ?? null;
+    // Start on Popular when there are best sellers (the busiest buttons first), else on the first category.
+    if (this.categoryId === null && this.popularProducts().length) this.categoryId = POPULAR;
+    else if (this.categoryId !== POPULAR && !categories.some(c => c.id === this.categoryId)) this.categoryId = categories[0]?.id ?? null;
   }
 
   setLive(connected) {
@@ -351,28 +357,104 @@ export class Till {
     const categories = this.menu.categories();
     const look = this.itemButtons ?? { showPrices: true, size: 'Normal' };
     const catSize = look.customCategories ? { '--cat-w': `${look.categoryWidth}px`, '--cat-h': `${look.categoryHeight}px` } : null;
-    const tabs = h('nav', { class: `cats ${catSize ? 'cats-custom' : ''}`, style: catSize, 'aria-label': 'Categories' }, categories.map(c => h('button', {
-      class: `cat ${c.id === this.categoryId ? 'cat-on' : ''}`,
-      style: c.colour ? { '--cat': c.colour } : null,
-      'aria-pressed': String(c.id === this.categoryId),
-      onclick: () => { this.categoryId = c.id; this.renderCatalog(); },
-      text: text(c.name),
-    })));
-    const category = categories.find(c => c.id === this.categoryId);
+    // Popular: the best sellers of the last 30 days, first, when there are any (like the favourites bar of the big systems).
+    const popular = this.popularProducts();
+    if (this.categoryId === POPULAR && !popular.length) this.categoryId = categories[0]?.id ?? null;
+    const tab = (id, name, colour, extraClass = '') => h('button', {
+      class: `cat ${extraClass} ${!this.searchText && id === this.categoryId ? 'cat-on' : ''}`,
+      'data-cat': id,
+      style: colour ? { '--cat': colour } : null,
+      'aria-pressed': String(!this.searchText && id === this.categoryId),
+      onclick: () => { this.categoryId = id; this.clearSearch(); this.renderCatalog(); },
+      text: name,
+    });
+    const tabs = h('nav', { class: `cats ${catSize ? 'cats-custom' : ''}`, style: catSize, 'aria-label': 'Categories' },
+      popular.length ? tab(POPULAR, '★ Popular', '#f59e0b', 'cat-popular') : null,
+      categories.map(c => tab(c.id, text(c.name), c.colour)),
+      this.searchBox());
+    this.gridHost = h('div', { class: 'items-host' });
+    mount(this.catalogEl, tabs, this.gridHost);
+    this.renderGrid();
+  }
+
+  /** The item buttons: the chosen category, the Popular tab, or what the search finds across the whole menu. */
+  renderGrid() {
+    if (!this.gridHost) return;
+    const look = this.itemButtons ?? { showPrices: true, size: 'Normal' };
+    const colours = new Map(this.menu.categories().map(c => [c.id, c.colour]));
+    let products;
+    if (this.searchText) products = this.searchProducts(this.searchText);
+    else if (this.categoryId === POPULAR) products = this.popularProducts();
+    else products = this.menu.productsIn(this.categoryId);
     const itemSize = look.size === 'Custom' ? { '--item-w': `${look.itemWidth}px`, '--item-h': `${look.itemHeight}px` } : null;
-    const grid = h('div', { class: `items items-${look.size.toLowerCase()} ${look.showPrices ? '' : 'items-no-price'}`, style: itemSize }, this.menu.productsIn(this.categoryId).map(p => {
+    const grid = h('div', { class: `items items-${look.size.toLowerCase()} ${look.showPrices ? '' : 'items-no-price'}`, style: itemSize }, products.map(p => {
       const soldOut = this.menu.isSoldOut(p);
       const price = p.variants.length > 1 ? `from ${penceText(this.menu.fromPrice(p))}` : penceText(p.variants[0].price.minorUnits);
+      const colour = colours.get(p.categoryId);
       return h('button', {
         class: `item ${soldOut ? 'item-out' : ''}`,
-        style: category?.colour ? { '--cat': category.colour } : null,
+        style: colour ? { '--cat': colour } : null,
         disabled: soldOut,
         onclick: () => this.pick(p),
         'aria-label': look.showPrices || soldOut ? null : `${this.menu.buttonName(p)} ${price}`, // the price is still read out
       }, h('span', { class: 'item-name', text: this.menu.buttonName(p) }),
         soldOut || look.showPrices ? h('span', { class: 'item-price', text: soldOut ? 'Sold out' : price }) : null);
     }));
-    mount(this.catalogEl, tabs, grid);
+    const empty = this.searchText && !products.length ? h('p', { class: 'items-none', text: `Nothing on the menu matches “${this.searchText}”.` }) : null;
+    mount(this.gridHost, empty ?? grid);
+  }
+
+  /** Search box at the end of the category bar. Typing searches the whole menu; Enter adds the only match; Esc clears. */
+  searchBox() {
+    if (!this.searchInput) {
+      this.searchInput = h('input', { class: 'cat-search', type: 'search', placeholder: 'Search items', 'aria-label': 'Search items', autocomplete: 'off', maxlength: 40 });
+      this.searchInput.addEventListener('input', () => {
+        this.searchText = this.searchInput.value.trim();
+        this.renderCatalogTabsState();
+        this.renderGrid();
+      });
+      this.searchInput.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { this.clearSearch(); this.renderCatalog(); }
+        if (e.key === 'Enter') {
+          const found = this.searchProducts(this.searchText).filter(p => !this.menu.isSoldOut(p));
+          if (found.length === 1) { this.pick(found[0]); this.clearSearch(); this.renderCatalog(); }
+        }
+      });
+    }
+
+    return this.searchInput;
+  }
+
+  /** While searching no category is highlighted; when the search is emptied the chosen category lights up again. */
+  renderCatalogTabsState() {
+    for (const b of this.catalogEl.querySelectorAll('.cats .cat')) {
+      const on = !this.searchText && b.dataset.cat === String(this.categoryId);
+      b.classList.toggle('cat-on', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+  }
+
+  clearSearch() {
+    this.searchText = '';
+    if (this.searchInput) this.searchInput.value = '';
+  }
+
+  /** Items whose name (English or Arabic, or button name) contains every word typed. */
+  searchProducts(query) {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const visible = new Set(this.menu.categories().map(c => c.id));
+    return this.menu.state.products
+      .filter(p => !p.isHidden && visible.has(p.categoryId))
+      .filter(p => {
+        const names = [p.name?.en, p.name?.ar, p.buttonName?.en, p.buttonName?.ar].filter(Boolean).join(' ').toLowerCase();
+        return words.every(w => names.includes(w));
+      })
+      .slice(0, 60);
+  }
+
+  popularProducts() {
+    const visible = new Set(this.menu.categories().map(c => c.id));
+    return (this.popular ?? []).map(id => this.menu.products.get(id)).filter(p => p && !p.isHidden && visible.has(p.categoryId));
   }
 
   async loadSampleMenu() {
@@ -659,11 +741,57 @@ export class Till {
   }
 
   async editCustomer() {
-    const result = await customerDialog({ delivery: this.mode.type === 'Delivery', initial: this.draft.customer });
+    const result = await customerDialog({ delivery: this.mode.type === 'Delivery', initial: this.draft.customer, allowRepeat: true });
     if (!result) return;
-    this.draft.customer = result;
+    const { repeatOrderId, ...customer } = result;
+    this.draft.customer = customer;
     this.renderTicket();
     this.requestQuote();
+    if (repeatOrderId) await this.repeatOrder(repeatOrderId);
+  }
+
+  /** "Same as last time": the items of an earlier order, at today's prices, added to this order. */
+  async repeatOrder(orderId) {
+    let repeat;
+    try {
+      repeat = await busy(() => api.get(`/api/orders/${orderId}/repeat`));
+    } catch (e) {
+      toast(e.message ?? 'Could not load that order.', 'error');
+      return;
+    }
+
+    const optionName = id => {
+      for (const g of this.menu.groups.values()) {
+        const o = g.options.find(x => x.id === id);
+        if (o) return text(o.name);
+      }
+      return null;
+    };
+    const sizeName = (product, variantId) => (product.variants.length > 1 ? text(this.menu.variant(product, variantId).name) : null);
+    for (const r of repeat.lines) {
+      const product = this.menu.products.get(r.productId);
+      if (!product) continue;
+      const extras = (r.extras ?? []).map(optionName).filter(Boolean);
+      const choices = r.choices?.map(c => {
+        const item = this.menu.products.get(c.productId);
+        const names = (c.extras ?? []).map(optionName).filter(Boolean);
+        const label = [item ? sizeName(item, c.variantId) : null, item ? text(item.name) : '?'].filter(Boolean).join(' ') + (names.length ? ` (${names.join(', ')})` : '');
+        return { slotId: c.slotId, productId: c.productId, variantId: c.variantId, extras: c.extras ?? [], label };
+      }) ?? null;
+      this.draft.lines.push({
+        key: newId(), productId: r.productId, variantId: r.variantId, quantity: r.quantity, extras: r.extras ?? [], note: r.note ?? null,
+        choices, name: text(product.name), size: choices ? null : sizeName(product, r.variantId),
+        details: choices ? choices.map(c => c.label) : extras.map(extraText),
+        unitPence: this.menu.variant(product, r.variantId).price.minorUnits, // the hub's quote gives the real total
+      });
+    }
+
+    this.selected = null;
+    this.draftChanged();
+    const added = repeat.lines.reduce((n, l) => n + l.quantity, 0);
+    toast(repeat.unavailable.length
+      ? `Added ${added} item${added === 1 ? '' : 's'}. Not available today: ${repeat.unavailable.join(', ')}.`
+      : `Added ${added} item${added === 1 ? '' : 's'} from the earlier order.`, repeat.unavailable.length ? 'warn' : 'ok', 7000);
   }
 
   async changeFee() {
@@ -935,9 +1063,16 @@ export class Till {
     }
 
     let showAll = false;
+    let kind = null;  // filter: one order type (as labelled on the till), or all
+    let search = '';
     const picked = await openDialog(close => {
       const list = h('div', { class: 'orders' });
       const filter = h('div', { class: 'orders-bar' });
+      const kinds = h('div', { class: 'orders-kinds' });
+      const searchBox = h('input', { class: 'text-input orders-search', type: 'search', placeholder: 'Number, name, phone or postcode', 'aria-label': 'Find an order', autocomplete: 'off' });
+      searchBox.addEventListener('input', () => { search = searchBox.value.trim().toLowerCase(); renderList(); });
+      // Ages tick on while the list is open.
+      const ticker = setInterval(() => { if (!document.body.contains(list)) clearInterval(ticker); else renderList(); }, 30000);
       const go = async step => {
         const next = Math.max(0, daysBack + step);
         if (next === daysBack) return;
@@ -961,21 +1096,46 @@ export class Till {
             h('button', { class: 'btn btn-small', 'aria-label': 'Previous day', onclick: () => go(1), text: '‹ Previous day' }),
             h('strong', { class: 'day-name', text: dayName() }),
             h('button', { class: 'btn btn-small', 'aria-label': 'Next day', disabled: daysBack === 0, onclick: () => go(-1), text: 'Next day ›' })));
-        const shown = orders.filter(o => all || !CLOSED.includes(o.status)).sort((a, b) => b.number.localeCompare(a.number));
+        renderList();
+      };
+      const renderList = () => {
+        const all = showAll || daysBack > 0;
+        const inView = orders.filter(o => all || !CLOSED.includes(o.status));
+        // Type filters: only the kinds of order there are, with how many of each.
+        const labels = [...new Set(inView.map(o => modeLabel(o.source, o.type)))];
+        if (kind && !labels.includes(kind)) kind = null;
+        mount(kinds, labels.length > 1 ? [null, ...labels].map(l => h('button', {
+          class: `chip ${kind === l ? 'chip-on' : ''}`, 'aria-pressed': String(kind === l),
+          onclick: () => { kind = l; renderList(); },
+          text: l ? `${l} ${inView.filter(o => modeLabel(o.source, o.type) === l).length}` : `All ${inView.length}`,
+        })) : null, searchBox);
+        const digits = search.replace(/\D/g, '');
+        const matches = o => !search
+          || o.number.includes(search)
+          || (o.contact?.name ?? '').toLowerCase().includes(search)
+          || (digits.length >= 3 && (o.contact?.phone ?? '').includes(digits))
+          || (o.contact?.address?.postcode ?? '').toLowerCase().replace(/\s/g, '').includes(search.replace(/\s/g, ''));
+        // Open orders: oldest first (the most urgent at the top); all orders: newest first.
+        const shown = inView.filter(o => (!kind || modeLabel(o.source, o.type) === kind) && matches(o))
+          .sort((a, b) => (all ? b.number.localeCompare(a.number) : a.number.localeCompare(b.number)));
+        const now = Date.now();
         mount(list, shown.length ? shown.map(o => {
           const due = o.balance?.minorUnits ?? 0;
+          const open = !CLOSED.includes(o.status) && daysBack === 0;
+          const minutes = Math.max(0, Math.floor((now - new Date(o.createdAt)) / 60000));
           return h('div', { class: 'order-row' },
             h('button', { class: 'order-open', onclick: () => close({ open: o }) },
               h('span', { class: 'order-no', text: o.number }),
+              open ? h('span', { class: `order-age ${minutes >= 30 ? 'age-late' : minutes >= 15 ? 'age-warn' : ''}`, title: 'Minutes since the order was taken', text: minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min` }) : h('span', { class: 'order-age order-age-none' }),
               h('span', { class: 'order-meta', text: [timeText(o.createdAt), modeLabel(o.source, o.type), o.table ? `Table ${o.table}` : null, o.contact?.name, o.contact?.address?.postcode].filter(Boolean).join(' · ') }),
               h('span', { class: `status status-${o.status.toLowerCase()}`, text: statusText(o.status) }),
               h('span', { class: 'order-total', text: money(o.total) }),
               h('span', { class: `paid-badge ${due > 0 ? 'paid-due' : 'paid-ok'}`, text: due > 0 ? `Due ${penceText(due)}` : due < 0 ? `Refund ${penceText(-due)}` : 'Paid' })),
             !CLOSED.includes(o.status) && due <= 0 ? h('button', { class: 'btn btn-small', onclick: () => close({ complete: o }), text: o.type === 'Delivery' ? 'Delivered' : 'Collected' }) : null);
-        }) : h('p', { class: 'empty-note', text: all ? `No orders ${daysBack ? 'that day' : 'yet today'}.` : 'No open orders.' }));
+        }) : h('p', { class: 'empty-note', text: search || kind ? 'No orders match.' : all ? `No orders ${daysBack ? 'that day' : 'yet today'}.` : 'No open orders.' }));
       };
       render();
-      return { title: 'Orders', wide: true, body: [filter, list] };
+      return { title: 'Orders', wide: true, class: 'dialog-orders', body: [filter, kinds, list] };
     });
 
     if (picked?.open) {

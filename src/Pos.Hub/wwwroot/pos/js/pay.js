@@ -179,7 +179,7 @@ export async function payDialog(order) {
           },
         });
         action.addEventListener('click', () => pad.value() && take('cash', { tenderedPence: pad.value(), ...extra() }));
-        const notes = [500, 1000, 2000, 5000].filter(n => n >= amount);
+        const notes = cashSuggestions(amount);
         const quick = h('div', { class: 'quick' },
           h('button', { class: 'btn quick-btn', onclick: () => take('cash', { tenderedPence: amount, ...extra() }), text: `Exact ${penceText(amount)}` }),
           notes.map(n => h('button', { class: 'btn quick-btn', onclick: () => take('cash', { tenderedPence: n, ...extra() }), text: penceText(n) })));
@@ -226,3 +226,14 @@ export async function payDialog(order) {
     };
   });
 }
+
+/**
+ * Likely cash handed over for an amount, as the big tills suggest: the next whole pound, the next £5 and £10,
+ * then £20 and £50 notes (only amounts above what is due, at most four). £15.69 → £16, £20, £50.
+ */
+export function cashSuggestions(amount) {
+  const up = step => Math.ceil(amount / step) * step;
+  const candidates = [up(100), up(500), up(1000), up(2000), up(5000), 2000, 5000];
+  return [...new Set(candidates)].filter(n => n > amount).sort((a, b) => a - b).slice(0, 4);
+}
+

@@ -130,6 +130,13 @@ h1, h2, h3 { margin: 0; }
 .cats { display: flex; flex-wrap: wrap; gap: 6px; }
 .cat { min-height: 52px; padding: 0 18px; border: 0; border-radius: var(--radius); background: #fff; font-weight: 700; box-shadow: inset 0 -4px 0 var(--cat); }
 .cat-on { background: var(--cat); color: #fff; box-shadow: none; }
+/* The item grid lives in a host that keeps the grid's scrolling (search and Popular redraw only this part). */
+.items-host { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.items-none { margin: 24px auto; color: var(--muted, #6b7280); font-size: 1.05rem; }
+/* Search: at the end of the category bar, as wide as a tab; grows while typing. */
+.cat-search { min-height: 52px; width: 170px; padding: 0 14px 0 38px; border: 2px solid transparent; border-radius: var(--radius); background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' fill='none' stroke='%236b7280' stroke-width='2.2'%3E%3Ccircle cx='9' cy='9' r='6'/%3E%3Cpath d='m14 14 4 4'/%3E%3C/svg%3E") no-repeat 12px center; font: inherit; font-weight: 600; }
+.cat-search:focus { outline: none; border-color: var(--accent, #2563eb); width: 240px; }
+.cats-custom .cat-search { height: var(--cat-h); min-height: 0; }
 .items { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); grid-auto-rows: 92px; gap: 8px; align-content: start; }
 .item { position: relative; display: flex; flex-direction: column; justify-content: space-between; text-align: left; padding: 10px 12px; border: 0; border-radius: var(--radius); background: #fff; border-top: 5px solid var(--cat); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
 .item:active:not(:disabled) { background: #f3f4f6; }
@@ -214,7 +221,7 @@ h1, h2, h3 { margin: 0; }
 /* Orders list and More menu */
 .orders { display: flex; flex-direction: column; gap: 6px; }
 .order-row { display: flex; gap: 8px; align-items: center; }
-.order-open { flex: 1; display: grid; grid-template-columns: 4em 1fr auto 6em 7em; gap: 10px; align-items: center; min-height: 60px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; text-align: left; }
+.order-open { flex: 1; display: grid; grid-template-columns: 4em 5.5em 1fr auto 6em 7em; gap: 10px; align-items: center; min-height: 60px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; text-align: left; }
 .order-no { font-size: 1.3rem; font-weight: 800; }
 .order-meta { color: var(--ink-soft); font-size: .95rem; }
 .order-total { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
@@ -386,6 +393,7 @@ h1, h2, h3 { margin: 0; }
 .toast { padding: 14px 18px; border-radius: 12px; background: #111827; color: #fff; font-weight: 600; box-shadow: 0 10px 25px rgba(0,0,0,.25); transition: opacity .3s, transform .3s; }
 .toast-ok { background: #14532d; }
 .toast-error { background: #7f1d1d; }
+.toast-warn { background: #92400e; }
 .toast-hide { opacity: 0; transform: translateY(8px); }
 /* Stacking is set when opened: the newest cover or dialog is on top (a manager PIN asked while working stays usable). */
 .busy { position: fixed; inset: 0; z-index: 12; display: grid; place-items: center; background: rgba(255,255,255,.35); }
@@ -688,3 +696,31 @@ h1, h2, h3 { margin: 0; }
 .px-input { width: 96px; }
 .sample-row { display: flex; padding: 10px; background: var(--bg, #eef0f3); border-radius: 10px; margin-top: 8px; overflow-x: auto; }
 .item-sample, .cat-sample { pointer-events: none; flex: none; }
+.btn-primary.btn-waiting { background: #9ca3af; border-color: #9ca3af; }
+.one-tap-hint { margin: -4px 0 0; }
+
+/* Payment on a 768-pixel-high till: everything, including the receipt buttons at the bottom, fits without scrolling. */
+@media (max-height: 820px) {
+  .dialog-pay .dialog-body { padding-top: 10px; padding-bottom: 10px; gap: 8px; }
+  .dialog-pay .keypad { gap: 6px; }
+  .dialog-pay .keypad-display { min-height: 48px; font-size: 1.7rem; }
+  .dialog-pay .key, .dialog-pay .keypad-enter { min-height: 52px; }
+  .dialog-pay .quick-btn { min-height: 48px; }
+  .dialog-pay .dialog-actions { padding: 8px 20px 10px; }
+}
+
+/* Customer panel: previous orders with Repeat ("same as last time"). */
+.past-orders { display: flex; flex-direction: column; gap: 6px; }
+.past-orders:empty { display: none; }
+.past-order { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: #f9fafb; }
+.past-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.past-text span { color: var(--muted, #6b7280); font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-repeat { min-height: 48px; min-width: 96px; font-weight: 700; }
+
+/* Orders list: type filters, search and how long each open order has waited. */
+.orders-kinds { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.orders-search { flex: 1; min-width: 220px; min-height: 44px; }
+.order-age { justify-self: start; padding: 4px 8px; border-radius: 999px; background: #f3f4f6; font-weight: 700; font-size: .85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.order-age-none { background: none; }
+.age-warn { background: #fef3c7; color: #92400e; }
+.age-late { background: #fee2e2; color: #991b1b; }

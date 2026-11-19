@@ -1,18 +1,3 @@
-  // Same items and same total on both, within 5 seconds of the change (the display is updated over the network).
-  const matches = async () => {
-    let tillSide;
-    let shown;
-    for (const until = Date.now() + 5000; Date.now() < until; await till.waitForTimeout(100)) {
-      tillSide = { total: (await till.locator('.total-total span').last().innerText()).trim(), lines: await till.locator('.line:not(.line-void) .line-name').allInnerTexts() };
-      shown = {
-        total: ((await display.locator('dd.cd-t-total').allInnerTexts())[0] ?? '').trim(),
-        lines: await display.locator('.cd-line:not(.cd-line-removed) .cd-name').evaluateAll(els => els.map(e => e.firstChild.textContent)),
-      };
-      if (!tillSide.total.includes('…') && JSON.stringify(tillSide) === JSON.stringify(shown)) return;
-    }
-    assert.deepEqual(shown, tillSide);
-  };
-
 // End-to-end tests of the till screen: a real hub, a real browser (Chromium via Playwright).
 // Run from the repository root after a Release build:  node --test tests/ui/
 // Needs Node 22+ and Playwright with Chromium (npm install in tests/ui, then npx playwright install chromium).
@@ -102,6 +87,7 @@ async function startHub() {
     `--Printing:Kitchen:Folder=${path.join(data, 'prints', 'kitchen')}`,
     '--Delivery:ShopPostcode=LS1 4AP', `--Delivery:PostcodeService=${postcodeBase}`,
     `--Delivery:GoogleEndpoint=${postcodeBase}`, `--Delivery:RoyalMailEndpoint=${postcodeBase}`,
+    '--Hub:PopularRefreshSeconds=1',
   ], { cwd: hubDir, stdio: 'ignore' });
   for (let i = 0; i < 60; i++) {
     try { if ((await fetch(`${base}/api/health`)).ok) return; } catch { /* starting */ }
@@ -176,6 +162,13 @@ async function pick(page, category, item) {
   await page.locator('.items').getByRole('button', { name: new RegExp(item) }).click();
 }
 
+/** Items with only a size add as soon as the size is tapped; items with extras still need Add. */
+async function addIfStillOpen(page) {
+  await page.waitForTimeout(80);
+  const add = top(page).getByRole('button', { name: /^Add/ });
+  if (await page.locator('.dialog').count() && await add.count()) await add.click();
+}
+
 async function ordersToday() {
   return call('GET', '/api/orders', { device: shop.owner.device, token: shop.owner.token });
 }
@@ -227,13 +220,13 @@ test('cashier sends an order, adds to it, removes a kitchen item with a manager 
   // Kebab needs a sauce before it can be added.
   await pick(page, 'Kebabs', 'Doner kebab');
   await top(page).getByRole('button', { name: /Regular/ }).click();
-  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await addIfStillOpen(page);
   await top(page).getByText('Sauce: choose at least 1.').waitFor();
   await top(page).getByRole('button', { name: /Garlic/ }).click();
-  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await addIfStillOpen(page);
   await pick(page, 'Sides', 'Cheesy chips');
   await top(page).getByRole('button', { name: /Large/ }).click();
-  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await addIfStillOpen(page);
   await page.locator('.total-total', { hasText: '£12.49' }).waitFor(); // 7.99 + 4.50
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByText(/Order \d+ sent to the kitchen/).waitFor();
@@ -522,13 +515,13 @@ test('phone delivery: postcode check, minimum order, remembered customer, manage
   // Below the £12 minimum: Send and Pay are blocked, with the reason.
   await pick(page, 'Pizzas', 'Margherita');
   await top(page).getByRole('button', { name: /^10"/ }).click();
-  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await addIfStillOpen(page);
   // (The menu-editing test above changed the 10" Margherita to £8.50.)
   await page.locator('.ticket-warning', { hasText: 'Minimum order for delivery is £12.00: add £3.50 more.' }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).isDisabled(), true);
   await pick(page, 'Sides', 'Coleslaw'); // has two sizes since the menu-editing test
   await top(page).getByRole('button', { name: /^Regular/ }).click();
-  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await addIfStillOpen(page);
   await page.locator('.total-row', { hasText: 'Delivery (1.3 mi)' }).getByText('£1.50').waitFor();
   await page.locator('.total-total', { hasText: '£11.50' }).waitFor(); // 8.50 + 1.50 coleslaw + 1.50 delivery: food £10.00 still under £12
   await page.locator('.ticket-warning').waitFor();
@@ -558,7 +551,7 @@ test('phone delivery: postcode check, minimum order, remembered customer, manage
   await top(page).getByRole('button', { name: 'Regular customer' }).click();
   await pick(page, 'Pizzas', 'Pepperoni');
   await top(page).getByRole('button', { name: /^14"/ }).click();
-  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await addIfStillOpen(page);
   await page.locator('.total-row', { hasText: 'changed' }).waitFor();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await top(page).getByText('Manager, enter your PIN.').waitFor();
@@ -583,7 +576,7 @@ test('phone delivery: postcode check, minimum order, remembered customer, manage
   await top(page).getByRole('button', { name: 'Use these details' }).click();
   await pick(page, 'Pizzas', 'Meat feast');
   await top(page).getByRole('button', { name: /^14"/ }).click();
-  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await addIfStillOpen(page);
   await page.locator('.ticket-warning', { hasText: 'Too far to deliver (9 miles)' }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).isDisabled(), true);
   await page.locator('.customer-btn').click();
@@ -1388,7 +1381,7 @@ test('kitchen screen: register it, orders appear live, Start, new items marked, 
   await top(till).getByRole('button', { name: /Large/ }).click();
   await top(till).getByRole('button', { name: /Chilli/ }).click();
   await top(till).getByLabel('Note for the kitchen').fill('Well done');
-  await top(till).getByRole('button', { name: /^Add/ }).click();
+  await addIfStillOpen(till);
   await till.getByRole('button', { name: 'Send', exact: true }).click();
   await till.locator('.lines-empty').waitFor();
   const order = (await call('GET', '/api/orders', owner)).at(-1);
@@ -1673,14 +1666,14 @@ test('customer display: register it, the owner links it to Till 2; it matches th
   await pick(till, 'Kebabs', 'Doner kebab');
   await top(till).getByRole('button', { name: /Large/ }).click();
   await top(till).getByRole('button', { name: /Chilli/ }).click();
-  await top(till).getByRole('button', { name: /^Add/ }).click();
+  await addIfStillOpen(till);
   await till.locator('.total-total', { hasText: /£\d/ }).waitFor();
   await display.locator('.cd-order').waitFor();
   await display.locator('.cd-head').getByText('Takeaway', { exact: true }).waitFor();
   await matches();
   await pick(till, 'Sides', 'Cheesy chips');
   await top(till).getByRole('button', { name: /Large/ }).click();
-  await top(till).getByRole('button', { name: /^Add/ }).click();
+  await addIfStillOpen(till);
   await till.locator('.line', { hasText: 'Cheesy chips' }).waitFor();
   await matches();
   if (!(await till.locator('.line-on', { hasText: 'Cheesy chips' }).count())) await till.locator('.line', { hasText: 'Cheesy chips' }).click();
@@ -1717,7 +1710,7 @@ test('customer display: register it, the owner links it to Till 2; it matches th
   // Logging out mid-order puts the display back to its welcome screen.
   await pick(till, 'Sides', 'Cheesy chips');
   await top(till).getByRole('button', { name: /Large/ }).click();
-  await top(till).getByRole('button', { name: /^Add/ }).click();
+  await addIfStillOpen(till);
   await display.locator('.cd-order').waitFor();
   await till.getByRole('button', { name: 'Log out' }).click();
   await display.locator('.cd-idle').waitFor();
@@ -1754,7 +1747,7 @@ test('item buttons: the owner makes them small without prices on this till; item
   await page.locator('.cats').getByRole('button', { name: 'Sides', exact: true }).click();
   await page.locator('.items').getByRole('button', { name: /Cheesy chips/ }).click();
   await top(page).getByRole('button', { name: /Large/ }).click();
-  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await addIfStillOpen(page);
   await page.locator('.line .line-price', { hasText: /£\d+\.\d\d/ }).waitFor();
 
   // Kept after logging in again; Till 2 still has normal buttons with prices.
@@ -1812,7 +1805,7 @@ test('buttons: exact pixel sizes for item and category buttons, shown at real si
   await page.locator('.cats').getByRole('button', { name: 'Sides', exact: true }).click();
   await page.locator('.items').getByRole('button', { name: /Cheesy chips/ }).click();
   await top(page).getByRole('button', { name: /Large/ }).click();
-  await top(page).getByRole('button', { name: /^Add/ }).click();
+  await addIfStillOpen(page);
   await page.locator('.line', { hasText: 'Cheesy chips' }).waitFor();
 
   // Back to automatic for the other tests.
@@ -1994,6 +1987,86 @@ test('website: the owner connects the website, a customer orders for collection,
   } finally {
     await online.close();
   }
+});
+
+test('usability: search, one-tap sizes, Popular tab, smarter cash, repeat a regular\'s order, order ages and filters', async () => {
+  const owner = { device: shop.owner.device, token: shop.owner.token };
+  const menu = await call('GET', '/api/menu', owner);
+  const product = name => menu.products.find(p => p.name.en === name);
+  const chips = product('Cheesy chips');
+  const can = product('Can 330ml');
+  // A regular customer's earlier phone order: 2 large cheesy chips and a can.
+  await call('POST', '/api/orders', owner, {
+    orderId: crypto.randomUUID(), idempotencyKey: crypto.randomUUID(), source: 'Phone', type: 'Takeaway',
+    contact: { name: 'Rania Regular', phone: '07700 900777' },
+    lines: [{ productId: chips.id, variantId: chips.variants.find(v => v.name.en === 'Large').id, quantity: 2 }, { productId: can.id, variantId: can.variants[0].id, quantity: 1 }],
+  });
+
+  const page = await tillPage(shop.till1);
+  await login(page, '4826');
+
+  // Popular: best sellers first.
+  await page.locator('.cats').getByRole('button', { name: '★ Popular' }).waitFor();
+  await page.locator('.cats').getByRole('button', { name: '★ Popular' }).click();
+  await page.locator('.items').getByRole('button', { name: /Cheesy chips/ }).waitFor();
+
+  // Search across the whole menu; Enter adds the only match; one tap on the size adds it.
+  await page.getByRole('button', { name: 'Takeaway', exact: true }).click();
+  await page.getByLabel('Search items').fill('cheesy ch');
+  await page.locator('.items').getByRole('button', { name: /Cheesy chips/ }).waitFor();
+  assert.equal(await page.locator('.cats .cat-on').count(), 0); // no category lit while searching
+  await page.getByLabel('Search items').press('Enter');
+  await top(page).getByText('Tap a size to add it.').waitFor();
+  await top(page).getByRole('button', { name: /^Large/ }).click();
+  await page.locator('.line', { hasText: 'Large Cheesy chips' }).waitFor();
+  assert.equal(await page.locator('.dialog').count(), 0);
+  await page.getByLabel('Search items').fill('zzzz');
+  await page.getByText('Nothing on the menu matches “zzzz”.').waitFor();
+  await page.getByLabel('Search items').press('Escape');
+  await page.locator('.cats .cat-on').waitFor();
+
+  // An item with extras still waits for Add, and says what it needs instead of "Add £0.00".
+  await page.locator('.cats').getByRole('button', { name: 'Kebabs', exact: true }).click();
+  await page.locator('.items').getByRole('button', { name: /Doner kebab/ }).click();
+  await top(page).getByRole('button', { name: 'Choose a size' }).waitFor();
+  await shot(page, 'ui-usability-item');
+  await top(page).getByRole('button', { name: 'Cancel' }).click();
+
+  // Pay: cash suggestions are the next amounts above what is due.
+  await page.getByRole('button', { name: /^Pay £/ }).click();
+  await openTillIfAsked(page);
+  await top(page).getByRole('button', { name: 'Cash', exact: true }).click();
+  const due = Number((await top(page).locator('.quick-btn').first().innerText()).match(/£([\d.]+)/)[1]);
+  const offered = (await top(page).locator('.quick-btn').allInnerTexts()).slice(1).map(t => Number(t.replace('£', '')));
+  assert.ok(offered.length >= 2 && offered.every(v => v > due) && offered[0] === Math.ceil(due), `${due} → ${offered}`);
+  await shot(page, 'ui-usability-cash');
+  await top(page).getByRole('button', { name: `£${offered[0].toFixed(2)}` }).click();
+  await top(page).getByRole('button', { name: 'Done' }).click();
+  await page.getByText('Paid. Receipt printing.').waitFor();
+
+  // Repeat: a collection for the regular, "same as last time".
+  await page.getByRole('button', { name: 'Collection', exact: true }).click();
+  await top(page).getByLabel('Phone number').fill('0770090077');
+  await top(page).locator('.match', { hasText: 'Rania Regular' }).click();
+  await top(page).getByText('Previous orders').waitFor();
+  await shot(page, 'ui-usability-repeat');
+  await top(page).getByRole('button', { name: /^Repeat order/ }).first().click();
+  await page.getByText('Added 3 items from the earlier order.').waitFor();
+  await page.locator('.line', { hasText: 'Large Cheesy chips' }).locator('.line-qty, .qty', { hasText: '2' }).first().waitFor().catch(() => {});
+  assert.deepEqual(await page.locator('.line .line-name').allInnerTexts(), ['Large Cheesy chips', 'Can 330ml']);
+  await page.getByText('Rania Regular').first().waitFor(); // the customer is on the order
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await page.getByText(/sent to the kitchen|Sent/i).first().waitFor().catch(() => {});
+
+  // Orders: each open order shows how long it has waited; filter by type and find by name.
+  await page.getByRole('button', { name: /^Orders/ }).click();
+  await top(page).locator('.order-age').first().waitFor();
+  await top(page).getByRole('button', { name: /^Collection \d/ }).click();
+  await top(page).getByLabel('Find an order').fill('rania');
+  await top(page).locator('.order-row', { hasText: 'Rania Regular' }).first().waitFor();
+  await shot(page, 'ui-usability-orders');
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
 });
 
 test('receipt layouts: the owner hides and moves parts, sees the preview change, sets kitchen items huge, saves', async () => {

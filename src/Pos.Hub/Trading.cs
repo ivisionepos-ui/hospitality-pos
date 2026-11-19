@@ -41,7 +41,7 @@ public sealed record ClearTestDataRequest(string? Confirm, bool AlsoCustomers);
 public sealed record GoLiveRequest(string? Confirm);
 
 /// <summary>Testing or live, clearing test data, going live.</summary>
-public sealed class TradingService(HubDatabase db, BackupService backups, LiveUpdates live, TimeProvider clock)
+public sealed class TradingService(HubDatabase db, BackupService backups, LiveUpdates live, PopularItemService popular, TimeProvider clock)
 {
     private const string Key = "trading";
 
@@ -102,6 +102,7 @@ public sealed class TradingService(HubDatabase db, BackupService backups, LiveUp
             var status = Status();
             Save(status with { Cleared = [.. status.Cleared, cleared] }, byUserId);
             live.SalesCleared($"Test sales cleared by {byName}");
+            popular.Forget();
             return cleared;
         });
     }

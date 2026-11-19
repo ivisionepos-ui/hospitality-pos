@@ -860,6 +860,17 @@ public static class Endpoints
         api.MapGet("/customers", (CustomerService customers, string? phone) => Handle(() => Results.Ok(customers.Search(phone ?? string.Empty))))
             .ForStaff(Permission.TakeOrders);
 
+        // "Same as last time": a customer's recent orders, and one of them rebuilt against today's menu.
+        api.MapGet("/customers/orders", (RepeatOrderService repeat, string? phone) => Handle(() => Results.Ok(repeat.ForPhone(phone))))
+            .ForStaff(Permission.TakeOrders);
+
+        api.MapGet("/orders/{orderId:guid}/repeat", (RepeatOrderService repeat, Guid orderId) => Handle(() => Results.Ok(repeat.Repeat(orderId))))
+            .ForStaff(Permission.TakeOrders);
+
+        // The till's Popular tab: best sellers of the last 30 days.
+        api.MapGet("/menu/popular", (PopularItemService popular) => Handle(() => Results.Ok(popular.Ids())))
+            .ForStaff();
+
         api.MapPost("/orders/{orderId:guid}/status", (HttpContext http, OrderService orders, TillService tills, PrintService print, Guid orderId, StatusRequest request) => Handle(() =>
         {
             var actor = Actor(http);

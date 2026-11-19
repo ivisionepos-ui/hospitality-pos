@@ -24,6 +24,7 @@ export function itemOptionsDialog(menu, product, options = {}) {
       note: initial?.note ?? '',
     };
     const groups = menu.modifierGroups(product);
+    const oneTap = !fixedVariantId && !inDeal && !initial && groups.length === 0 && variants.length > 1;
     const body = h('div', { class: 'options' });
     const addButton = h('button', { class: 'btn btn-primary btn-big' });
     const problem = h('p', { class: 'form-problem', role: 'alert' });
@@ -47,8 +48,14 @@ export function itemOptionsDialog(menu, product, options = {}) {
           h('div', { class: 'opt-grid' }, variants.map(v => h('button', {
             class: `opt ${state.variantId === v.id ? 'opt-on' : ''}`,
             'aria-pressed': String(state.variantId === v.id),
-            onclick: () => { state.variantId = v.id; render(); },
+            onclick: () => {
+              state.variantId = v.id;
+              // Only a size to choose: tapping it adds the item straight away (one tap, as on the big takeaway tills).
+              if (oneTap) { finish(); return; }
+              render();
+            },
           }, h('span', { class: 'opt-name', text: text(v.name) }), inDeal ? null : h('span', { class: 'opt-price', text: penceText(v.price.minorUnits) }))))));
+        if (oneTap) sections.push(h('p', { class: 'field-hint one-tap-hint', text: 'Tap a size to add it.' }));
       }
 
       for (const g of groups) {
@@ -88,11 +95,13 @@ export function itemOptionsDialog(menu, product, options = {}) {
 
       mount(body, sections);
       const each = variantPence() + extrasPence();
-      addButton.textContent = inDeal ? 'Choose' : `Add  ${penceText(each * state.quantity)}`;
+      // No size yet: say what is needed instead of "Add £0.00".
+      addButton.textContent = inDeal ? 'Choose' : !state.variantId ? 'Choose a size' : `Add  ${penceText(each * state.quantity)}`;
+      addButton.classList.toggle('btn-waiting', !inDeal && !state.variantId);
       problem.textContent = '';
     };
 
-    addButton.addEventListener('click', () => {
+    const finish = () => {
       const why = missing();
       if (why) { problem.textContent = why; return; }
       const extrasNames = groups.flatMap(g => g.options).filter(o => state.extras.has(o.id)).map(o => text(o.name));
@@ -105,7 +114,8 @@ export function itemOptionsDialog(menu, product, options = {}) {
         summary: { size: sizeName, extras: extrasNames },
         unitPence: variantPence() + extrasPence(),
       });
-    });
+    };
+    addButton.addEventListener('click', finish);
 
     render();
     return {

@@ -149,6 +149,7 @@ async function login(page, digits) {
 const top = page => page.locator('.dialog').last();
 // The More screen (full screen, stays open until Back).
 const moreMenu = page => page.locator('.more-page');
+const ordersPage = page => page.locator('.orders-page');
 const openMore = async page => {
   await page.locator('#dialogs .dialog-layer').first().waitFor({ state: 'detached' });
   if (!await page.locator('.more-page').count()) await page.getByRole('button', { name: 'More', exact: true }).click();
@@ -245,7 +246,7 @@ test('cashier sends an order, adds to it, removes a kitchen item with a manager 
 
   // Open it again and add two cans.
   await page.getByRole('button', { name: /^Orders/ }).click();
-  await top(page).getByRole('button', { name: new RegExp(`^${number}`) }).click();
+  await ordersPage(page).getByRole('button', { name: new RegExp(`^${number}`) }).click();
   await page.locator('.ticket-number', { hasText: `Order ${number}` }).waitFor();
   await pick(page, 'Drinks', 'Can 330ml');
   await page.locator('.items').getByRole('button', { name: /Can 330ml/ }).click();
@@ -256,7 +257,7 @@ test('cashier sends an order, adds to it, removes a kitchen item with a manager 
 
   // Remove the chips: already in the kitchen, so a manager must approve.
   await page.getByRole('button', { name: /^Orders/ }).click();
-  await top(page).getByRole('button', { name: new RegExp(`^${number}`) }).click();
+  await ordersPage(page).getByRole('button', { name: new RegExp(`^${number}`) }).click();
   await page.locator('.line', { hasText: 'Cheesy chips' }).click();
   await page.getByRole('button', { name: 'Remove item' }).click();
   await top(page).getByRole('button', { name: 'Entered by mistake' }).click();
@@ -293,7 +294,7 @@ test('cashier sends an order, adds to it, removes a kitchen item with a manager 
 
   // Collected from the orders list.
   await page.getByRole('button', { name: /^Orders/ }).click();
-  await top(page).locator('.order-row', { hasText: number }).getByRole('button', { name: 'Collected' }).click();
+  await ordersPage(page).locator('.order-row', { hasText: number }).getByRole('button', { name: 'Collected' }).click();
   await page.getByText(`Order ${number} collected.`).waitFor();
 
   const order = (await ordersToday()).find(o => o.number === number);
@@ -924,7 +925,7 @@ test('owner sets discount limits; cashier gives a discount (manager above the li
 
   // Refund £2.00 of the card payment: reason, manager PIN, then reminded to do it on the card machine.
   await page.getByRole('button', { name: /^Orders/ }).click();
-  await top(page).getByRole('button', { name: new RegExp(`^${order.number}`) }).click();
+  await ordersPage(page).getByRole('button', { name: new RegExp(`^${order.number}`) }).click();
   await page.getByRole('button', { name: 'More for this order' }).click();
   assert.equal(await top(page).getByRole('button', { name: 'Discount' }).count(), 1); // still open (not collected), so a discount is possible
   await top(page).getByRole('button', { name: 'Refund' }).click();
@@ -963,12 +964,12 @@ test('owner sets discount limits; cashier gives a discount (manager above the li
 
   // Earlier days can be looked up (for a refund on yesterday's order).
   await page.getByRole('button', { name: /^Orders/ }).click();
-  await top(page).getByRole('button', { name: 'Previous day' }).click();
-  await top(page).getByText('Yesterday').waitFor();
-  await top(page).getByText('No orders that day.').waitFor();
-  await top(page).getByRole('button', { name: 'Next day' }).click();
-  await top(page).getByText('Today').waitFor();
-  await top(page).getByRole('button', { name: 'Close' }).click();
+  await ordersPage(page).getByRole('button', { name: 'Previous day' }).click();
+  await ordersPage(page).getByText('Yesterday').waitFor();
+  await ordersPage(page).getByText('No orders that day.').waitFor();
+  await ordersPage(page).getByRole('button', { name: 'Next day' }).click();
+  await ordersPage(page).getByText('Today').waitFor();
+  await ordersPage(page).getByRole('button', { name: '← Back' }).click();
 
   await page.getByRole('button', { name: 'Collected' }).click();
   await page.getByText(`Order ${order.number} collected.`).waitFor();
@@ -1409,7 +1410,7 @@ test('kitchen screen: register it, orders appear live, Start, new items marked, 
 
   // More items from the till show as NEW on the same card.
   await till.getByRole('button', { name: /^Orders/ }).click();
-  await top(till).getByRole('button', { name: new RegExp(`^${order.number}`) }).click();
+  await ordersPage(till).getByRole('button', { name: new RegExp(`^${order.number}`) }).click();
   await till.locator('.ticket-number', { hasText: `Order ${order.number}` }).waitFor();
   await pick(till, 'Drinks', 'Can 330ml');
   await till.getByRole('button', { name: 'Send new' }).click();
@@ -2082,7 +2083,7 @@ test('service charge: the owner switches it on with a percentage; eat-in orders 
   const sent = (await ordersToday()).at(-1);
   assert.deepEqual([sent.serviceCharge?.minorUnits, sent.serviceChargePercent, sent.total.minorUnits], [50, 12.5, 450]);
   await page.getByRole('button', { name: /^Orders/ }).click();
-  await top(page).locator('.order-row', { hasText: '£4.50' }).first().click();
+  await ordersPage(page).locator('.order-row', { hasText: '£4.50' }).first().click();
   await page.getByRole('button', { name: 'Remove service' }).click();
   await page.getByText('Service charge removed.').waitFor();
   await page.locator('.total-row', { hasText: 'Total' }).getByText('£4.00').waitFor();
@@ -2322,10 +2323,24 @@ test('usability: search, one-tap sizes, Popular tab, smarter cash, repeat a regu
 
   // Orders: each open order shows how long it has waited; filter by type and find by name.
   await page.getByRole('button', { name: /^Orders/ }).click();
-  await top(page).locator('.order-age').first().waitFor();
-  await top(page).getByRole('button', { name: /^Collection \d/ }).click();
-  await top(page).getByLabel('Find an order').fill('rania');
-  await top(page).locator('.order-row', { hasText: 'Rania Regular' }).first().waitFor();
+  await ordersPage(page).locator('.order-age').first().waitFor();
+  // Full screen, tabs in order, All orders chosen at first.
+  const ob = await ordersPage(page).boundingBox();
+  assert.deepEqual([ob.x, ob.y, ob.width, ob.height], [0, 0, 1366, 768]);
+  assert.deepEqual(await ordersPage(page).locator('.orders-tab > span:first-child').allInnerTexts(), ['All orders', 'Takeaway', 'Collection', 'Eat in', 'Delivery']);
+  assert.equal(await ordersPage(page).getByRole('tab', { selected: true }).innerText().then(t => t.split('\n')[0]), 'All orders');
+  await shot(page, 'ui-orders-all');
+  // Each tab shows only its kind (counter takeaway vs phone collection), and its count matches the rows.
+  for (const [tab, kind] of [['Takeaway', 'Takeaway'], ['Collection', 'Collection'], ['Eat in', 'Eat in'], ['Delivery', 'Delivery']]) {
+    await ordersPage(page).getByRole('tab', { name: new RegExp(`^${tab}`) }).click();
+    const metas = await ordersPage(page).locator('.order-meta').allInnerTexts();
+    assert.ok(metas.every(m => [kind, `Website ${kind.toLowerCase()}`].includes(m.split(' · ')[1])), `${tab}: ${metas}`); // website collection/delivery go in the same tabs
+    const count = Number(await ordersPage(page).getByRole('tab', { selected: true }).locator('.orders-tab-count').innerText());
+    assert.equal(count, metas.length, tab);
+  }
+  await ordersPage(page).getByRole('tab', { name: /^Collection/ }).click();
+  await ordersPage(page).getByLabel('Find an order').fill('rania');
+  await ordersPage(page).locator('.order-row', { hasText: 'Rania Regular' }).first().waitFor();
   await shot(page, 'ui-usability-orders');
   assert.deepEqual(page.errors, []);
   await page.context().close();

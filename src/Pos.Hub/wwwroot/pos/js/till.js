@@ -24,6 +24,14 @@ const ORDER_MODES = [
 ];
 const modeLabel = (source, type) => (source === 'Website' ? (type === 'Delivery' ? 'Website delivery' : 'Website collection') : ORDER_MODES.find(m => m.source === source && m.type === type)?.label ?? type);
 const CLOSED = ['Completed', 'Cancelled', 'Rejected'];
+// The Orders screen's tabs. Collection is a takeaway ordered by phone or on the website; Takeaway is at the counter.
+const ORDER_TABS = [
+  { id: 'all', label: 'All orders', has: () => true },
+  { id: 'takeaway', label: 'Takeaway', has: o => o.type === 'Takeaway' && o.source === 'Counter' },
+  { id: 'collection', label: 'Collection', has: o => o.type === 'Takeaway' && o.source !== 'Counter' },
+  { id: 'eatin', label: 'Eat in', has: o => o.type === 'EatIn' },
+  { id: 'delivery', label: 'Delivery', has: o => o.type === 'Delivery' },
+];
 // The service charge is optional (discretionary): the till and receipts always say so.
 const serviceLabel = percent => `Optional service ${percent ?? ''}%`;
 // "2.4 mi", or why the fee is the furthest area's: postcode not found, or outside the area and staff went ahead.
@@ -1124,98 +1132,117 @@ export class Till {
   }
 
   /** Today's orders (or an earlier day's, e.g. for a refund); tap one to open it. */
+  /**
+   * The Orders screen: full screen over the till, with tabs for each kind of order (All orders first, the default).
+   * Opening an order goes back to the till with it; marking one collected or delivered keeps the list open.
+   */
   async showOrders() {
     let daysBack = 0;
     let orders;
-    const load = () => api.get(daysBack ? `/api/orders?daysBack=${daysBack}` : '/api/orders');
+    const load = days => api.get(days ? `/api/orders?daysBack=${days}` : '/api/orders');
     try {
-      orders = await busy(load);
+      orders = await busy(() => load(0));
     } catch (e) {
       this.showError(e);
       return;
     }
 
-    let showAll = false;
-    let kind = null;  // filter: one order type (as labelled on the till), or all
+    this.root.querySelector('.orders-page')?.remove();
+    let showFinished = false;
+    let tab = 'all';
     let search = '';
-    const picked = await openDialog(close => {
-      const list = h('div', { class: 'orders' });
-      const filter = h('div', { class: 'orders-bar' });
-      const kinds = h('div', { class: 'orders-kinds' });
-      const searchBox = h('input', { class: 'text-input orders-search', type: 'search', placeholder: 'Number, name, phone or postcode', 'aria-label': 'Find an order', autocomplete: 'off' });
-      searchBox.addEventListener('input', () => { search = searchBox.value.trim().toLowerCase(); renderList(); });
-      // Ages tick on while the list is open.
-      const ticker = setInterval(() => { if (!document.body.contains(list)) clearInterval(ticker); else renderList(); }, 30000);
-      const go = async step => {
-        const next = Math.max(0, daysBack + step);
-        if (next === daysBack) return;
-        try {
-          const loaded = await busy(() => api.get(next ? `/api/orders?daysBack=${next}` : '/api/orders'));
-          daysBack = next;
-          orders = loaded;
-          render();
-        } catch (e) {
-          this.showError(e);
-        }
-      };
-      const dayName = () => (daysBack === 0 ? 'Today' : daysBack === 1 ? 'Yesterday' : `${daysBack} days ago`);
-      const render = () => {
-        const all = showAll || daysBack > 0; // an earlier day: every order (they are all finished)
-        mount(filter,
-          h('div', { class: 'seg seg-small' }, [false, true].map(a => h('button', {
-            class: `seg-btn ${all === a ? 'seg-on' : ''}`, disabled: daysBack > 0 && !a, onclick: () => { showAll = a; render(); }, text: a ? 'All orders' : 'Open',
-          }))),
-          h('div', { class: 'day-nav' },
-            h('button', { class: 'btn btn-small', 'aria-label': 'Previous day', onclick: () => go(1), text: '‹ Previous day' }),
-            h('strong', { class: 'day-name', text: dayName() }),
-            h('button', { class: 'btn btn-small', 'aria-label': 'Next day', disabled: daysBack === 0, onclick: () => go(-1), text: 'Next day ›' })));
-        renderList();
-      };
-      const renderList = () => {
-        const all = showAll || daysBack > 0;
-        const inView = orders.filter(o => all || !CLOSED.includes(o.status));
-        // Type filters: only the kinds of order there are, with how many of each.
-        const labels = [...new Set(inView.map(o => modeLabel(o.source, o.type)))];
-        if (kind && !labels.includes(kind)) kind = null;
-        mount(kinds, labels.length > 1 ? [null, ...labels].map(l => h('button', {
-          class: `chip ${kind === l ? 'chip-on' : ''}`, 'aria-pressed': String(kind === l),
-          onclick: () => { kind = l; renderList(); },
-          text: l ? `${l} ${inView.filter(o => modeLabel(o.source, o.type) === l).length}` : `All ${inView.length}`,
-        })) : null, searchBox);
-        const digits = search.replace(/\D/g, '');
-        const matches = o => !search
-          || o.number.includes(search)
-          || (o.contact?.name ?? '').toLowerCase().includes(search)
-          || (digits.length >= 3 && (o.contact?.phone ?? '').includes(digits))
-          || (o.contact?.address?.postcode ?? '').toLowerCase().replace(/\s/g, '').includes(search.replace(/\s/g, ''));
-        // Open orders: oldest first (the most urgent at the top); all orders: newest first.
-        const shown = inView.filter(o => (!kind || modeLabel(o.source, o.type) === kind) && matches(o))
-          .sort((a, b) => (all ? b.number.localeCompare(a.number) : a.number.localeCompare(b.number)));
-        const now = Date.now();
-        mount(list, shown.length ? shown.map(o => {
-          const due = o.balance?.minorUnits ?? 0;
-          const open = !CLOSED.includes(o.status) && daysBack === 0;
-          const minutes = Math.max(0, Math.floor((now - new Date(o.createdAt)) / 60000));
-          return h('div', { class: 'order-row' },
-            h('button', { class: 'order-open', onclick: () => close({ open: o }) },
-              h('span', { class: 'order-no', text: o.number }),
-              open ? h('span', { class: `order-age ${minutes >= 30 ? 'age-late' : minutes >= 15 ? 'age-warn' : ''}`, title: 'Minutes since the order was taken', text: minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min` }) : h('span', { class: 'order-age order-age-none' }),
-              h('span', { class: 'order-meta', text: [timeText(o.createdAt), modeLabel(o.source, o.type), o.table ? `Table ${o.table}` : null, o.contact?.name, o.contact?.address?.postcode].filter(Boolean).join(' · ') }),
-              h('span', { class: `status status-${o.status.toLowerCase()}`, text: statusText(o.status) }),
-              h('span', { class: 'order-total', text: money(o.total) }),
-              h('span', { class: `paid-badge ${due > 0 ? 'paid-due' : 'paid-ok'}`, text: due > 0 ? `Due ${penceText(due)}` : due < 0 ? `Refund ${penceText(-due)}` : 'Paid' })),
-            !CLOSED.includes(o.status) && due <= 0 ? h('button', { class: 'btn btn-small', onclick: () => close({ complete: o }), text: o.type === 'Delivery' ? 'Delivered' : 'Collected' }) : null);
-        }) : h('p', { class: 'empty-note', text: search || kind ? 'No orders match.' : all ? `No orders ${daysBack ? 'that day' : 'yet today'}.` : 'No open orders.' }));
-      };
-      render();
-      return { title: 'Orders', wide: true, class: 'dialog-orders', body: [filter, kinds, list] };
-    });
+    const list = h('div', { class: 'orders' });
+    const tabsEl = h('nav', { class: 'orders-tabs', role: 'tablist', 'aria-label': 'Kinds of order' });
+    const bar = h('div', { class: 'orders-bar' });
+    const searchBox = h('input', { class: 'text-input orders-search', type: 'search', placeholder: 'Number, name, phone or postcode', 'aria-label': 'Find an order', autocomplete: 'off' });
+    searchBox.addEventListener('input', () => { search = searchBox.value.trim().toLowerCase(); renderList(); });
 
-    if (picked?.open) {
-      await this.openOrder(picked.open.id);
-    } else if (picked?.complete) {
-      await this.complete(picked.complete);
-    }
+    const close = () => {
+      clearInterval(ticker);
+      document.removeEventListener('keydown', onKey);
+      page.remove();
+    };
+    const onKey = e => { if (e.key === 'Escape' && !document.getElementById('dialogs')?.children.length) close(); };
+    const refresh = async () => {
+      try { orders = await load(daysBack); renderList(); } catch { /* keep what is shown */ }
+    };
+    // Ages tick on, and new orders from other tills appear, while the list is open.
+    const ticker = setInterval(() => { if (!document.body.contains(page)) clearInterval(ticker); else refresh(); }, 30000);
+    const go = async step => {
+      const next = Math.max(0, daysBack + step);
+      if (next === daysBack) return;
+      try {
+        orders = await busy(() => load(next));
+        daysBack = next;
+        render();
+      } catch (e) {
+        this.showError(e);
+      }
+    };
+    const dayName = () => (daysBack === 0 ? 'Today' : daysBack === 1 ? 'Yesterday' : `${daysBack} days ago`);
+    const render = () => {
+      const finished = showFinished || daysBack > 0; // an earlier day: every order (they are all finished)
+      mount(bar,
+        h('div', { class: 'seg seg-small', role: 'group', 'aria-label': 'Which orders' }, [false, true].map(f => h('button', {
+          class: `seg-btn ${finished === f ? 'seg-on' : ''}`, 'aria-pressed': String(finished === f), disabled: daysBack > 0 && !f,
+          onclick: () => { showFinished = f; render(); }, text: f ? 'Open and finished' : 'Open',
+        }))),
+        searchBox,
+        h('div', { class: 'day-nav' },
+          h('button', { class: 'btn btn-small', 'aria-label': 'Previous day', onclick: () => go(1), text: '‹ Previous day' }),
+          h('strong', { class: 'day-name', text: dayName() }),
+          h('button', { class: 'btn btn-small', 'aria-label': 'Next day', disabled: daysBack === 0, onclick: () => go(-1), text: 'Next day ›' })));
+      renderList();
+    };
+    const renderList = () => {
+      const finished = showFinished || daysBack > 0;
+      const inView = orders.filter(o => finished || !CLOSED.includes(o.status));
+      mount(tabsEl, ORDER_TABS.map(t => {
+        const count = inView.filter(t.has).length;
+        return h('button', {
+          class: `orders-tab orders-tab-${t.id} ${tab === t.id ? 'orders-tab-on' : ''}`, role: 'tab', 'aria-selected': String(tab === t.id),
+          onclick: () => { tab = t.id; renderList(); },
+        }, h('span', { text: t.label }), h('span', { class: 'orders-tab-count', text: String(count) }));
+      }));
+      const digits = search.replace(/\D/g, '');
+      const matches = o => !search
+        || o.number.includes(search)
+        || (o.contact?.name ?? '').toLowerCase().includes(search)
+        || (digits.length >= 3 && (o.contact?.phone ?? '').includes(digits))
+        || (o.contact?.address?.postcode ?? '').toLowerCase().replace(/\s/g, '').includes(search.replace(/\s/g, ''));
+      const inTab = ORDER_TABS.find(t => t.id === tab).has;
+      // Open orders: oldest first (the most urgent at the top); with finished ones: newest first.
+      const shown = inView.filter(o => inTab(o) && matches(o))
+        .sort((a, b) => (finished ? b.number.localeCompare(a.number) : a.number.localeCompare(b.number)));
+      const now = Date.now();
+      mount(list, shown.length ? shown.map(o => {
+        const due = o.balance?.minorUnits ?? 0;
+        const open = !CLOSED.includes(o.status) && daysBack === 0;
+        const minutes = Math.max(0, Math.floor((now - new Date(o.createdAt)) / 60000));
+        return h('div', { class: 'order-row' },
+          h('button', { class: 'order-open', onclick: async () => { close(); await this.openOrder(o.id); } },
+            h('span', { class: 'order-no', text: o.number }),
+            open ? h('span', { class: `order-age ${minutes >= 30 ? 'age-late' : minutes >= 15 ? 'age-warn' : ''}`, title: 'Minutes since the order was taken', text: minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min` }) : h('span', { class: 'order-age order-age-none' }),
+            h('span', { class: 'order-meta', text: [timeText(o.createdAt), modeLabel(o.source, o.type), o.table ? `Table ${o.table}` : null, o.contact?.name, o.contact?.address?.postcode].filter(Boolean).join(' · ') }),
+            h('span', { class: `status status-${o.status.toLowerCase()}`, text: statusText(o.status) }),
+            h('span', { class: 'order-total', text: money(o.total) }),
+            h('span', { class: `paid-badge ${due > 0 ? 'paid-due' : 'paid-ok'}`, text: due > 0 ? `Due ${penceText(due)}` : due < 0 ? `Refund ${penceText(-due)}` : 'Paid' })),
+          !CLOSED.includes(o.status) && due <= 0 ? h('button', {
+            class: 'btn btn-small', text: o.type === 'Delivery' ? 'Delivered' : 'Collected',
+            onclick: async () => { await this.complete(o); await refresh(); },
+          }) : null);
+      }) : h('p', { class: 'empty-note', text: search ? 'No orders match.' : tab !== 'all' ? `No ${ORDER_TABS.find(t => t.id === tab).label.toLowerCase()} orders${finished ? '' : ' open'}.` : finished ? `No orders ${daysBack ? 'that day' : 'yet today'}.` : 'No open orders.' }));
+    };
+
+    const page = h('div', { class: 'orders-page', role: 'region', 'aria-label': 'Orders' },
+      h('header', { class: 'more-top' },
+        h('button', { class: 'btn more-back', onclick: close, text: '← Back' }),
+        h('h1', { class: 'more-title', text: 'Orders' })),
+      tabsEl, bar, list);
+    render();
+    document.addEventListener('keydown', onKey);
+    this.root.appendChild(page);
+    searchBox.blur();
   }
 
   showError(e) {

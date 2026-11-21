@@ -115,6 +115,12 @@ Buttons (many items on the menu)
   automatic or custom; prices shown or hidden; Screen layout: the order on
   the left or on the right; this till or every till.
 
+The Orders screen
+  Orders opens a full screen with tabs at the top: All orders, Takeaway,
+  Collection, Eat in and Delivery (with how many of each). "Open" shows
+  orders still to finish; "Open and finished" shows the whole day. Tap an
+  order to open it on the till; ← Back returns to the till.
+
 The More screen
   More opens a full screen of settings in coloured sections (Menu, Cash
   drawer, Reports, Orders and charges, Delivery and online, Staff, Tills and

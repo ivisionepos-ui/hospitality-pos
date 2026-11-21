@@ -115,6 +115,12 @@ Buttons (many items on the menu)
   automatic or custom; prices shown or hidden; Screen layout: the order on
   the left or on the right; this till or every till.
 
+The More screen
+  More opens a full screen of settings in coloured sections (Menu, Cash
+  drawer, Reports, Orders and charges, Delivery and online, Staff, Tills and
+  screens, Printing, Shop). It stays open while you change settings; press
+  ← Back (or Esc) to return to the till.
+
 Delivery outside the area, or postcode not found
   The till warns you and asks: Go ahead or Cancel.
   Go ahead takes the order and charges the delivery fee for your furthest

@@ -147,6 +147,17 @@ async function login(page, digits) {
 }
 
 const top = page => page.locator('.dialog').last();
+// The More screen (full screen, stays open until Back).
+const moreMenu = page => page.locator('.more-page');
+const openMore = async page => {
+  await page.locator('#dialogs .dialog-layer').first().waitFor({ state: 'detached' });
+  if (!await page.locator('.more-page').count()) await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.locator('.more-page').waitFor();
+};
+const back = async page => {
+  await page.locator('#dialogs .dialog-layer').first().waitFor({ state: 'detached' });
+  if (await page.locator('.more-page').count()) await page.locator('.more-back').click();
+};
 const shot = (page, name) => shots && page.screenshot({ path: path.join(shots, `${name}.png`) });
 const open = new Set();
 afterEach(async t => {
@@ -369,8 +380,8 @@ test('phone and eat-in orders are saved with the right type; the till closes wit
   // Cold cheesecake eaten in is standard-rated; garlic bread (hot) is too: both have VAT.
   assert.ok(orders.slice(-2).every(o => o.vat.length === 1 && o.vat[0].vat.minorUnits > 0));
 
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Close till (cash count)' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Close till (cash count)' }).click();
   await top(page).getByText('Count all the cash').waitFor();
   await pin(page, '6000');
   await top(page).getByRole('button', { name: 'Close till' }).click();
@@ -391,9 +402,9 @@ test('manager edits the menu on the order layout; the cashier till updates live;
   await login(page, '7402');
 
   // Cashiers have no Edit menu, only Sold out items.
-  await cashier.getByRole('button', { name: 'More', exact: true }).click();
-  assert.equal(await top(cashier).getByRole('button', { name: 'Edit menu' }).count(), 0);
-  await top(cashier).getByRole('button', { name: 'Sold out items' }).click();
+  await openMore(cashier);
+  assert.equal(await moreMenu(cashier).getByRole('button', { name: 'Edit menu' }).count(), 0);
+  await moreMenu(cashier).getByRole('button', { name: 'Sold out items' }).click();
   await top(cashier).getByRole('button', { name: 'Drinks', exact: true }).click();
   await top(cashier).getByRole('button', { name: /Bottle 1.5L/ }).click();
   await top(cashier).getByText('SOLD OUT — tap to bring back').waitFor();
@@ -401,11 +412,12 @@ test('manager edits the menu on the order layout; the cashier till updates live;
   await top(cashier).getByRole('button', { name: 'Done' }).click();
   assert.equal((await product('Bottle 1.5L')).isSoldOut, false);
 
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Edit menu' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Edit menu' }).click();
   await page.getByText('EDIT MENU', { exact: true }).waitFor();
 
   // Rename and re-price the 10" Margherita.
+  await back(page); // leave the More screen
   await page.locator('.cats').getByRole('button', { name: 'Pizzas' }).click();
   await page.locator('.items').getByRole('button', { name: /Margherita/ }).click();
   await page.getByLabel('Name (on receipts and kitchen tickets)').fill('Margherita classic');
@@ -589,8 +601,8 @@ test('phone delivery: postcode check, minimum order, remembered customer, manage
 test('owner adds a Royal Mail address file; the cashier picks the flat from the postcode', async () => {
   const owner = await tillPage(shop.till2);
   await login(owner, '4826');
-  await owner.getByRole('button', { name: 'More', exact: true }).click();
-  await top(owner).getByRole('button', { name: 'Address files' }).click();
+  await openMore(owner);
+  await moreMenu(owner).getByRole('button', { name: 'Address files' }).click();
   await top(owner).getByText('No address files yet.').waitFor();
   // Made-up addresses in the same 14-column layout as Royal Mail's files.
   const csv = [
@@ -634,8 +646,8 @@ test('owner chooses Google, then Royal Mail online, testing each key; the till f
   const owner = await tillPage(shop.till2);
   await login(owner, '4826');
   const open = async () => {
-    await owner.getByRole('button', { name: 'More', exact: true }).click();
-    await top(owner).getByRole('button', { name: 'Address lookup' }).click();
+    await openMore(owner);
+    await moreMenu(owner).getByRole('button', { name: 'Address lookup' }).click();
   };
   await open();
   assert.deepEqual(await top(owner).locator('.provider-title').allTextContents(), ['Google', 'Royal Mail online', 'Local Royal Mail file']);
@@ -708,8 +720,8 @@ test('owner chooses Google, then Royal Mail online, testing each key; the till f
 test('owner enters the shop name and address in Shop details; mistakes are explained', async () => {
   const owner = await tillPage(shop.till2);
   await login(owner, '4826');
-  await owner.getByRole('button', { name: 'More', exact: true }).click();
-  await top(owner).getByRole('button', { name: 'Shop details' }).click();
+  await openMore(owner);
+  await moreMenu(owner).getByRole('button', { name: 'Shop details' }).click();
   await top(owner).getByLabel('Shop name (top of the receipt)').fill('Sample Cafe');
   // Find the shop's address from the postcode (the local file loaded earlier has it).
   await top(owner).getByLabel('Find address').fill('ls29jt cafe');
@@ -739,8 +751,8 @@ test('owner enters the shop name and address in Shop details; mistakes are expla
 test('owner opens Add a till or screen: the code and the steps for another PC are shown', async () => {
   const owner = await tillPage(shop.till2);
   await login(owner, '4826');
-  await owner.getByRole('button', { name: 'More', exact: true }).click();
-  await top(owner).getByRole('button', { name: 'Add a till or screen' }).click();
+  await openMore(owner);
+  await moreMenu(owner).getByRole('button', { name: 'Add a till or screen' }).click();
   await top(owner).locator('.dialog-title, h2', { hasText: 'Add a till or screen' }).first().waitFor();
   await top(owner).getByText('Open customer display (second screen)', { exact: false }).waitFor();
   assert.match(await top(owner).locator('.pair-code').innerText(), /^\d{6}$/);
@@ -760,8 +772,8 @@ async function pinIn(page, digits) {
 test('owner adds, edits, removes and brings back staff; the new person changes their own PIN; a manager sees less', async () => {
   const owner = await tillPage(shop.till2);
   await login(owner, '4826');
-  await owner.getByRole('button', { name: 'More', exact: true }).click();
-  await top(owner).getByRole('button', { name: 'Staff', exact: true }).click();
+  await openMore(owner);
+  await moreMenu(owner).getByRole('button', { name: 'Staff', exact: true }).click();
   await top(owner).getByLabel('Olivia Owner').getByText('Olivia Owner (you)').waitFor();
 
   // Add: name and role, then the PIN twice. An easy PIN is explained before anything is saved.
@@ -813,9 +825,9 @@ test('owner adds, edits, removes and brings back staff; the new person changes t
   await top(owner).getByRole('button', { name: 'Done' }).click();
 
   // Tills and screens: the owner's own till cannot be removed from itself.
-  await owner.getByRole('button', { name: 'More', exact: true }).click();
+  await openMore(owner);
   await shot(owner, 'ui-more');
-  await top(owner).getByRole('button', { name: 'Tills and screens' }).click();
+  await moreMenu(owner).getByRole('button', { name: 'Tills and screens' }).click();
   await top(owner).getByText('Till 2 (this one)').waitFor();
   assert.equal(await top(owner).getByLabel('Till 2', { exact: true }).getByRole('button', { name: 'Remove' }).count(), 0);
   await top(owner).getByRole('button', { name: 'Done' }).click();
@@ -823,26 +835,27 @@ test('owner adds, edits, removes and brings back staff; the new person changes t
   // Wendy logs in and changes her own PIN; she must log in again with it.
   const page = await tillPage(shop.till1);
   await login(page, '6153');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  assert.equal(await top(page).getByRole('button', { name: 'Staff', exact: true }).count(), 0); // cashiers do not manage staff
-  await top(page).getByRole('button', { name: 'Change my PIN' }).click();
+  await openMore(page);
+  assert.equal(await moreMenu(page).getByRole('button', { name: 'Staff', exact: true }).count(), 0); // cashiers do not manage staff
+  await moreMenu(page).getByRole('button', { name: 'Change my PIN' }).click();
   await pinIn(page, '6158'); // wrong current PIN
   await pinIn(page, '6154');
   await pinIn(page, '6154');
   await page.getByText('Your current PIN is wrong.').waitFor();
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Change my PIN' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Change my PIN' }).click();
   await pinIn(page, '6153');
   await pinIn(page, '6154');
   await pinIn(page, '6154');
   await page.getByText('PIN changed. Log in with your new PIN.').waitFor();
+  await back(page); // leave the More screen
   await login(page, '6154');
 
   // A manager sees the staff list but cannot change the owner or make managers.
   await page.getByRole('button', { name: 'Log out' }).click();
   await login(page, '7402');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Staff', exact: true }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Staff', exact: true }).click();
   assert.equal(await top(page).getByLabel('Olivia Owner', { exact: true }).getByRole('button', { name: 'Edit' }).count(), 0);
   await top(page).getByLabel('Wendy Waiter', { exact: true }).getByRole('button', { name: 'Edit' }).click();
   assert.deepEqual(await top(page).getByRole('radio').allInnerTexts().then(t => t.map(x => x.split('\n')[0])), ['Cashier', 'Waiter', 'Kitchen', 'Driver']);
@@ -856,8 +869,8 @@ test('owner adds, edits, removes and brings back staff; the new person changes t
 test('owner sets discount limits; cashier gives a discount (manager above the limit), pays, then refunds part to the card', async () => {
   const owner = await tillPage(shop.till2);
   await login(owner, '4826');
-  await owner.getByRole('button', { name: 'More', exact: true }).click();
-  await top(owner).getByRole('button', { name: 'Discount limits' }).click();
+  await openMore(owner);
+  await moreMenu(owner).getByRole('button', { name: 'Discount limits' }).click();
   await top(owner).getByLabel('Largest % off without a manager').fill('10');
   await top(owner).getByLabel('Largest £ off without a manager').fill('5');
   await top(owner).getByRole('button', { name: 'Save' }).click();
@@ -1109,9 +1122,9 @@ test('owner opens sales reports: totals match the hub, items, hours, staff; a ta
   assert.ok(expected.summary.orders > 0);
   const page = await tillPage(shop.till2);
   await login(page, '4826');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await openMore(page);
   await shot(page, 'ui-more-reports');
-  await top(page).getByRole('button', { name: 'Sales reports' }).click();
+  await moreMenu(page).getByRole('button', { name: 'Sales reports' }).click();
 
   const kpi = label => top(page).locator('.kpi', { hasText: label }).locator('.kpi-value');
   assert.equal(await kpi('Orders').innerText(), String(expected.summary.orders));
@@ -1150,8 +1163,8 @@ test('owner downloads the menu spreadsheet, imports one with a mistake, fixes it
   const before = await call('GET', '/api/menu', owner);
   const page = await tillPage(shop.till2);
   await login(page, '4826');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Menu spreadsheet (Excel)' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Menu spreadsheet (Excel)' }).click();
 
   // The download is a real Excel workbook of the menu.
   const [download] = await Promise.all([page.waitForEvent('download'), top(page).getByRole('button', { name: 'Download the menu spreadsheet' }).click()]);
@@ -1183,8 +1196,8 @@ test('owner downloads the menu spreadsheet, imports one with a mistake, fixes it
   assert.equal(imported.products.length, before.products.length + 2);
 
   // Undo puts the menu back exactly as it was.
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Menu spreadsheet (Excel)' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Menu spreadsheet (Excel)' }).click();
   await top(page).getByText('new items fixed.csv').waitFor();
   await top(page).getByRole('button', { name: 'Undo last import' }).click();
   await top(page).getByRole('button', { name: 'Undo import' }).click();
@@ -1207,8 +1220,8 @@ test('owner sets up a network receipt printer, test page and drawer; a cashier o
 
   const owner = await tillPage(shop.till2);
   await login(owner, '4826');
-  await owner.getByRole('button', { name: 'More', exact: true }).click();
-  await top(owner).getByRole('button', { name: 'Printers' }).click();
+  await openMore(owner);
+  await moreMenu(owner).getByRole('button', { name: 'Printers' }).click();
   const receipt = top(owner).getByLabel('Receipt printer', { exact: true });
   await receipt.getByRole('radio', { name: 'Network printer' }).click();
   await top(owner).getByRole('button', { name: 'Test receipt printer' }).click();
@@ -1232,8 +1245,8 @@ test('owner sets up a network receipt printer, test page and drawer; a cashier o
   // A cashier needs a manager to open the drawer without a sale.
   const page = await tillPage(shop.till1);
   await login(page, '5931');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Open drawer (no sale)' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Open drawer (no sale)' }).click();
   await top(page).getByRole('button', { name: 'Change for a note' }).click();
   await top(page).getByText('Opening the drawer without a sale needs a manager. Manager, enter your PIN.').waitFor();
   await pin(page, '7402');
@@ -1245,8 +1258,8 @@ test('owner sets up a network receipt printer, test page and drawer; a cashier o
   assert.deepEqual(opens.map(o => [o.staff, o.approvedBy, o.reason]), [['Cara Cashier', 'Max Manager', 'Change for a note']]);
 
   // A Star TSP100 gets Star graphic mode instead.
-  await owner.getByRole('button', { name: 'More', exact: true }).click();
-  await top(owner).getByRole('button', { name: 'Printers' }).click();
+  await openMore(owner);
+  await moreMenu(owner).getByRole('button', { name: 'Printers' }).click();
   await top(owner).getByLabel('Receipt printer', { exact: true }).getByRole('radio', { name: 'Star TSP100 / TSP143' }).click();
   await top(owner).getByText('Star TSP100 printers have no built-in fonts', { exact: false }).waitFor();
   assert.equal(await top(owner).getByRole('radio', { name: 'Pin 5' }).count(), 0);
@@ -1280,8 +1293,8 @@ test('owner sets up kebab, pizza, drinks and dessert kitchen printers; each item
   const picks = Object.fromEntries(['Pizzas', 'Drinks', 'Desserts', 'Starters'].map(c => [c, pickFrom(c)]));
   const page = await tillPage(shop.till2);
   await login(page, '4826');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Printers' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Printers' }).click();
 
   // The existing kitchen printer becomes the kebab printer.
   const card = n => top(page).getByLabel(`Kitchen printer ${n}`, { exact: true });
@@ -1433,8 +1446,8 @@ test('every printout was made: kitchen tickets, additions, the void slip and rec
 test('eat-in with tables: owner turns tables on, the till asks which table, a busy table offers its order, move table; tables off goes straight to the menu', async () => {
   const owner = await tillPage(shop.till2);
   await login(owner, '4826');
-  await owner.getByRole('button', { name: 'More', exact: true }).click();
-  await top(owner).getByRole('button', { name: 'Eat-in and tables' }).click();
+  await openMore(owner);
+  await moreMenu(owner).getByRole('button', { name: 'Eat-in and tables' }).click();
   await top(owner).getByRole('radio', { name: /^Use tables/ }).click();
   await top(owner).getByLabel('Number of tables').fill('6');
   await shot(owner, 'ui-eat-in-settings');
@@ -1500,8 +1513,8 @@ test('a till with its own receipt printer: its test page, drawer and no sale go 
 
   const owner = await tillPage(shop.till1);
   await login(owner, '4826');
-  await owner.getByRole('button', { name: 'More', exact: true }).click();
-  await top(owner).getByRole('button', { name: 'Printers' }).click();
+  await openMore(owner);
+  await moreMenu(owner).getByRole('button', { name: 'Printers' }).click();
   await top(owner).getByRole('checkbox', { name: 'Till 2 has its own receipt printer' }).check();
   const card = top(owner).getByLabel('Till 2 printer', { exact: true });
   await card.getByRole('radio', { name: 'USB printer on that till' }).waitFor(); // the usual way, chosen first
@@ -1520,8 +1533,8 @@ test('a till with its own receipt printer: its test page, drawer and no sale go 
   // A cashier on Till 2 opens the drawer: Till 2's own drawer.
   const page = await tillPage(shop.till2);
   await login(page, '5931');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Open drawer (no sale)' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Open drawer (no sale)' }).click();
   await top(page).getByRole('button', { name: 'Check the float' }).click();
   await pin(page, '7402');
   await top(page).getByRole('button', { name: 'Approve' }).click();
@@ -1563,8 +1576,8 @@ test('kitchen screens per section: the pizza screen shows only pizza, marks its 
   // The owner chooses what each screen shows.
   const page = await tillPage(shop.till1);
   await login(page, '4826');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Kitchen screens' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Kitchen screens' }).click();
   await top(page).getByRole('group', { name: 'Pizza screen: shows' }).getByRole('button', { name: 'Pizza' }).click();
   await top(page).getByRole('group', { name: 'Kitchen 1: shows' }).getByRole('button', { name: 'Grill' }).click();
   await shot(page, 'ui-kitchen-screens');
@@ -1628,8 +1641,8 @@ test('customer display: register it, the owner links it to Till 2; it matches th
   // The owner links it to Till 2 and writes the welcome line and messages; the display changes at once.
   const ownerTill = await tillPage(shop.till1);
   await login(ownerTill, '4826');
-  await ownerTill.getByRole('button', { name: 'More', exact: true }).click();
-  await top(ownerTill).getByRole('button', { name: 'Customer displays' }).click();
+  await openMore(ownerTill);
+  await moreMenu(ownerTill).getByRole('button', { name: 'Customer displays' }).click();
   await top(ownerTill).getByLabel('Customer display 1 follows').selectOption({ label: 'Till 2' });
   await top(ownerTill).getByLabel('Welcome line').fill('Welcome to Test Kebabs');
   await top(ownerTill).getByLabel('Message 1').fill('Try our mixed grill');
@@ -1726,8 +1739,8 @@ test('item buttons: the owner makes them small without prices on this till; item
   const normal = await page.locator('.items .item').first().boundingBox();
   assert.ok(await page.locator('.items .item-price').count() > 0);
 
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Buttons (size, prices)' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Buttons (size, prices)' }).click();
   await top(page).getByRole('radio', { name: 'Small', exact: true }).click();
   await top(page).getByRole('radio', { name: 'Hide prices' }).click();
   await shot(page, 'ui-item-buttons-settings');
@@ -1741,6 +1754,7 @@ test('item buttons: the owner makes them small without prices on this till; item
   await shot(page, 'ui-item-buttons-small');
 
   // Still the same items: the price shows on the order as soon as one is added.
+  await back(page); // leave the More screen
   await page.getByRole('button', { name: 'Takeaway', exact: true }).click();
   await page.locator('.cats').getByRole('button', { name: 'Sides', exact: true }).click();
   await page.locator('.items').getByRole('button', { name: /Cheesy chips/ }).click();
@@ -1769,8 +1783,8 @@ test('item buttons: the owner makes them small without prices on this till; item
 test('buttons: exact pixel sizes for item and category buttons, shown at real size before saving, then on the till', async () => {
   const page = await tillPage(shop.till1);
   await login(page, '4826');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Buttons (size, prices)' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Buttons (size, prices)' }).click();
   const dialog = top(page);
   await dialog.getByRole('radio', { name: 'Custom size' }).first().click();
   await dialog.getByLabel('Item width').fill('120');
@@ -1790,6 +1804,7 @@ test('buttons: exact pixel sizes for item and category buttons, shown at real si
   await dialog.getByRole('button', { name: 'Save' }).click();
   await page.getByText('Buttons saved for this till.').waitFor();
 
+  await back(page); // leave the More screen
   await page.locator('.cats').getByRole('button', { name: 'Kebabs', exact: true }).click();
   await page.locator('.items.items-custom').waitFor();
   const sizes = await page.locator('.items .item').evaluateAll(els => els.map(e => [Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]));
@@ -1826,8 +1841,8 @@ test('right-hand layout: the order moves to the right of the screen, the order b
   };
   assert.equal(await side(), 'left');
 
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Buttons (size, prices)' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Buttons (size, prices)' }).click();
   await top(page).getByRole('radio', { name: 'Order on the right' }).click();
   await top(page).getByRole('button', { name: 'Save' }).click();
   await page.getByText('Buttons saved for this till.').waitFor();
@@ -1843,6 +1858,7 @@ test('right-hand layout: the order moves to the right of the screen, the order b
   // Remembered after logging out and in again.
   await page.reload();
   await page.locator('.till-order-right').or(page.getByText('Enter your PIN')).first().waitFor();
+  await back(page); // leave the More screen
   if (await page.getByText('Enter your PIN').isVisible()) await login(page, '4826');
   await page.locator('.till-order-right').waitFor();
 
@@ -1859,8 +1875,8 @@ test('website: the owner connects the website, a customer orders for collection,
     const owner = { device: shop.owner.device, token: shop.owner.token };
     const till = await tillPage(shop.till1);
     await login(till, '4826');
-    await till.getByRole('button', { name: 'More', exact: true }).click();
-    await top(till).getByRole('button', { name: 'Website (online orders)' }).click();
+    await openMore(till);
+    await moreMenu(till).getByRole('button', { name: 'Website (online orders)' }).click();
     await top(till).getByText('Not connected.').waitFor();
     await top(till).getByRole('checkbox', { name: 'Connect this shop to its website' }).check();
     await top(till).getByLabel('Website address').fill(online.url);
@@ -1955,6 +1971,7 @@ test('website: the owner connects the website, a customer orders for collection,
     await phone.getByText(/The shop has your order \(number \d+\)/).waitFor({ timeout: 30000 });
 
     // The till flashes "Website order …"; staff accept it, ready in 15 minutes.
+    await back(till); // leave the More screen
     const button = till.locator('.web-alert');
     await button.waitFor({ timeout: 15000 });
     await button.click();
@@ -2029,8 +2046,8 @@ test('website: the owner connects the website, a customer orders for collection,
 test('service charge: the owner switches it on with a percentage; eat-in orders get it, and it can be taken off', async () => {
   const page = await tillPage(shop.till1);
   await login(page, '4826');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Service charge' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Service charge' }).click();
   await top(page).getByRole('radio', { name: /^Off/ }).waitFor();
   assert.equal(await top(page).getByLabel('Service charge percentage').count(), 0); // no percentage while off
   await top(page).getByRole('radio', { name: /^On for eat-in orders/ }).click();
@@ -2040,6 +2057,7 @@ test('service charge: the owner switches it on with a percentage; eat-in orders 
   await page.getByText('Eat-in orders now have an optional 12.5% service charge.').waitFor();
 
   // Takeaway: none.
+  await back(page); // leave the More screen
   await page.getByRole('button', { name: 'Takeaway', exact: true }).click();
   await page.locator('.cats').getByRole('button', { name: 'Drinks', exact: true }).click();
   await page.locator('.items').getByRole('button', { name: /Water 500ml/ }).click();
@@ -2132,6 +2150,46 @@ test('delivery outside the area or with a postcode not found: a warning, then go
   await page.context().close();
 });
 
+test('More: full screen in coloured sections, stays open after a setting, Back and Esc return to the till', async () => {
+  const page = await tillPage(shop.till1);
+  await login(page, '4826');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  const more = moreMenu(page);
+  const box = await more.boundingBox();
+  assert.deepEqual([box.x, box.y, box.width, box.height], [0, 0, 1366, 768]); // the whole screen
+  const titles = await more.locator('.more-section-title').allInnerTexts();
+  assert.deepEqual(titles.map(t => t.toLowerCase()), ['menu', 'cash drawer', 'reports', 'orders and charges', 'delivery and online', 'staff', 'tills and screens', 'printing', 'shop']);
+  const colours = await more.locator('.more-section').evaluateAll(els => els.map(e => getComputedStyle(e).borderTopColor));
+  assert.equal(new Set(colours).size, titles.length); // a different colour for each section
+  await shot(page, 'ui-more');
+
+  // A setting opens on top; when it closes, More is still there.
+  await more.getByRole('button', { name: 'Service charge' }).click();
+  await top(page).getByRole('button', { name: 'Cancel' }).click();
+  await more.getByRole('button', { name: 'Discount limits' }).waitFor();
+  assert.equal(await more.count(), 1);
+  // Esc with a window open closes only the window.
+  await more.getByRole('button', { name: 'Eat-in and tables' }).click();
+  await top(page).waitFor();
+  await page.keyboard.press('Escape');
+  await more.waitFor();
+
+  await page.getByRole('button', { name: '← Back' }).click();
+  assert.equal(await more.count(), 0);
+  await page.getByRole('button', { name: 'Takeaway', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.keyboard.press('Escape');
+  assert.equal(await more.count(), 0);
+
+  // A cashier sees only what they can use.
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await login(page, '5931');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  assert.deepEqual((await more.locator('.more-section-title').allInnerTexts()).map(t => t.toLowerCase()), ['menu', 'cash drawer', 'staff', 'printing']);
+  assert.deepEqual(page.errors, []);
+  await page.context().close();
+});
+
 test('three prices: the owner sets takeaway and eat-in prices; the till charges each order type its own price', async () => {
   const owner = { device: shop.owner.device, token: shop.owner.token };
   const water = async () => (await call('GET', '/api/menu', owner)).products.find(p => p.name.en === 'Water 500ml');
@@ -2139,9 +2197,10 @@ test('three prices: the owner sets takeaway and eat-in prices; the till charges 
   await login(page, '4826');
 
   // Edit menu: main £1.00 stays; takeaway & collection £0.90; eat in £1.50.
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Edit menu' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Edit menu' }).click();
   await page.getByText('EDIT MENU', { exact: true }).waitFor();
+  await back(page); // leave the More screen
   await page.locator('.cats').getByRole('button', { name: 'Drinks' }).click();
   await page.locator('.items').getByRole('button', { name: /Water 500ml/ }).click();
   await page.getByRole('button', { name: /^Takeaway price of/ }).waitFor();
@@ -2275,8 +2334,8 @@ test('usability: search, one-tap sizes, Popular tab, smarter cash, repeat a regu
 test('receipt layouts: the owner hides and moves parts, sees the preview change, sets kitchen items huge, saves', async () => {
   const page = await tillPage(shop.till1);
   await login(page, '4826');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Receipt layouts' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Receipt layouts' }).click();
   const dialog = top(page);
   const preview = dialog.locator('.rl-preview img');
   await preview.waitFor();
@@ -2335,8 +2394,8 @@ test('testing or live: the owner clears the test sales (other tills start again)
   const other = await tillPage(shop.till2);
   await login(other, '5931');
 
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Testing or live (clear test sales)' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Testing or live (clear test sales)' }).click();
   await top(page).getByText('TESTING', { exact: true }).waitFor();
   await top(page).getByLabel('Type CLEAR to confirm').fill('clear');
   await top(page).getByRole('button', { name: 'Clear test sales' }).click();
@@ -2355,14 +2414,14 @@ test('testing or live: the owner clears the test sales (other tills start again)
   await page.locator('.orders-count:empty').waitFor({ state: 'attached' }); // no open orders left
 
   // Going live needs the exact words; afterwards the dialog only says LIVE.
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Testing or live (clear test sales)' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Testing or live (clear test sales)' }).click();
   await top(page).getByText(/cleared before|Test sales cleared before/i).waitFor();
   await top(page).getByLabel('Type GO LIVE to confirm').fill('GO LIVE');
   await top(page).getByRole('button', { name: 'Go live' }).click();
   await page.getByText('The shop is live.').waitFor();
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await top(page).getByRole('button', { name: 'Testing or live (clear test sales)' }).click();
+  await openMore(page);
+  await moreMenu(page).getByRole('button', { name: 'Testing or live (clear test sales)' }).click();
   await top(page).getByText('LIVE', { exact: true }).waitFor();
   assert.equal(await top(page).getByRole('button', { name: 'Clear test sales' }).count(), 0);
   await shot(page, 'ui-trading-live');

@@ -831,63 +831,79 @@ async function backupNow() {
   toast(result.copyError ? `Backup made, but the copy failed: ${result.copyError}` : `Backup made: ${result.file}`, result.copyError ? 'error' : 'ok', 6000);
 }
 
-/** Opens the More menu for the till screen. */
+/**
+ * The More screen: full screen over the till, settings grouped in coloured sections. It stays open while you use
+ * its options (each opens on top of it) until Back is pressed, so several settings can be changed in one visit.
+ */
 export function moreDialog(till) {
   const can = p => till.can(p);
-  const run = (close, action) => async () => {
-    close();
+  till.root.querySelector('.more-page')?.remove();
+  const run = action => async () => {
     try { await action(); } catch (e) { till.showError(e); }
   };
-  // Columns, so every option is visible at once on a 768-pixel-high till screen (no hidden scrolling).
-  const section = (title, ...buttons) => {
-    const shown = buttons.filter(Boolean);
-    return shown.length ? h('section', { class: 'more-col' }, h('h3', { class: 'menu-heading', text: title }), shown) : null;
+  const item = (label, hint, action) => h('button', {
+    class: 'more-item', 'aria-label': label, onclick: run(action),
+  }, h('span', { class: 'more-item-label', text: label }), hint ? h('span', { class: 'more-item-hint', text: hint }) : null);
+  const section = (title, colour, ...items) => {
+    const shown = items.filter(Boolean);
+    return shown.length
+      ? h('section', { class: `more-section more-${colour}`, 'aria-label': title }, h('h2', { class: 'more-section-title', text: title }), h('div', { class: 'more-items' }, shown))
+      : null;
   };
-  const item = (label, action, primary = false) => h('button', { class: `btn menu-btn ${primary ? 'menu-btn-main' : ''}`, onclick: run(close, action), text: label });
-  let close;
-  return openDialog(c => {
-    close = c;
-    return {
-      title: 'More',
-      wide: true,
-      body: [
-        h('div', { class: 'more-grid' },
-          section('Menu',
-            can('EditMenu') ? item('Edit menu', () => till.enterEditMode(), true) : null,
-            can('EditMenu') ? item('Menu spreadsheet (Excel)', menuSpreadsheetDialog) : null,
-            can('EditMenu') ? item('Buttons (size, prices)', () => itemButtonsSettings(till)) : null,
-            item('Sold out items', () => soldOutDialog(till)),
-            can('ManageDevices') ? item('Discount limits', discountLimitsDialog) : null),
-          section('Till',
-            item('Open till', async () => { if (await ensureShift()) toast('The till is open.', 'ok'); }),
-            item('Close till (cash count)', closeShift),
-            item('Paid in', () => cashMovement('paid-in')),
-            item('Paid out', () => cashMovement('paid-out')),
-            item('Open drawer (no sale)', () => noSale(withApproval))),
-          section('Staff and devices',
-            can('ManageStaff') ? item('Staff', () => staffDialog(till.ctx.me.staff), true) : null,
-            item('Change my PIN', () => changeMyPin(till.ctx.me.staff, till.ctx.logout)),
-            can('ManageDevices') ? item('Tills and screens', devicesDialog) : null,
-            can('ManageDevices') ? item('Printers', printersDialog) : null,
-            can('ManageDevices') ? item('Receipt layouts', receiptLayoutsDialog) : null,
-            can('ManageDevices') ? item('Add a till or screen', addTill) : null),
-          section('Reports and shop',
-            can('ManageDevices') ? item('Shop details', shopDetails) : null,
-            can('ManageDevices') ? item('Eat-in and tables', eatInSettings) : null,
-            can('ManageDevices') ? item('Service charge', () => serviceChargeSettings(till)) : null,
-            can('ManageDevices') ? item('Kitchen screens', kitchenScreensSettings) : null,
-            can('ManageDevices') ? item('Customer displays', customerDisplaysSettings) : null,
-            can('ManageDevices') ? item('Website (online orders)', websiteSettings) : null,
-            can('ViewReports') ? item('Sales reports', salesReportsDialog, true) : null,
-            can('ViewReports') ? item('X report (this till)', xReport) : null,
-            can('ViewReports') ? item('End of day (Z report)', zReport) : null,
-            item('Failed printouts', failedPrints),
-            can('ViewReports') ? item('Back up now', backupNow) : null,
-            can('ManageDevices') ? item('Address lookup', addressLookup) : null,
-            can('ManageDevices') ? item('Address files', addressFiles) : null,
-            can('ManageDevices') ? item('Testing or live (clear test sales)', tradingDialog) : null)),
-        h('p', { class: 'version', text: `Version ${window.posVersion ?? ''} · ${till.ctx.me.staff.name} (${till.ctx.me.staff.role})` }),
-      ],
-    };
-  });
+
+  const close = () => {
+    page.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  // Esc goes back only when no window is open on top of the More screen.
+  const onKey = e => { if (e.key === 'Escape' && !document.getElementById('dialogs')?.children.length) close(); };
+  const page = h('div', { class: 'more-page', role: 'region', 'aria-label': 'More' },
+    h('header', { class: 'more-top' },
+      h('button', { class: 'btn more-back', onclick: close, text: '← Back' }),
+      h('h1', { class: 'more-title', text: 'More' }),
+      h('span', { class: 'more-who', text: `${till.ctx.me.staff.name} (${till.ctx.me.staff.role}) · Version ${window.posVersion ?? ''}` })),
+    h('div', { class: 'more-body' },
+      section('Menu', 'green',
+        can('EditMenu') ? item('Edit menu', 'Items, prices, sizes, extras', () => till.enterEditMode()) : null,
+        can('EditMenu') ? item('Menu spreadsheet (Excel)', 'Download or upload the whole menu', menuSpreadsheetDialog) : null,
+        can('EditMenu') ? item('Buttons (size, prices)', 'Button size, prices, screen layout', () => itemButtonsSettings(till)) : null,
+        item('Sold out items', 'Mark items sold out for today', () => soldOutDialog(till))),
+      section('Cash drawer', 'amber',
+        item('Open till', 'Start the day with the float', async () => { if (await ensureShift()) toast('The till is open.', 'ok'); }),
+        item('Close till (cash count)', 'Count the cash at the end', closeShift),
+        item('Paid in', 'Cash put into the drawer', () => cashMovement('paid-in')),
+        item('Paid out', 'Cash taken out (e.g. supplies)', () => cashMovement('paid-out')),
+        item('Open drawer (no sale)', 'Needs a manager', () => noSale(withApproval))),
+      section('Reports', 'blue',
+        can('ViewReports') ? item('Sales reports', 'Sales by day, item, staff', salesReportsDialog) : null,
+        can('ViewReports') ? item('X report (this till)', 'Takings so far, nothing reset', xReport) : null,
+        can('ViewReports') ? item('End of day (Z report)', 'Close the day\'s takings', zReport) : null,
+        can('ViewReports') ? item('Back up now', 'Copy of all sales and settings', backupNow) : null),
+      section('Orders and charges', 'rose',
+        can('ManageDevices') ? item('Eat-in and tables', 'Table numbers for eat-in', eatInSettings) : null,
+        can('ManageDevices') ? item('Service charge', 'Optional % on eat-in orders', () => serviceChargeSettings(till)) : null,
+        can('ManageDevices') ? item('Discount limits', 'Most staff can give without a manager', discountLimitsDialog) : null),
+      section('Delivery and online', 'teal',
+        can('ManageDevices') ? item('Website (online orders)', 'Your ordering website', websiteSettings) : null,
+        can('ManageDevices') ? item('Address lookup', 'Find addresses as you type', addressLookup) : null,
+        can('ManageDevices') ? item('Address files', 'Royal Mail postcode files', addressFiles) : null),
+      section('Staff', 'purple',
+        can('ManageStaff') ? item('Staff', 'Add staff, roles and PINs', () => staffDialog(till.ctx.me.staff)) : null,
+        item('Change my PIN', 'Your own login PIN', () => changeMyPin(till.ctx.me.staff, till.ctx.logout))),
+      section('Tills and screens', 'indigo',
+        can('ManageDevices') ? item('Tills and screens', 'Every till, kitchen and display', devicesDialog) : null,
+        can('ManageDevices') ? item('Add a till or screen', 'Pair a new device', addTill) : null,
+        can('ManageDevices') ? item('Kitchen screens', 'Which food each screen shows', kitchenScreensSettings) : null,
+        can('ManageDevices') ? item('Customer displays', 'Second screen facing the customer', customerDisplaysSettings) : null),
+      section('Printing', 'slate',
+        can('ManageDevices') ? item('Printers', 'Receipt and kitchen printers', printersDialog) : null,
+        can('ManageDevices') ? item('Receipt layouts', 'What each printout shows', receiptLayoutsDialog) : null,
+        item('Failed printouts', 'Print again what did not print', failedPrints)),
+      section('Shop', 'brown',
+        can('ManageDevices') ? item('Shop details', 'Name, address, VAT, opening times, delivery', shopDetails) : null,
+        can('ManageDevices') ? item('Testing or live (clear test sales)', 'Clear test sales, then go live', tradingDialog) : null)));
+  document.addEventListener('keydown', onKey);
+  till.root.appendChild(page);
+  page.querySelector('.more-back').focus();
+  return Promise.resolve();
 }
